@@ -195,6 +195,96 @@ function App() {
   async function handleLogout() {
     await supabase.auth.signOut();
   }
+  async function handleCreateOS(event) {
+  event.preventDefault();
+
+  setNewOSError("");
+  setNewOSSaving(true);
+
+  if (!newOSAddress.trim()) {
+    setNewOSError("L'adresse est obligatoire.");
+    setNewOSSaving(false);
+    return;
+  }
+
+  if (!newOSMaterial) {
+    setNewOSError("Veuillez sélectionner un matériau.");
+    setNewOSSaving(false);
+    return;
+  }
+
+  const surface =
+    newOSSurface.trim() === ""
+      ? null
+      : Number(newOSSurface.replace(",", "."));
+
+  if (newOSSurface.trim() !== "" && isNaN(surface)) {
+    setNewOSError("La surface doit être un nombre.");
+    setNewOSSaving(false);
+    return;
+  }
+
+  const { data, error } = await supabase
+    .from("work_orders")
+    .insert({
+      status: "À planifier",
+      address: newOSAddress.trim(),
+      postal_code: newOSPostalCode.trim() || null,
+      city: newOSCity.trim() || null,
+      material_detail:
+        newOSMaterialDetail.trim() || newOSMaterial,
+      planned_surface_m2: surface,
+      particularities:
+        newOSParticularities.trim() || null,
+      created_by: session.user.id,
+      updated_by: session.user.id,
+    })
+    .select("*")
+    .single();
+
+  if (error) {
+    console.error("Erreur création OS :", error);
+    setNewOSError(
+      "Impossible de créer l'OS : " + error.message
+    );
+    setNewOSSaving(false);
+    return;
+  }
+
+  const formattedOS = {
+    id: `OS-${new Date(data.creation_date).getFullYear()}-${String(
+      data.os_number
+    ).padStart(5, "0")}`,
+    address: `${data.address || ""}${
+      data.city ? `, ${data.city}` : ""
+    }`,
+    work: data.material_detail || "Intervention",
+    day: null,
+    team: "Non affectée",
+    trade: data.material_detail || "Intervention",
+    sector: data.city || "",
+    status: data.status || "À planifier",
+    quantity: data.planned_surface_m2
+      ? `${data.planned_surface_m2} m²`
+      : "",
+    intervention: data.material_detail || "Intervention",
+    deadline: data.deadline_date,
+  };
+
+  setOsList((current) => [formattedOS, ...current]);
+
+  setShowNewOS(false);
+
+  setNewOSAddress("");
+  setNewOSPostalCode("");
+  setNewOSCity("");
+  setNewOSMaterial("");
+  setNewOSMaterialDetail("");
+  setNewOSSurface("");
+  setNewOSParticularities("");
+  setNewOSError("");
+  setNewOSSaving(false);
+}
   const [osList, setOsList] = useState([]);
   const [selectedOS, setSelectedOS] = useState(null);
   const [search, setSearch] = useState("");
