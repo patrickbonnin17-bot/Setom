@@ -569,7 +569,15 @@ const [newOSSaving, setNewOSSaving] = useState(false);
             <h2>Ordres de service</h2>
 
             <div className="toolbar">
-
+<button
+  className="primary"
+  onClick={() => {
+    setNewOSError("");
+    setShowNewOS(true);
+  }}
+>
+  + Nouveau OS
+</button>
               <input
                 placeholder="🔎 Rechercher OS, adresse..."
                 value={search}
