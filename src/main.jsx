@@ -290,6 +290,7 @@ function App() {
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState("Tous");
   const [teamFilter, setTeamFilter] = useState("Toutes");
+  const [newOSFiles, setNewOSFiles] = useState([]);
   
   const [showNewOS, setShowNewOS] = useState(false);
 const [newOSAddress, setNewOSAddress] = useState("");
