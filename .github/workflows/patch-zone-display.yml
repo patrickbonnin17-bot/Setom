@@ -12,7 +12,6 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Patch main.jsx
-        shell: bash
         run: |
           python - <<'PY'
           from pathlib import Path
@@ -34,8 +33,48 @@ jobs:
               s = s.replace(old, new, 1)
 
           if '<span>Zone de réfection</span>' not in s:
-              marker = '''          <div className="os-detail-summary">\n\n          <div className="os-detail-badge">\n            <span>Statut</span>'''
-              block = '''          <div className="os-detail-summary">\n\n          <div className="os-detail-badge">\n            <span>Zone de réfection</span>\n            <strong>{os.rehabilitationZone || "—"}</strong>\n          </div>\n\n          {os.rehabilitationZone === "Autre" && os.rehabilitationOtherDetail && (\n            <div className="os-detail-badge">\n              <span>Précision</span>\n              <strong>{os.rehabilitationOtherDetail}</strong>\n            </div>\n          )}\n\n          {os.rehabilitationZone === "Chaussée + trottoir" && (\n            <>\n              <div className="os-detail-badge">\n                <span>Chaussée</span>\n                <strong>{os.roadSurface != null ? `${os.roadSurface} m²` : "—"}</strong>\n              </div>\n              <div className="os-detail-badge">\n                <span>Trottoir</span>\n                <strong>{os.sidewalkSurface != null ? `${os.sidewalkSurface} m²` : "—"}</strong>\n              </div>\n            </>\n          )}\n\n          {os.rehabilitationZone === "Chaussée" && (\n            <div className="os-detail-badge">\n              <span>Surface chaussée</span>\n              <strong>{os.roadSurface != null ? `${os.roadSurface} m²` : "—"}</strong>\n            </div>\n          )}\n\n          {os.rehabilitationZone === "Trottoir" && (\n            <div className="os-detail-badge">\n              <span>Surface trottoir</span>\n              <strong>{os.sidewalkSurface != null ? `${os.sidewalkSurface} m²` : "—"}</strong>\n            </div>\n          )}\n\n          <div className="os-detail-badge">\n            <span>Statut</span>'''
+              marker = '          <div className="os-detail-badge">\n            <span>Statut</span>'
+              block = '''          <div className="os-detail-badge">
+            <span>Zone de réfection</span>
+            <strong>{os.rehabilitationZone || "—"}</strong>
+          </div>
+
+          {os.rehabilitationZone === "Autre" && os.rehabilitationOtherDetail && (
+            <div className="os-detail-badge">
+              <span>Précision</span>
+              <strong>{os.rehabilitationOtherDetail}</strong>
+            </div>
+          )}
+
+          {os.rehabilitationZone === "Chaussée + trottoir" && (
+            <>
+              <div className="os-detail-badge">
+                <span>Chaussée</span>
+                <strong>{os.roadSurface != null ? `${os.roadSurface} m²` : "—"}</strong>
+              </div>
+              <div className="os-detail-badge">
+                <span>Trottoir</span>
+                <strong>{os.sidewalkSurface != null ? `${os.sidewalkSurface} m²` : "—"}</strong>
+              </div>
+            </>
+          )}
+
+          {os.rehabilitationZone === "Chaussée" && (
+            <div className="os-detail-badge">
+              <span>Surface chaussée</span>
+              <strong>{os.roadSurface != null ? `${os.roadSurface} m²` : "—"}</strong>
+            </div>
+          )}
+
+          {os.rehabilitationZone === "Trottoir" && (
+            <div className="os-detail-badge">
+              <span>Surface trottoir</span>
+              <strong>{os.sidewalkSurface != null ? `${os.sidewalkSurface} m²` : "—"}</strong>
+            </div>
+          )}
+
+          <div className="os-detail-badge">
+            <span>Statut</span>'''
               if marker not in s:
                   raise SystemExit('summary marker not found')
               s = s.replace(marker, block, 1)
