@@ -158,7 +158,11 @@ function App() {
   async function handleLogout() {
     await supabase.auth.signOut();
   }
-
+  const [osList, setOsList] = useState(initialOS);
+  const [selectedOS, setSelectedOS] = useState(null);
+  const [search, setSearch] = useState("");
+  const [statusFilter, setStatusFilter] = useState("Tous");
+  const [teamFilter, setTeamFilter] = useState("Toutes");
   if (authLoading) {
     return <div>Chargement de SETOM...</div>;
   }
@@ -199,11 +203,7 @@ function App() {
       </div>
     );
   }
-  const [osList, setOsList] = useState(initialOS);
-  const [selectedOS, setSelectedOS] = useState(null);
-  const [search, setSearch] = useState("");
-  const [statusFilter, setStatusFilter] = useState("Tous");
-  const [teamFilter, setTeamFilter] = useState("Toutes");
+
 
   const filteredOS = osList.filter((os) => {
     const text =
