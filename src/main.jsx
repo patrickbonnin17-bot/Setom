@@ -1235,6 +1235,17 @@ function OSModal({ os, onClose, onUpdate }) {
   const [activeTab, setActiveTab] = useState("resume");
 const [attachments, setAttachments] = useState([]);
 const [attachmentsLoading, setAttachmentsLoading] = useState(false);
+ const [realLength, setRealLength] = useState("");
+const [realWidth, setRealWidth] = useState("");
+const [realSurface, setRealSurface] = useState("");
+const [thickness, setThickness] = useState("");
+const [sciage, setSciage] = useState("");
+const [joints, setJoints] = useState("");
+const [boucheAcle, setBoucheAcle] = useState("");
+const [demolition, setDemolition] = useState("");
+const [circulation, setCirculation] = useState("");
+const [marquage, setMarquage] = useState("");
+const [workComment, setWorkComment] = useState(""); 
  useEffect(() => {
   if (!os?.dbId) return;
 
@@ -1453,42 +1464,236 @@ const [attachmentsLoading, setAttachmentsLoading] = useState(false);
 
           {/* TRAVAUX */}
 
-          {activeTab === "travaux" && (
-            <div className="os-section">
+          {/* TRAVAUX */}
 
-              <h3>Travaux</h3>
+{activeTab === "travaux" && (
+  <div className="os-section">
 
-              <div className="os-work-card">
+    <h3>Travaux réalisés</h3>
 
-                <strong>
-                  {os.intervention ||
-                    os.work ||
-                    "Intervention"}
-                </strong>
+    <div className="os-work-card">
 
-                <p>
-                  Quantité prévue :{" "}
-                  <strong>
-                    {os.quantity || "Non renseignée"}
-                  </strong>
-                </p>
+      <div className="work-summary">
+        <strong>
+          {os.intervention || os.work || "Intervention"}
+        </strong>
 
-                <p>
-                  Matériau :{" "}
-                  <strong>
-                    {os.work || "Non renseigné"}
-                  </strong>
-                </p>
+        <p>
+          Quantité prévue :{" "}
+          <strong>{os.quantity || "Non renseignée"}</strong>
+        </p>
 
-                <p>
-                  Aucun travail réalisé n'est encore
-                  enregistré.
-                </p>
+        <p>
+          Matériau :{" "}
+          <strong>{os.work || "Non renseigné"}</strong>
+        </p>
+      </div>
 
-              </div>
+      <hr />
 
-            </div>
-          )}
+      <h4>Surface réalisée</h4>
+
+      <div className="work-grid">
+
+        <div>
+          <label>Longueur (m)</label>
+          <input
+            type="number"
+            step="0.01"
+            value={realLength}
+            onChange={(e) => {
+              const value = e.target.value;
+              setRealLength(value);
+
+              const length = Number(value);
+              const width = Number(realWidth);
+
+              if (length > 0 && width > 0) {
+                setRealSurface(
+                  (length * width).toFixed(2)
+                );
+              }
+            }}
+            placeholder="Ex. 5"
+          />
+        </div>
+
+        <div>
+          <label>Largeur (m)</label>
+          <input
+            type="number"
+            step="0.01"
+            value={realWidth}
+            onChange={(e) => {
+              const value = e.target.value;
+              setRealWidth(value);
+
+              const length = Number(realLength);
+              const width = Number(value);
+
+              if (length > 0 && width > 0) {
+                setRealSurface(
+                  (length * width).toFixed(2)
+                );
+              }
+            }}
+            placeholder="Ex. 3"
+          />
+        </div>
+
+      </div>
+
+      <div className="work-result">
+        <span>Surface réellement réalisée</span>
+        <strong>
+          {realSurface ? `${realSurface} m²` : "—"}
+        </strong>
+      </div>
+
+      <h4>Caractéristiques</h4>
+
+      <div className="work-grid">
+
+        <div>
+          <label>Épaisseur (cm)</label>
+          <input
+            type="number"
+            step="0.5"
+            value={thickness}
+            onChange={(e) => setThickness(e.target.value)}
+            placeholder="Ex. 5"
+          />
+        </div>
+
+        <div>
+          <label>Sciage (ml)</label>
+          <input
+            type="number"
+            step="0.01"
+            value={sciage}
+            onChange={(e) => setSciage(e.target.value)}
+            placeholder="Ex. 13"
+          />
+        </div>
+
+        <div>
+          <label>Joints (ml)</label>
+          <input
+            type="number"
+            step="0.01"
+            value={joints}
+            onChange={(e) => setJoints(e.target.value)}
+            placeholder="Ex. 8"
+          />
+        </div>
+
+        <div>
+          <label>Bouché à clé (U)</label>
+          <input
+            type="number"
+            step="1"
+            value={boucheAcle}
+            onChange={(e) => setBoucheAcle(e.target.value)}
+            placeholder="Ex. 1"
+          />
+        </div>
+
+        <div>
+          <label>Démolition (m²)</label>
+          <input
+            type="number"
+            step="0.01"
+            value={demolition}
+            onChange={(e) => setDemolition(e.target.value)}
+            placeholder="Ex. 2"
+          />
+        </div>
+
+      </div>
+
+      <h4>Autres travaux</h4>
+
+      <div className="work-grid">
+
+        <div>
+          <label>Circulation</label>
+          <select
+            value={circulation}
+            onChange={(e) => setCirculation(e.target.value)}
+          >
+            <option value="">Non renseigné</option>
+            <option value="2h">2 heures</option>
+            <option value="1/2 journée">1/2 journée</option>
+          </select>
+        </div>
+
+        <div>
+          <label>Marquage</label>
+          <select
+            value={marquage}
+            onChange={(e) => setMarquage(e.target.value)}
+          >
+            <option value="">Non renseigné</option>
+            <option value="Effectué">Effectué</option>
+            <option value="Signature">Signature</option>
+          </select>
+        </div>
+
+      </div>
+
+      <h4>Observations</h4>
+
+      <textarea
+        value={workComment}
+        onChange={(e) => setWorkComment(e.target.value)}
+        placeholder="Difficultés rencontrées, particularités, complément d'information..."
+        rows="4"
+      />
+
+      <div className="work-actions">
+
+        <button
+          className="primary"
+          type="button"
+          onClick={() => {
+            onUpdate(os.id, {
+              status: "Travaux effectués",
+              workRealization: {
+                surface_m2: realSurface
+                  ? Number(realSurface)
+                  : null,
+                thickness_cm: thickness
+                  ? Number(thickness)
+                  : null,
+                sciage_ml: sciage
+                  ? Number(sciage)
+                  : null,
+                joints_ml: joints
+                  ? Number(joints)
+                  : null,
+                bouche_a_cle_u: boucheAcle
+                  ? Number(boucheAcle)
+                  : null,
+                demolition_m2: demolition
+                  ? Number(demolition)
+                  : null,
+                circulation,
+                marquage,
+                comment: workComment,
+              },
+            });
+            setStatus("Travaux effectués");
+          }}
+        >
+          ✅ Transmettre les travaux réalisés
+        </button>
+
+      </div>
+
+    </div>
+
+  </div>
+)}
 
           {/* PLANNING */}
 
