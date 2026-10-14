@@ -1448,8 +1448,15 @@ async function save() {
 
     onClose();
   } catch (error) {
-    console.error("Erreur générale :", error);
-    alert("Une erreur est survenue lors de l'enregistrement.");
+  console.error("Erreur générale :", error);
+
+  alert(
+    "Erreur lors de l'enregistrement :\n\n" +
+    (error?.message || "Erreur inconnue") +
+    (error?.details ? "\n\nDétails : " + error.details : "") +
+    (error?.hint ? "\n\nAide : " + error.hint : "")
+  );
+}
   }
 }
   const tabs = [
