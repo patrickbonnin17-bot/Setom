@@ -1233,7 +1233,60 @@ function OSModal({ os, onClose, onUpdate }) {
   const [day, setDay] = useState(os?.day || "");
   const [status, setStatus] = useState(os?.status || "");
   const [activeTab, setActiveTab] = useState("resume");
+const [attachments, setAttachments] = useState([]);
+const [attachmentsLoading, setAttachmentsLoading] = useState(false);
+ useEffect(() => {
+  if (!os?.dbId) return;
 
+  async function loadAttachments() {
+    setAttachmentsLoading(true);
+
+    const { data, error } = await supabase
+      .from("attachments")
+      .select("*")
+      .eq("work_order_id", os.dbId)
+      .order("created_at", { ascending: false });
+
+    if (error) {
+      console.error("Erreur chargement fichiers :", error);
+      setAttachments([]);
+      setAttachmentsLoading(false);
+      return;
+    }
+
+    const filesWithUrls = await Promise.all(
+      (data || []).map(async (file) => {
+        const { data: signedData, error: signedError } =
+          await supabase.storage
+            .from("setom-files")
+            .createSignedUrl(file.storage_path, 3600);
+
+        if (signedError) {
+          console.error(
+            "Erreur URL fichier :",
+            file.file_name,
+            signedError
+          );
+
+          return {
+            ...file,
+            url: null,
+          };
+        }
+
+        return {
+          ...file,
+          url: signedData?.signedUrl || null,
+        };
+      })
+    );
+
+    setAttachments(filesWithUrls);
+    setAttachmentsLoading(false);
+  }
+
+  loadAttachments();
+}, [os?.dbId]); 
   function save() {
     onUpdate(os.id, {
       day: day || null,
