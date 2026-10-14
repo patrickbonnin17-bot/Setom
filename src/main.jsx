@@ -291,7 +291,68 @@ function App() {
     reserves: osList.filter(
       (o) => o.status === "Réserve"
     ).length,
-  };
+   };
+
+  if (authLoading) {
+    return (
+      <div style={{ padding: "40px", textAlign: "center" }}>
+        <h1>SETOM</h1>
+        <p>Chargement...</p>
+      </div>
+    );
+  }
+
+  if (!session) {
+    return (
+      <div style={{ padding: "40px", maxWidth: "400px", margin: "auto" }}>
+        <h1>SETOM</h1>
+        <p>Connexion à votre espace de gestion</p>
+
+        <form onSubmit={handleLogin}>
+          <input
+            type="email"
+            placeholder="Adresse e-mail"
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
+            required
+            style={{
+              width: "100%",
+              padding: "10px",
+              marginBottom: "10px",
+              boxSizing: "border-box"
+            }}
+          />
+
+          <input
+            type="password"
+            placeholder="Mot de passe"
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
+            required
+            style={{
+              width: "100%",
+              padding: "10px",
+              marginBottom: "10px",
+              boxSizing: "border-box"
+            }}
+          />
+
+          {authError && (
+            <p style={{ color: "red" }}>
+              {authError}
+            </p>
+          )}
+
+          <button type="submit">
+            Se connecter
+          </button>
+        </form>
+      </div>
+    );
+  }
+
+  return (
+    <div className="app">
 
   return (
     <div className="app">
