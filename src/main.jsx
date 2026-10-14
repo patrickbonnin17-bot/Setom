@@ -1461,38 +1461,62 @@ const [constatLoading, setConstatLoading] = useState(false);
 
 useEffect(() => {
   if (!os?.dbId) return;
+  let cancelled = false;
+
   async function loadConstat() {
     setConstatLoading(true);
-    const { data, error } = await supabase
-      .from("constats")
-      .select("*")
-      .eq("work_order_id", os.dbId)
-      .order("created_at", { ascending: false })
-      .limit(1)
-      .maybeSingle();
-    if (error) {
-      console.error("Erreur chargement constat :", error);
-      setConstat(null);
-      setConstatLines([]);
-      setConstatLoading(false);
-      return;
-    }
-    setConstat(data || null);
-    if (data?.id) {
+
+    async function fetchConstat() {
+      const { data, error } = await supabase
+        .from("constats")
+        .select("*")
+        .eq("work_order_id", os.dbId)
+        .order("created_at", { ascending: false })
+        .limit(1);
+
+      if (error) {
+        console.error("Erreur chargement constat :", error);
+        return { constat: null, error };
+      }
+
+      const latest = data?.[0] || null;
+      if (!latest) return { constat: null, error: null };
+
       const { data: lines, error: linesError } = await supabase
         .from("constat_lines")
         .select("*")
-        .eq("constat_id", data.id)
+        .eq("constat_id", latest.id)
         .order("id");
+
       if (linesError) console.error("Erreur chargement lignes constat :", linesError);
-      setConstatLines(lines || []);
-    } else {
-      setConstatLines([]);
+      return { constat: latest, lines: lines || [], error: null };
     }
-    setConstatLoading(false);
+
+    let result = await fetchConstat();
+
+    // If the OS is completed but the UI cannot see a constat yet, regenerate
+    // it once. The database function is idempotent for an OS.
+    if (!result.constat && os.status === "Travaux effectués") {
+      const { data: authData } = await supabase.auth.getUser();
+      const userId = authData?.user?.id || null;
+      const { error: rpcError } = await supabase.rpc(
+        "generate_constat_for_work_order",
+        { p_work_order_id: os.dbId, p_user_id: userId }
+      );
+      if (rpcError) console.error("Erreur génération constat automatique :", rpcError);
+      result = await fetchConstat();
+    }
+
+    if (!cancelled) {
+      setConstat(result.constat || null);
+      setConstatLines(result.lines || []);
+      setConstatLoading(false);
+    }
   }
+
   loadConstat();
-}, [os?.dbId]); 
+  return () => { cancelled = true; };
+}, [os?.dbId, os?.status]); 
  useEffect(() => {
   if (!os?.dbId) return;
 
