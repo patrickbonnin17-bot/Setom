@@ -5,13 +5,38 @@ on:
     branches: [main]
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
   build:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      - name: Fix JSX value closing
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          p = Path('src/main.jsx')
+          s = p.read_text()
+          old = ').toFixed(2)}"\n            readOnly'
+          new = ').toFixed(2)}\n            readOnly'
+          if old in s:
+              s = s.replace(old, new, 1)
+              p.write_text(s)
+              print('Fixed malformed JSX value closing.')
+          else:
+              print('No malformed JSX value closing found.')
+          PY
+      - name: Commit JSX fix
+        shell: bash
+        run: |
+          if git diff --quiet; then exit 0; fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add src/main.jsx
+          git commit -m "Fix malformed JSX value attribute"
+          git push
       - uses: actions/setup-node@v4
         with:
           node-version: 22
@@ -24,14 +49,7 @@ jobs:
           const fs = require('fs');
           const parser = require('@babel/parser');
           const src = fs.readFileSync('src/main.jsx', 'utf8');
-          try {
-            parser.parse(src, {sourceType:'module', plugins:['jsx']});
-            console.log('Babel parse OK');
-          } catch (e) {
-            console.log('BABEL ERROR:', e.message);
-            console.log('POS:', e.pos, 'LOC:', e.loc);
-            console.log(src.slice(Math.max(0,e.pos-300), e.pos+300));
-            process.exit(1);
-          }
+          parser.parse(src, {sourceType:'module', plugins:['jsx']});
+          console.log('Babel parse OK');
           NODE
       - run: npm run build
