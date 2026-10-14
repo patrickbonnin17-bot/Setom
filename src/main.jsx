@@ -641,7 +641,59 @@ const [newOSSaving, setNewOSSaving] = useState(false);
     ))}
   </div>
 </div>
-       
+  {newOSMaterial === "Béton" && (
+  <div className="material-subtypes">
+    <label>Type de béton</label>
+
+    <div className="material-subtype-grid">
+      {[
+        "Béton balayé",
+        "Béton taloché",
+        "Sous-dallage",
+        "Béton désactivé",
+        "Béton coloré",
+      ].map((type) => (
+        <button
+          key={type}
+          type="button"
+          className={`material-subtype-button ${
+            newOSMaterialDetail === type ? "selected" : ""
+          }`}
+          onClick={() => setNewOSMaterialDetail(type)}
+        >
+          {type}
+        </button>
+      ))}
+    </div>
+  </div>
+)}
+
+{newOSMaterial === "Enrobé" && (
+  <div className="material-subtypes">
+    <label>Type d'enrobé</label>
+
+    <div className="material-subtype-grid">
+      {[
+        "Enrobé noir",
+        "Enrobé rouge",
+        "Enrobé miel",
+        "Enrobé autre",
+        "Enrobé grenaillé",
+      ].map((type) => (
+        <button
+          key={type}
+          type="button"
+          className={`material-subtype-button ${
+            newOSMaterialDetail === type ? "selected" : ""
+          }`}
+          onClick={() => setNewOSMaterialDetail(type)}
+        >
+          {type}
+        </button>
+      ))}
+    </div>
+  </div>
+)}     
 
         <label>Détail du matériau</label>
         <input
