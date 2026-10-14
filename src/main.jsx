@@ -1356,54 +1356,147 @@ async function save() {
       intervention = newIntervention;
     }
 
-    // 3. Enregistrer les travaux réellement réalisés
-    const { error: realizationError } = await supabase
-      .from("work_realizations")
-      .insert({
-        intervention_id: intervention.id,
+     // 3. Enregistrer les travaux réellement réalisés
 
+    const realizations = [];
+
+    // Travail principal : surface réellement réalisée
+    if (
+      realSurface !== "" &&
+      !isNaN(Number(realSurface))
+    ) {
+      realizations.push({
+        intervention_id: intervention.id,
         designation:
           os.intervention ||
           os.work ||
           "Travaux réalisés",
-
-        quantity:
-          realSurface && !isNaN(Number(realSurface))
-            ? Number(realSurface)
-            : null,
-
+        quantity: Number(realSurface),
         unit: "m²",
-
-        surface_m2:
-          realSurface && !isNaN(Number(realSurface))
-            ? Number(realSurface)
-            : null,
-
+        surface_m2: Number(realSurface),
         thickness_cm:
-          thickness && !isNaN(Number(thickness))
+          thickness !== "" &&
+          !isNaN(Number(thickness))
             ? Number(thickness)
             : null,
-
-        length_ml:
-          sciage && !isNaN(Number(sciage))
-            ? Number(sciage)
-            : null,
-
-        observations: workComment || null,
+        observations:
+          workComment || null,
       });
-
-    if (realizationError) {
-      console.error(
-        "Erreur enregistrement travaux :",
-        realizationError
-      );
-      alert(
-        "Les travaux n'ont pas pu être enregistrés : " +
-          realizationError.message
-      );
-      return;
     }
 
+    // Sciage
+    if (
+      sciage !== "" &&
+      !isNaN(Number(sciage))
+    ) {
+      realizations.push({
+        intervention_id: intervention.id,
+        designation: "Sciage",
+        quantity: Number(sciage),
+        unit: "ml",
+        length_ml: Number(sciage),
+      });
+    }
+
+    // Joints
+    if (
+      joints !== "" &&
+      !isNaN(Number(joints))
+    ) {
+      realizations.push({
+        intervention_id: intervention.id,
+        designation: "Joints",
+        quantity: Number(joints),
+        unit: "ml",
+        length_ml: Number(joints),
+      });
+    }
+
+    // Bouché à clé
+    if (
+      boucheAcle !== "" &&
+      !isNaN(Number(boucheAcle))
+    ) {
+      realizations.push({
+        intervention_id: intervention.id,
+        designation: "Bouché à clé",
+        quantity: Number(boucheAcle),
+        unit: "U",
+      });
+    }
+
+    // Démolition
+    if (
+      demolition !== "" &&
+      !isNaN(Number(demolition))
+    ) {
+      realizations.push({
+        intervention_id: intervention.id,
+        designation: "Démolition",
+        quantity: Number(demolition),
+        unit: "m²",
+        surface_m2: Number(demolition),
+      });
+    }
+
+    // Circulation
+    if (
+      circulation !== "" &&
+      !isNaN(Number(circulation))
+    ) {
+      realizations.push({
+        intervention_id: intervention.id,
+        designation: "Circulation",
+        quantity: Number(circulation),
+        unit: "h",
+      });
+    }
+
+    // Marquage
+    if (
+      marquage &&
+      String(marquage).trim() !== ""
+    ) {
+      realizations.push({
+        intervention_id: intervention.id,
+        designation: "Marquage",
+        quantity: null,
+        unit: null,
+        observations: String(marquage).trim(),
+      });
+    }
+
+    // Supprimer les anciennes réalisations de cette intervention
+    // afin d'éviter les doublons lors d'une nouvelle sauvegarde.
+    const {
+      error: deleteRealizationsError,
+    } = await supabase
+      .from("work_realizations")
+      .delete()
+      .eq("intervention_id", intervention.id);
+
+    if (deleteRealizationsError) {
+      throw new Error(
+        "Erreur lors du remplacement des travaux réalisés : " +
+        deleteRealizationsError.message
+      );
+    }
+
+    // Enregistrer les nouvelles réalisations
+    if (realizations.length > 0) {
+      const {
+        error: realizationError,
+      } = await supabase
+        .from("work_realizations")
+        .insert(realizations);
+
+      if (realizationError) {
+        throw new Error(
+          "Erreur lors de l'enregistrement des travaux réalisés : " +
+          realizationError.message
+        );
+      }
+    }
     // 4. Mettre l'intervention à jour
     const { error: updateInterventionError } = await supabase
       .from("interventions")
