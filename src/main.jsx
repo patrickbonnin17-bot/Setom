@@ -170,6 +170,7 @@ function App() {
           : "",
         intervention: row.material_detail || "Intervention",
         rehabilitationZone: row.rehabilitation_zone,
+        rehabilitationOtherDetail: row.rehabilitation_other_detail,
         roadSurface: row.planned_road_surface_m2,
         sidewalkSurface: row.planned_sidewalk_surface_m2,
         deadline: row.deadline_date,
@@ -388,6 +389,7 @@ function App() {
     intervention: data.material_detail || "Intervention",
 
     rehabilitationZone: data.rehabilitation_zone,
+    rehabilitationOtherDetail: data.rehabilitation_other_detail,
     roadSurface: data.planned_road_surface_m2,
     sidewalkSurface: data.planned_sidewalk_surface_m2,
 
@@ -1789,7 +1791,46 @@ async function save() {
         <div className="os-detail-summary">
 
           <div className="os-detail-badge">
-            <span>Statut</span>
+  <span>Zone de réfection</span>
+  <strong>{os.rehabilitationZone || "—"}</strong>
+</div>
+
+{os.rehabilitationZone === "Autre" && os.rehabilitationOtherDetail && (
+  <div className="os-detail-badge">
+    <span>Précision</span>
+    <strong>{os.rehabilitationOtherDetail}</strong>
+  </div>
+)}
+
+{os.rehabilitationZone === "Chaussée + trottoir" && (
+  <>
+    <div className="os-detail-badge">
+      <span>Chaussée</span>
+      <strong>{os.roadSurface != null ? `${os.roadSurface} m²` : "—"}</strong>
+    </div>
+    <div className="os-detail-badge">
+      <span>Trottoir</span>
+      <strong>{os.sidewalkSurface != null ? `${os.sidewalkSurface} m²` : "—"}</strong>
+    </div>
+  </>
+)}
+
+{os.rehabilitationZone === "Chaussée" && (
+  <div className="os-detail-badge">
+    <span>Surface chaussée</span>
+    <strong>{os.roadSurface != null ? `${os.roadSurface} m²` : "—"}</strong>
+  </div>
+)}
+
+{os.rehabilitationZone === "Trottoir" && (
+  <div className="os-detail-badge">
+    <span>Surface trottoir</span>
+    <strong>{os.sidewalkSurface != null ? `${os.sidewalkSurface} m²` : "—"}</strong>
+  </div>
+)}
+
+<div className="os-detail-badge">
+  <span>Statut</span>
             <strong>{os.status || "Nouveau"}</strong>
           </div>
 
