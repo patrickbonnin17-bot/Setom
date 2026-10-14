@@ -611,7 +611,7 @@ const [newOSSaving, setNewOSSaving] = useState(false);
 
         <label>Matériau *</label>
         <select
-          <div className="material-section">
+        <div className="material-section">
   <label>Matériau *</label>
 
   <div className="material-cards">
