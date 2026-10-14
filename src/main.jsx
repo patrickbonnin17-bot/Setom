@@ -169,6 +169,9 @@ function App() {
           ? `${row.planned_surface_m2} m²`
           : "",
         intervention: row.material_detail || "Intervention",
+        rehabilitationZone: row.rehabilitation_zone,
+        roadSurface: row.planned_road_surface_m2,
+        sidewalkSurface: row.planned_sidewalk_surface_m2,
         deadline: row.deadline_date,
       }));
 
@@ -214,16 +217,39 @@ function App() {
     return;
   }
 
-  const surface =
-    newOSSurface.trim() === ""
-      ? null
-      : Number(newOSSurface.replace(",", "."));
+  const parseSurface = (value) =>
+    value.trim() === "" ? null : Number(value.replace(",", "."));
 
-  if (newOSSurface.trim() !== "" && isNaN(surface)) {
-    setNewOSError("La surface doit être un nombre.");
+  const genericSurface = parseSurface(newOSSurface);
+  const roadSurface = parseSurface(newOSRoadSurface);
+  const sidewalkSurface = parseSurface(newOSSidewalkSurface);
+
+  if ([genericSurface, roadSurface, sidewalkSurface].some((value) => value !== null && isNaN(value))) {
+    setNewOSError("Les surfaces doivent être des nombres.");
     setNewOSSaving(false);
     return;
   }
+
+  if (!newOSRehabilitationZone) {
+    setNewOSError("Veuillez sélectionner la zone de réfection.");
+    setNewOSSaving(false);
+    return;
+  }
+
+  if (newOSRehabilitationZone === "Autre" && !newOSRehabilitationOtherDetail.trim()) {
+    setNewOSError("Veuillez préciser la zone de réfection.");
+    setNewOSSaving(false);
+    return;
+  }
+
+  const surface =
+    newOSRehabilitationZone === "Chaussée"
+      ? roadSurface
+      : newOSRehabilitationZone === "Trottoir"
+        ? sidewalkSurface
+        : newOSRehabilitationZone === "Chaussée + trottoir"
+          ? (roadSurface || 0) + (sidewalkSurface || 0)
+          : genericSurface;
 
   /* =========================
      1. CRÉATION DE L'OS
@@ -238,6 +264,11 @@ function App() {
       city: newOSCity.trim() || null,
       material_detail:
         newOSMaterialDetail.trim() || newOSMaterial,
+      rehabilitation_zone: newOSRehabilitationZone,
+      rehabilitation_other_detail:
+        newOSRehabilitationOtherDetail.trim() || null,
+      planned_road_surface_m2: roadSurface,
+      planned_sidewalk_surface_m2: sidewalkSurface,
       planned_surface_m2: surface,
       particularities:
         newOSParticularities.trim() || null,
@@ -356,6 +387,10 @@ function App() {
 
     intervention: data.material_detail || "Intervention",
 
+    rehabilitationZone: data.rehabilitation_zone,
+    roadSurface: data.planned_road_surface_m2,
+    sidewalkSurface: data.planned_sidewalk_surface_m2,
+
     deadline: data.deadline_date,
   };
 
@@ -373,6 +408,10 @@ function App() {
   setNewOSMaterial("");
   setNewOSMaterialDetail("");
   setNewOSSurface("");
+  setNewOSRehabilitationZone("");
+  setNewOSRehabilitationOtherDetail("");
+  setNewOSRoadSurface("");
+  setNewOSSidewalkSurface("");
   setNewOSParticularities("");
   setNewOSFiles([]);
   setNewOSError("");
@@ -392,6 +431,10 @@ const [newOSCity, setNewOSCity] = useState("");
 const [newOSMaterial, setNewOSMaterial] = useState("");
 const [newOSMaterialDetail, setNewOSMaterialDetail] = useState("");
 const [newOSSurface, setNewOSSurface] = useState("");
+const [newOSRehabilitationZone, setNewOSRehabilitationZone] = useState("");
+const [newOSRehabilitationOtherDetail, setNewOSRehabilitationOtherDetail] = useState("");
+const [newOSRoadSurface, setNewOSRoadSurface] = useState("");
+const [newOSSidewalkSurface, setNewOSSidewalkSurface] = useState("");
 const [newOSParticularities, setNewOSParticularities] = useState("");
 const [newOSError, setNewOSError] = useState("");
 const [newOSSaving, setNewOSSaving] = useState(false);
@@ -796,15 +839,164 @@ const [newOSSaving, setNewOSSaving] = useState(false);
           placeholder="Ex. Enrobé 0/10 noir"
         />
 
-        <label>Surface prévue (m²)</label>
-        <input
-          type="number"
-          step="0.01"
-          min="0"
-          value={newOSSurface}
-          onChange={(e) => setNewOSSurface(e.target.value)}
-          placeholder="Ex. 12.5"
-        />
+        <div className="rehabilitation-section">
+
+
+          <label>Zone de réfection *</label>
+
+
+          <div className="rehabilitation-cards">
+
+
+            {["Chaussée", "Trottoir", "Chaussée + trottoir", "Autre"].map((zone) => (
+
+
+              <button
+
+
+                key={zone}
+
+
+                type="button"
+
+
+                className={`rehabilitation-card ${newOSRehabilitationZone === zone ? "selected" : ""}`}
+
+
+                onClick={() => {
+
+
+                  setNewOSRehabilitationZone(zone);
+
+
+                  if (zone !== "Autre") setNewOSRehabilitationOtherDetail("");
+
+
+                  if (zone === "Chaussée") setNewOSSidewalkSurface("");
+
+
+                  if (zone === "Trottoir") setNewOSRoadSurface("");
+
+
+                }}
+
+
+              >
+
+
+                {zone}
+
+
+              </button>
+
+
+            ))}
+
+
+          </div>
+
+
+
+          {newOSRehabilitationZone === "Chaussée" && (
+
+
+            <div className="rehabilitation-surface-field">
+
+
+              <label>Surface chaussée prévue (m²)</label>
+
+
+              <input type="number" step="0.01" min="0" value={newOSRoadSurface} onChange={(e) => setNewOSRoadSurface(e.target.value)} placeholder="Ex. 12.5" />
+
+
+            </div>
+
+
+          )}
+
+
+
+          {newOSRehabilitationZone === "Trottoir" && (
+
+
+            <div className="rehabilitation-surface-field">
+
+
+              <label>Surface trottoir prévue (m²)</label>
+
+
+              <input type="number" step="0.01" min="0" value={newOSSidewalkSurface} onChange={(e) => setNewOSSidewalkSurface(e.target.value)} placeholder="Ex. 8.5" />
+
+
+            </div>
+
+
+          )}
+
+
+
+          {newOSRehabilitationZone === "Chaussée + trottoir" && (
+
+
+            <div className="rehabilitation-surface-grid">
+
+
+              <div>
+
+
+                <label>Surface chaussée (m²)</label>
+
+
+                <input type="number" step="0.01" min="0" value={newOSRoadSurface} onChange={(e) => setNewOSRoadSurface(e.target.value)} placeholder="Ex. 12.5" />
+
+
+              </div>
+
+
+              <div>
+
+
+                <label>Surface trottoir (m²)</label>
+
+
+                <input type="number" step="0.01" min="0" value={newOSSidewalkSurface} onChange={(e) => setNewOSSidewalkSurface(e.target.value)} placeholder="Ex. 6.5" />
+
+
+              </div>
+
+
+            </div>
+
+
+          )}
+
+
+
+          {newOSRehabilitationZone === "Autre" && (
+
+
+            <>
+
+
+              <label>Précision</label>
+
+
+              <input type="text" value={newOSRehabilitationOtherDetail} onChange={(e) => setNewOSRehabilitationOtherDetail(e.target.value)} placeholder="Préciser la zone de réfection" />
+
+
+              <label>Surface prévue (m²)</label>
+
+
+              <input type="number" step="0.01" min="0" value={newOSSurface} onChange={(e) => setNewOSSurface(e.target.value)} placeholder="Ex. 12.5" />
+
+
+            </>
+
+
+          )}
+
+
+        </div>
 
         <label>Particularités</label>
         <textarea

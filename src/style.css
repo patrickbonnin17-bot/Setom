@@ -1114,3 +1114,13 @@ button {
     width: 100%;
   }
 }
+
+/* Rehabilitation zone */
+.rehabilitation-section { margin-top: 16px; padding: 14px; border: 1px solid #e2e8f0; border-radius: 14px; background: #f8fafc; }
+.rehabilitation-section > label { display: block; font-weight: 700; margin-bottom: 8px; }
+.rehabilitation-cards { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+.rehabilitation-card { padding: 12px; border: 1px solid #d7dee8; border-radius: 10px; background: white; cursor: pointer; font-weight: 600; }
+.rehabilitation-card.selected { border-color: #1976d2; background: #eaf3ff; color: #145ea8; }
+.rehabilitation-surface-field { margin-top: 10px; }
+.rehabilitation-surface-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; margin-top: 10px; }
+@media (max-width: 600px) { .rehabilitation-cards, .rehabilitation-surface-grid { grid-template-columns: 1fr; } }
