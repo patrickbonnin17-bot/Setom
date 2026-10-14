@@ -1438,6 +1438,12 @@ const [attachmentsLoading, setAttachmentsLoading] = useState(false);
  const [realLength, setRealLength] = useState("");
 const [realWidth, setRealWidth] = useState("");
 const [realSurface, setRealSurface] = useState("");
+const [roadLength, setRoadLength] = useState("");
+const [roadWidth, setRoadWidth] = useState("");
+const [sidewalkLength, setSidewalkLength] = useState("");
+const [sidewalkWidth, setSidewalkWidth] = useState("");
+const [otherLength, setOtherLength] = useState("");
+const [otherWidth, setOtherWidth] = useState("");
 const [realRoadSurface, setRealRoadSurface] = useState("");
 const [realSidewalkSurface, setRealSidewalkSurface] = useState("");
 const [realOtherSurface, setRealOtherSurface] = useState("");
@@ -2046,95 +2052,161 @@ async function save() {
       <h4>Surface réellement réalisée</h4>
 
       {os.rehabilitationZone === "Chaussée + trottoir" && (
-        <div className="work-grid">
-          <div>
-            <label>Surface réelle chaussée (m²)</label>
-            <input type="number" step="0.01" min="0" value={realRoadSurface} onChange={(e) => setRealRoadSurface(e.target.value)} placeholder="Ex. 12.5" />
+        <>
+          <div className="work-subsection">
+            <strong>Chaussée</strong>
+            <div className="work-grid">
+              <div>
+                <label>Longueur chaussée (m)</label>
+                <input type="number" step="0.01" min="0" value={roadLength} onChange={(e) => {
+                  const value = e.target.value;
+                  setRoadLength(value);
+                  const l = Number(value), w = Number(roadWidth);
+                  setRealRoadSurface(l > 0 && w > 0 ? (l * w).toFixed(2) : "");
+                }} placeholder="Ex. 4" />
+              </div>
+              <div>
+                <label>Largeur chaussée (m)</label>
+                <input type="number" step="0.01" min="0" value={roadWidth} onChange={(e) => {
+                  const value = e.target.value;
+                  setRoadWidth(value);
+                  const l = Number(roadLength), w = Number(value);
+                  setRealRoadSurface(l > 0 && w > 0 ? (l * w).toFixed(2) : "");
+                }} placeholder="Ex. 1" />
+              </div>
+            </div>
+            <div className="work-result"><span>Surface chaussée</span><strong>{realRoadSurface ? `${realRoadSurface} m²` : "—"}</strong></div>
           </div>
-          <div>
-            <label>Surface réelle trottoir (m²)</label>
-            <input type="number" step="0.01" min="0" value={realSidewalkSurface} onChange={(e) => setRealSidewalkSurface(e.target.value)} placeholder="Ex. 6.5" />
+
+          <div className="work-subsection">
+            <strong>Trottoir</strong>
+            <div className="work-grid">
+              <div>
+                <label>Longueur trottoir (m)</label>
+                <input type="number" step="0.01" min="0" value={sidewalkLength} onChange={(e) => {
+                  const value = e.target.value;
+                  setSidewalkLength(value);
+                  const l = Number(value), w = Number(sidewalkWidth);
+                  setRealSidewalkSurface(l > 0 && w > 0 ? (l * w).toFixed(2) : "");
+                }} placeholder="Ex. 2" />
+              </div>
+              <div>
+                <label>Largeur trottoir (m)</label>
+                <input type="number" step="0.01" min="0" value={sidewalkWidth} onChange={(e) => {
+                  const value = e.target.value;
+                  setSidewalkWidth(value);
+                  const l = Number(sidewalkLength), w = Number(value);
+                  setRealSidewalkSurface(l > 0 && w > 0 ? (l * w).toFixed(2) : "");
+                }} placeholder="Ex. 1" />
+              </div>
+            </div>
+            <div className="work-result"><span>Surface trottoir</span><strong>{realSidewalkSurface ? `${realSidewalkSurface} m²` : "—"}</strong></div>
           </div>
-        </div>
+        </>
       )}
 
       {os.rehabilitationZone === "Chaussée" && (
-        <div className="work-grid">
-          <div>
-            <label>Surface réelle chaussée (m²)</label>
-            <input type="number" step="0.01" min="0" value={realRoadSurface} onChange={(e) => setRealRoadSurface(e.target.value)} placeholder="Ex. 15" />
+        <div className="work-subsection">
+          <strong>Chaussée</strong>
+          <div className="work-grid">
+            <div>
+              <label>Longueur chaussée (m)</label>
+              <input type="number" step="0.01" min="0" value={roadLength} onChange={(e) => {
+                const value = e.target.value;
+                setRoadLength(value);
+                const l = Number(value), w = Number(roadWidth);
+                setRealRoadSurface(l > 0 && w > 0 ? (l * w).toFixed(2) : "");
+              }} placeholder="Ex. 5" />
+            </div>
+            <div>
+              <label>Largeur chaussée (m)</label>
+              <input type="number" step="0.01" min="0" value={roadWidth} onChange={(e) => {
+                const value = e.target.value;
+                setRoadWidth(value);
+                const l = Number(roadLength), w = Number(value);
+                setRealRoadSurface(l > 0 && w > 0 ? (l * w).toFixed(2) : "");
+              }} placeholder="Ex. 3" />
+            </div>
           </div>
+          <div className="work-result"><span>Surface chaussée</span><strong>{realRoadSurface ? `${realRoadSurface} m²` : "—"}</strong></div>
         </div>
       )}
 
       {os.rehabilitationZone === "Trottoir" && (
-        <div className="work-grid">
-          <div>
-            <label>Surface réelle trottoir (m²)</label>
-            <input type="number" step="0.01" min="0" value={realSidewalkSurface} onChange={(e) => setRealSidewalkSurface(e.target.value)} placeholder="Ex. 8" />
+        <div className="work-subsection">
+          <strong>Trottoir</strong>
+          <div className="work-grid">
+            <div>
+              <label>Longueur trottoir (m)</label>
+              <input type="number" step="0.01" min="0" value={sidewalkLength} onChange={(e) => {
+                const value = e.target.value;
+                setSidewalkLength(value);
+                const l = Number(value), w = Number(sidewalkWidth);
+                setRealSidewalkSurface(l > 0 && w > 0 ? (l * w).toFixed(2) : "");
+              }} placeholder="Ex. 5" />
+            </div>
+            <div>
+              <label>Largeur trottoir (m)</label>
+              <input type="number" step="0.01" min="0" value={sidewalkWidth} onChange={(e) => {
+                const value = e.target.value;
+                setSidewalkWidth(value);
+                const l = Number(sidewalkLength), w = Number(value);
+                setRealSidewalkSurface(l > 0 && w > 0 ? (l * w).toFixed(2) : "");
+              }} placeholder="Ex. 2" />
+            </div>
           </div>
+          <div className="work-result"><span>Surface trottoir</span><strong>{realSidewalkSurface ? `${realSidewalkSurface} m²` : "—"}</strong></div>
         </div>
       )}
 
       {os.rehabilitationZone === "Autre" && (
-        <div className="work-grid">
-          <div>
-            <label>Surface réelle (m²)</label>
-            <input type="number" step="0.01" min="0" value={realOtherSurface} onChange={(e) => setRealOtherSurface(e.target.value)} placeholder="Ex. 10" />
+        <div className="work-subsection">
+          <strong>Autre</strong>
+          <div className="work-grid">
+            <div>
+              <label>Longueur (m)</label>
+              <input type="number" step="0.01" min="0" value={otherLength} onChange={(e) => {
+                const value = e.target.value;
+                setOtherLength(value);
+                const l = Number(value), w = Number(otherWidth);
+                setRealOtherSurface(l > 0 && w > 0 ? (l * w).toFixed(2) : "");
+              }} placeholder="Ex. 5" />
+            </div>
+            <div>
+              <label>Largeur (m)</label>
+              <input type="number" step="0.01" min="0" value={otherWidth} onChange={(e) => {
+                const value = e.target.value;
+                setOtherWidth(value);
+                const l = Number(otherLength), w = Number(value);
+                setRealOtherSurface(l > 0 && w > 0 ? (l * w).toFixed(2) : "");
+              }} placeholder="Ex. 2" />
+            </div>
           </div>
+          <div className="work-result"><span>Surface réalisée</span><strong>{realOtherSurface ? `${realOtherSurface} m²` : "—"}</strong></div>
         </div>
       )}
 
       {(!os.rehabilitationZone || !["Chaussée", "Trottoir", "Chaussée + trottoir", "Autre"].includes(os.rehabilitationZone)) && (
         <div className="work-grid">
-
-        <div>
-          <label>Longueur (m)</label>
-          <input
-            type="number"
-            step="0.01"
-            value={realLength}
-            onChange={(e) => {
+          <div>
+            <label>Longueur (m)</label>
+            <input type="number" step="0.01" value={realLength} onChange={(e) => {
               const value = e.target.value;
               setRealLength(value);
-
-              const length = Number(value);
-              const width = Number(realWidth);
-
-              if (length > 0 && width > 0) {
-                setRealSurface(
-                  (length * width).toFixed(2)
-                );
-              }
-            }}
-            placeholder="Ex. 5"
-          />
-        </div>
-
-        <div>
-          <label>Largeur (m)</label>
-          <input
-            type="number"
-            step="0.01"
-            value={realWidth}
-            onChange={(e) => {
+              const l = Number(value), w = Number(realWidth);
+              if (l > 0 && w > 0) setRealSurface((l * w).toFixed(2));
+            }} placeholder="Ex. 5" />
+          </div>
+          <div>
+            <label>Largeur (m)</label>
+            <input type="number" step="0.01" value={realWidth} onChange={(e) => {
               const value = e.target.value;
               setRealWidth(value);
-
-              const length = Number(realLength);
-              const width = Number(value);
-
-              if (length > 0 && width > 0) {
-                setRealSurface(
-                  (length * width).toFixed(2)
-                );
-              }
-            }}
-            placeholder="Ex. 3"
-          />
+              const l = Number(realLength), w = Number(value);
+              if (l > 0 && w > 0) setRealSurface((l * w).toFixed(2));
+            }} placeholder="Ex. 3" />
+          </div>
         </div>
-
-      </div>
       )}
 
       <div className="work-result">
