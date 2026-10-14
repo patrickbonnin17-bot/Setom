@@ -2087,6 +2087,7 @@ async function save() {
         </div>
 
       </div>
+      )}
 
       <div className="work-result">
         <span>Total surface réellement réalisée</span>
