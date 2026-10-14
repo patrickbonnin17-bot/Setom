@@ -118,7 +118,41 @@ function App() {
   const [password, setPassword] = useState("");
   const [authError, setAuthError] = useState("");
 
-  useEffect(() => {
+    useEffect(() => {
+    if (!session) return;
+
+    async function loadOS() {
+      const { data, error } = await supabase
+        .from("work_orders")
+        .select("*")
+        .order("creation_date", { ascending: false });
+
+      if (error) {
+        console.error("Erreur chargement OS :", error);
+        return;
+      }
+
+      const formattedOS = data.map((row) => ({
+        id: `OS-${new Date(row.creation_date).getFullYear()}-${String(row.os_number).padStart(5, "0")}`,
+        address: `${row.address || ""}${row.city ? `, ${row.city}` : ""}`,
+        work: row.material_detail || "Intervention",
+        day: null,
+        team: "Non affectée",
+        trade: row.material_detail || "Intervention",
+        sector: row.city || "",
+        status: row.status || "Nouveau",
+        quantity: row.planned_surface_m2
+          ? `${row.planned_surface_m2} m²`
+          : "",
+        intervention: row.material_detail || "Intervention",
+        deadline: row.deadline_date,
+      }));
+
+      setOsList(formattedOS);
+    }
+
+    loadOS();
+  }, [session]);
     let mounted = true;
 
     supabase.auth.getSession().then(({ data }) => {
@@ -158,7 +192,7 @@ function App() {
   async function handleLogout() {
     await supabase.auth.signOut();
   }
-  const [osList, setOsList] = useState(initialOS);
+  const [osList, setOsList] = useState([]);
   const [selectedOS, setSelectedOS] = useState(null);
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState("Tous");
