@@ -173,6 +173,9 @@ function App() {
         rehabilitationOtherDetail: row.rehabilitation_other_detail,
         roadSurface: row.planned_road_surface_m2,
         sidewalkSurface: row.planned_sidewalk_surface_m2,
+        actualRoadSurface: row.actual_road_surface_m2,
+        actualSidewalkSurface: row.actual_sidewalk_surface_m2,
+        actualOtherSurface: row.actual_other_surface_m2,
         deadline: row.deadline_date,
       }));
 
@@ -392,6 +395,9 @@ function App() {
     rehabilitationOtherDetail: data.rehabilitation_other_detail,
     roadSurface: data.planned_road_surface_m2,
     sidewalkSurface: data.planned_sidewalk_surface_m2,
+    actualRoadSurface: data.actual_road_surface_m2,
+    actualSidewalkSurface: data.actual_sidewalk_surface_m2,
+    actualOtherSurface: data.actual_other_surface_m2,
 
     deadline: data.deadline_date,
   };
@@ -1432,13 +1438,16 @@ const [attachmentsLoading, setAttachmentsLoading] = useState(false);
  const [realLength, setRealLength] = useState("");
 const [realWidth, setRealWidth] = useState("");
 const [realSurface, setRealSurface] = useState("");
+const [realRoadSurface, setRealRoadSurface] = useState("");
+const [realSidewalkSurface, setRealSidewalkSurface] = useState("");
+const [realOtherSurface, setRealOtherSurface] = useState("");
 const [thickness, setThickness] = useState("");
 const [sciage, setSciage] = useState("");
 const [joints, setJoints] = useState("");
 const [boucheAcle, setBoucheAcle] = useState("");
-const [demolition, setDemolition] = useState("");
-const [circulation, setCirculation] = useState("");
-const [marquage, setMarquage] = useState("");
+const [circulationType, setCirculationType] = useState("");
+const [circulationHours, setCirculationHours] = useState("");
+const [marquageSurface, setMarquageSurface] = useState("");
 const [workComment, setWorkComment] = useState(""); 
  useEffect(() => {
   if (!os?.dbId) return;
@@ -1552,22 +1561,36 @@ async function save() {
 
      // 3. Enregistrer les travaux réellement réalisés
 
+    const roadActual = realRoadSurface !== "" && !isNaN(Number(realRoadSurface)) ? Number(realRoadSurface) : 0;
+    const sidewalkActual = realSidewalkSurface !== "" && !isNaN(Number(realSidewalkSurface)) ? Number(realSidewalkSurface) : 0;
+    const otherActual = realOtherSurface !== "" && !isNaN(Number(realOtherSurface)) ? Number(realOtherSurface) : 0;
+    const genericActual = realSurface !== "" && !isNaN(Number(realSurface)) ? Number(realSurface) : 0;
+    const totalActualSurface =
+      os.rehabilitationZone === "Chaussée + trottoir"
+        ? roadActual + sidewalkActual
+        : os.rehabilitationZone === "Chaussée"
+          ? roadActual
+          : os.rehabilitationZone === "Trottoir"
+            ? sidewalkActual
+            : os.rehabilitationZone === "Autre"
+              ? otherActual
+              : genericActual;
+    const plannedSurface = Number(os.quantity?.replace(" m²", "").replace(",", ".")) || 0;
+    const automaticDemolition = Math.max(0, totalActualSurface - plannedSurface);
+
     const realizations = [];
 
     // Travail principal : surface réellement réalisée
-    if (
-      realSurface !== "" &&
-      !isNaN(Number(realSurface))
-    ) {
+    if (totalActualSurface > 0) {
       realizations.push({
         intervention_id: intervention.id,
         designation:
           os.intervention ||
           os.work ||
           "Travaux réalisés",
-        quantity: Number(realSurface),
+        quantity: totalActualSurface,
         unit: "m²",
-        surface_m2: Number(realSurface),
+        surface_m2: totalActualSurface,
         thickness_cm:
           thickness !== "" &&
           !isNaN(Number(thickness))
@@ -1619,44 +1642,39 @@ async function save() {
       });
     }
 
-    // Démolition
-    if (
-      demolition !== "" &&
-      !isNaN(Number(demolition))
-    ) {
+    // Démolition automatique = surface réelle - surface prévue
+    if (automaticDemolition > 0) {
       realizations.push({
         intervention_id: intervention.id,
         designation: "Démolition",
-        quantity: Number(demolition),
+        quantity: automaticDemolition,
         unit: "m²",
-        surface_m2: Number(demolition),
+        surface_m2: automaticDemolition,
       });
     }
 
-    // Circulation
-    if (
-      circulation !== "" &&
-      !isNaN(Number(circulation))
-    ) {
+    // Circulation : 2 h = 0,5 unité de 1/2 journée ; 4 h = 1 unité
+    if (circulationType && circulationHours !== "" && !isNaN(Number(circulationHours)) && Number(circulationHours) > 0) {
+      const designation = circulationType === "K10"
+        ? "Circulation alternée manuelle par 2 agents munis de panneaux K10"
+        : "Circulation alternée par 2 feux tricolores à batterie synchronisés, y compris la présignalisation, l'entretien et la surveillance des feux";
       realizations.push({
         intervention_id: intervention.id,
-        designation: "Circulation",
-        quantity: Number(circulation),
-        unit: "h",
+        designation,
+        quantity: Number(circulationHours) / 4,
+        unit: "1/2 j",
+        observations: `${Number(circulationHours)} h`,
       });
     }
 
-    // Marquage
-    if (
-      marquage &&
-      String(marquage).trim() !== ""
-    ) {
+    // Marquage : surface de peinture saisie séparément, sans lien avec la surface de réfection
+    if (marquageSurface !== "" && !isNaN(Number(marquageSurface)) && Number(marquageSurface) > 0) {
       realizations.push({
         intervention_id: intervention.id,
         designation: "Marquage",
-        quantity: null,
-        unit: null,
-        observations: String(marquage).trim(),
+        quantity: Number(marquageSurface),
+        unit: "m²",
+        surface_m2: Number(marquageSurface),
       });
     }
 
@@ -1697,10 +1715,7 @@ async function save() {
       .update({
         status: "Travaux effectués",
         actual_date: new Date().toISOString().slice(0, 10),
-        actual_surface_m2:
-          realSurface && !isNaN(Number(realSurface))
-            ? Number(realSurface)
-            : null,
+        actual_surface_m2: totalActualSurface > 0 ? totalActualSurface : null,
       })
       .eq("id", intervention.id);
 
@@ -1716,6 +1731,9 @@ async function save() {
       .from("work_orders")
       .update({
         status: "Travaux effectués",
+        actual_road_surface_m2: os.rehabilitationZone === "Chaussée" || os.rehabilitationZone === "Chaussée + trottoir" ? (roadActual || null) : null,
+        actual_sidewalk_surface_m2: os.rehabilitationZone === "Trottoir" || os.rehabilitationZone === "Chaussée + trottoir" ? (sidewalkActual || null) : null,
+        actual_other_surface_m2: os.rehabilitationZone === "Autre" ? (otherActual || null) : null,
         updated_by: user.id,
       })
       .eq("id", os.dbId);
@@ -1735,6 +1753,9 @@ async function save() {
     onUpdate(os.id, {
       day: day || null,
       status: "Travaux effectués",
+      actualRoadSurface: os.rehabilitationZone === "Chaussée" || os.rehabilitationZone === "Chaussée + trottoir" ? roadActual : null,
+      actualSidewalkSurface: os.rehabilitationZone === "Trottoir" || os.rehabilitationZone === "Chaussée + trottoir" ? sidewalkActual : null,
+      actualOtherSurface: os.rehabilitationZone === "Autre" ? otherActual : null,
     });
 
     alert("✅ Travaux réalisés enregistrés.");
@@ -1974,9 +1995,50 @@ async function save() {
 
       <hr />
 
-      <h4>Surface réalisée</h4>
+      <h4>Surface réellement réalisée</h4>
 
-      <div className="work-grid">
+      {os.rehabilitationZone === "Chaussée + trottoir" && (
+        <div className="work-grid">
+          <div>
+            <label>Surface réelle chaussée (m²)</label>
+            <input type="number" step="0.01" min="0" value={realRoadSurface} onChange={(e) => setRealRoadSurface(e.target.value)} placeholder="Ex. 12.5" />
+          </div>
+          <div>
+            <label>Surface réelle trottoir (m²)</label>
+            <input type="number" step="0.01" min="0" value={realSidewalkSurface} onChange={(e) => setRealSidewalkSurface(e.target.value)} placeholder="Ex. 6.5" />
+          </div>
+        </div>
+      )}
+
+      {os.rehabilitationZone === "Chaussée" && (
+        <div className="work-grid">
+          <div>
+            <label>Surface réelle chaussée (m²)</label>
+            <input type="number" step="0.01" min="0" value={realRoadSurface} onChange={(e) => setRealRoadSurface(e.target.value)} placeholder="Ex. 15" />
+          </div>
+        </div>
+      )}
+
+      {os.rehabilitationZone === "Trottoir" && (
+        <div className="work-grid">
+          <div>
+            <label>Surface réelle trottoir (m²)</label>
+            <input type="number" step="0.01" min="0" value={realSidewalkSurface} onChange={(e) => setRealSidewalkSurface(e.target.value)} placeholder="Ex. 8" />
+          </div>
+        </div>
+      )}
+
+      {os.rehabilitationZone === "Autre" && (
+        <div className="work-grid">
+          <div>
+            <label>Surface réelle (m²)</label>
+            <input type="number" step="0.01" min="0" value={realOtherSurface} onChange={(e) => setRealOtherSurface(e.target.value)} placeholder="Ex. 10" />
+          </div>
+        </div>
+      )}
+
+      {(!os.rehabilitationZone || !["Chaussée", "Trottoir", "Chaussée + trottoir", "Autre"].includes(os.rehabilitationZone)) && (
+        <div className="work-grid">
 
         <div>
           <label>Longueur (m)</label>
@@ -2027,9 +2089,17 @@ async function save() {
       </div>
 
       <div className="work-result">
-        <span>Surface réellement réalisée</span>
+        <span>Total surface réellement réalisée</span>
         <strong>
-          {realSurface ? `${realSurface} m²` : "—"}
+          {os.rehabilitationZone === "Chaussée + trottoir"
+            ? `${((Number(realRoadSurface) || 0) + (Number(realSidewalkSurface) || 0)).toFixed(2)} m²`
+            : os.rehabilitationZone === "Chaussée"
+              ? `${(Number(realRoadSurface) || 0).toFixed(2)} m²`
+              : os.rehabilitationZone === "Trottoir"
+                ? `${(Number(realSidewalkSurface) || 0).toFixed(2)} m²`
+                : os.rehabilitationZone === "Autre"
+                  ? `${(Number(realOtherSurface) || 0).toFixed(2)} m²`
+                  : realSurface ? `${realSurface} m²` : "—"}
         </strong>
       </div>
 
@@ -2082,13 +2152,12 @@ async function save() {
         </div>
 
         <div>
-          <label>Démolition (m²)</label>
+          <label>Démolition automatique (m²)</label>
           <input
             type="number"
             step="0.01"
-            value={demolition}
-            onChange={(e) => setDemolition(e.target.value)}
-            placeholder="Ex. 2"
+            value={Math.max(0, (os.rehabilitationZone === "Chaussée + trottoir" ? (Number(realRoadSurface) || 0) + (Number(realSidewalkSurface) || 0) : os.rehabilitationZone === "Chaussée" ? (Number(realRoadSurface) || 0) : os.rehabilitationZone === "Trottoir" ? (Number(realSidewalkSurface) || 0) : os.rehabilitationZone === "Autre" ? (Number(realOtherSurface) || 0) : (Number(realSurface) || 0)) - (Number(os.quantity?.replace(" m²", "").replace(",", ".")) || 0)).toFixed(2)}"
+            readOnly
           />
         </div>
 
@@ -2100,26 +2169,36 @@ async function save() {
 
         <div>
           <label>Circulation</label>
-          <select
-            value={circulation}
-            onChange={(e) => setCirculation(e.target.value)}
-          >
-            <option value="">Non renseigné</option>
-            <option value="2h">2 heures</option>
-            <option value="1/2 journée">1/2 journée</option>
+          <select value={circulationType} onChange={(e) => setCirculationType(e.target.value)}>
+            <option value="">Non renseignée</option>
+            <option value="K10">2 agents avec panneaux K10</option>
+            <option value="FEUX">2 feux tricolores à batterie</option>
           </select>
+          {circulationType && (
+            <input
+              type="number"
+              min="0"
+              step="0.5"
+              value={circulationHours}
+              onChange={(e) => setCirculationHours(e.target.value)}
+              placeholder="Durée en heures"
+            />
+          )}
+          {circulationHours && !isNaN(Number(circulationHours)) && (
+            <small>{(Number(circulationHours) / 4).toFixed(2)} unité(s) de 1/2 journée facturable(s)</small>
+          )}
         </div>
 
         <div>
-          <label>Marquage</label>
-          <select
-            value={marquage}
-            onChange={(e) => setMarquage(e.target.value)}
-          >
-            <option value="">Non renseigné</option>
-            <option value="Effectué">Effectué</option>
-            <option value="Signature">Signature</option>
-          </select>
+          <label>Marquage — surface de peinture (m²)</label>
+          <input
+            type="number"
+            min="0"
+            step="0.01"
+            value={marquageSurface}
+            onChange={(e) => setMarquageSurface(e.target.value)}
+            placeholder="Surface de peinture uniquement"
+          />
         </div>
 
       </div>
