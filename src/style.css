@@ -335,3 +335,175 @@ button {
     font-size: 24px;
   }
 }
+/* ================================
+   FORMULAIRE NOUVEL OS - SETOM
+   ================================ */
+
+.modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(15, 23, 42, 0.55);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+  z-index: 1000;
+  backdrop-filter: blur(4px);
+}
+
+.modal {
+  width: min(720px, 100%);
+  max-height: 90vh;
+  overflow-y: auto;
+  background: #ffffff;
+  border-radius: 20px;
+  box-shadow: 0 25px 70px rgba(0, 0, 0, 0.22);
+  padding: 28px;
+}
+
+.modal-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 24px;
+}
+
+.modal-header h2 {
+  margin: 0;
+  font-size: 24px;
+  color: #0f172a;
+}
+
+.modal-header button {
+  width: 42px;
+  height: 42px;
+  border-radius: 12px;
+  border: 0;
+  background: #f1f5f9;
+  font-size: 22px;
+  cursor: pointer;
+}
+
+.modal form {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.modal label {
+  display: block;
+  margin-top: 10px;
+  margin-bottom: 2px;
+  font-size: 13px;
+  font-weight: 700;
+  color: #475569;
+}
+
+.modal input,
+.modal select,
+.modal textarea {
+  width: 100%;
+  box-sizing: border-box;
+  border: 1px solid #d7dee8;
+  border-radius: 10px;
+  padding: 12px 14px;
+  font-size: 15px;
+  background: #f8fafc;
+  color: #0f172a;
+  outline: none;
+  transition: 0.2s;
+}
+
+.modal input:focus,
+.modal select:focus,
+.modal textarea:focus {
+  border-color: #1976d2;
+  background: #ffffff;
+  box-shadow: 0 0 0 3px rgba(25, 118, 210, 0.12);
+}
+
+.modal textarea {
+  min-height: 100px;
+  resize: vertical;
+}
+
+.modal-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  margin-top: 24px;
+  padding-top: 18px;
+  border-top: 1px solid #e5e7eb;
+}
+
+.modal-actions button {
+  min-height: 46px;
+  padding: 0 20px;
+  border-radius: 10px;
+  border: 0;
+  font-size: 15px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.modal-actions .primary {
+  background: #1976d2;
+  color: white;
+}
+
+.modal-actions .primary:hover {
+  background: #1565c0;
+}
+
+.modal-actions .secondary {
+  background: #eef2f7;
+  color: #334155;
+}
+
+.modal-actions .secondary:hover {
+  background: #e2e8f0;
+}
+
+/* Message d'erreur */
+
+.modal form p {
+  margin: 10px 0 0;
+  padding: 10px 12px;
+  border-radius: 8px;
+  background: #fef2f2;
+  color: #dc2626 !important;
+  font-size: 14px;
+}
+
+/* Mobile */
+
+@media (max-width: 700px) {
+  .modal-overlay {
+    padding: 0;
+    align-items: flex-end;
+  }
+
+  .modal {
+    width: 100%;
+    max-height: 94vh;
+    border-radius: 22px 22px 0 0;
+    padding: 22px 18px;
+  }
+
+  .modal-header h2 {
+    font-size: 21px;
+  }
+
+  .modal-actions {
+    position: sticky;
+    bottom: 0;
+    background: white;
+    margin-left: -18px;
+    margin-right: -18px;
+    padding: 14px 18px;
+  }
+
+  .modal-actions button {
+    flex: 1;
+  }
+}
