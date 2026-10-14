@@ -1300,6 +1300,14 @@ const [workComment, setWorkComment] = useState("");
 }, [os?.dbId]); 
 async function save() {
   try {
+    const {
+      data: { user },
+      error: userError,
+    } = await supabase.auth.getUser();
+
+    if (userError || !user) {
+      throw new Error("Utilisateur non connecté.");
+    }
     // 1. Chercher une intervention existante pour cet OS
     let { data: intervention, error: interventionError } = await supabase
   .from("interventions")
@@ -1421,7 +1429,7 @@ async function save() {
       .from("work_orders")
       .update({
         status: "Travaux effectués",
-        updated_by: session.user.id,
+        updated_by: user.id,
       })
       .eq("id", os.dbId);
 
