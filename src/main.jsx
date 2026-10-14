@@ -110,7 +110,95 @@ function getDayColor(day) {
 }
 
 function App() {
-  const [page, setPage] = useState("dashboard");
+ const [page, setPage] = useState("dashboard");
+
+  const [session, setSession] = useState(null);
+  const [authLoading, setAuthLoading] = useState(true);
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [authError, setAuthError] = useState("");
+
+  useEffect(() => {
+    let mounted = true;
+
+    supabase.auth.getSession().then(({ data }) => {
+      if (mounted) {
+        setSession(data.session);
+        setAuthLoading(false);
+      }
+    });
+
+    const {
+      data: { subscription },
+    } = supabase.auth.onAuthStateChange((_event, newSession) => {
+      setSession(newSession);
+      setAuthLoading(false);
+    });
+
+    return () => {
+      mounted = false;
+      subscription.unsubscribe();
+    };
+  }, []);
+
+  async function handleLogin(event) {
+    event.preventDefault();
+    setAuthError("");
+
+    const { error } = await supabase.auth.signInWithPassword({
+      email,
+      password,
+    });
+
+    if (error) {
+      setAuthError("E-mail ou mot de passe incorrect.");
+    }
+  }
+
+  async function handleLogout() {
+    await supabase.auth.signOut();
+  }
+
+  if (authLoading) {
+    return <div>Chargement de SETOM...</div>;
+  }
+
+  if (!session) {
+    return (
+      <div style={{ padding: "40px", maxWidth: "400px", margin: "auto" }}>
+        <h1>SETOM</h1>
+        <p>Connexion à votre espace de gestion</p>
+
+        <form onSubmit={handleLogin}>
+          <input
+            type="email"
+            placeholder="Adresse e-mail"
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
+            required
+            style={{ width: "100%", padding: "10px", marginBottom: "10px" }}
+          />
+
+          <input
+            type="password"
+            placeholder="Mot de passe"
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
+            required
+            style={{ width: "100%", padding: "10px", marginBottom: "10px" }}
+          />
+
+          {authError && (
+            <p style={{ color: "red" }}>{authError}</p>
+          )}
+
+          <button type="submit">
+            Se connecter
+          </button>
+        </form>
+      </div>
+    );
+  }
   const [osList, setOsList] = useState(initialOS);
   const [selectedOS, setSelectedOS] = useState(null);
   const [search, setSearch] = useState("");
