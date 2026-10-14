@@ -1302,12 +1302,10 @@ async function save() {
   try {
     // 1. Chercher une intervention existante pour cet OS
     let { data: intervention, error: interventionError } = await supabase
-      .from("interventions")
-      .select("*")
-      .eq("work_order_id", os.dbId)
-      .limit(1)
-      .maybeSingle();
-
+  .from("interventions")
+  .select("id, work_order_id, type, status, planned_surface_m2, actual_surface_m2")
+  .eq("work_order_id", os.dbId)
+  .maybeSingle();
     if (interventionError) {
       console.error("Erreur recherche intervention :", interventionError);
       alert("Impossible de retrouver l'intervention.");
