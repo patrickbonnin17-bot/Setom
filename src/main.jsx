@@ -1298,15 +1298,160 @@ const [workComment, setWorkComment] = useState("");
 
   loadAttachments();
 }, [os?.dbId]); 
-  function save() {
+async function save() {
+  try {
+    // 1. Chercher une intervention existante pour cet OS
+    let { data: intervention, error: interventionError } = await supabase
+      .from("interventions")
+      .select("*")
+      .eq("work_order_id", os.dbId)
+      .limit(1)
+      .maybeSingle();
+
+    if (interventionError) {
+      console.error("Erreur recherche intervention :", interventionError);
+      alert("Impossible de retrouver l'intervention.");
+      return;
+    }
+
+    // 2. Si aucune intervention n'existe, on en crée une
+    if (!intervention) {
+      const { data: newIntervention, error: createInterventionError } =
+        await supabase
+          .from("interventions")
+          .insert({
+            work_order_id: os.dbId,
+            type: os.intervention || os.work || "Intervention",
+            status: "Travaux effectués",
+            planned_surface_m2:
+              os.quantity && parseFloat(os.quantity)
+                ? parseFloat(os.quantity)
+                : null,
+            actual_surface_m2:
+              realSurface && !isNaN(Number(realSurface))
+                ? Number(realSurface)
+                : null,
+          })
+          .select("*")
+          .single();
+
+      if (createInterventionError) {
+        console.error(
+          "Erreur création intervention :",
+          createInterventionError
+        );
+        alert(
+          "Impossible de créer l'intervention : " +
+            createInterventionError.message
+        );
+        return;
+      }
+
+      intervention = newIntervention;
+    }
+
+    // 3. Enregistrer les travaux réellement réalisés
+    const { error: realizationError } = await supabase
+      .from("work_realizations")
+      .insert({
+        intervention_id: intervention.id,
+
+        designation:
+          os.intervention ||
+          os.work ||
+          "Travaux réalisés",
+
+        quantity:
+          realSurface && !isNaN(Number(realSurface))
+            ? Number(realSurface)
+            : null,
+
+        unit: "m²",
+
+        surface_m2:
+          realSurface && !isNaN(Number(realSurface))
+            ? Number(realSurface)
+            : null,
+
+        thickness_cm:
+          thickness && !isNaN(Number(thickness))
+            ? Number(thickness)
+            : null,
+
+        length_ml:
+          sciage && !isNaN(Number(sciage))
+            ? Number(sciage)
+            : null,
+
+        observations: workComment || null,
+      });
+
+    if (realizationError) {
+      console.error(
+        "Erreur enregistrement travaux :",
+        realizationError
+      );
+      alert(
+        "Les travaux n'ont pas pu être enregistrés : " +
+          realizationError.message
+      );
+      return;
+    }
+
+    // 4. Mettre l'intervention à jour
+    const { error: updateInterventionError } = await supabase
+      .from("interventions")
+      .update({
+        status: "Travaux effectués",
+        actual_date: new Date().toISOString().slice(0, 10),
+        actual_surface_m2:
+          realSurface && !isNaN(Number(realSurface))
+            ? Number(realSurface)
+            : null,
+      })
+      .eq("id", intervention.id);
+
+    if (updateInterventionError) {
+      console.error(
+        "Erreur mise à jour intervention :",
+        updateInterventionError
+      );
+    }
+
+    // 5. Mettre l'OS à "Travaux effectués"
+    const { error: workOrderError } = await supabase
+      .from("work_orders")
+      .update({
+        status: "Travaux effectués",
+        updated_by: session.user.id,
+      })
+      .eq("id", os.dbId);
+
+    if (workOrderError) {
+      console.error(
+        "Erreur mise à jour OS :",
+        workOrderError
+      );
+      alert(
+        "Les travaux sont enregistrés, mais le statut de l'OS n'a pas pu être mis à jour."
+      );
+      return;
+    }
+
+    // 6. Mettre également l'affichage de l'application à jour
     onUpdate(os.id, {
       day: day || null,
-      status,
+      status: "Travaux effectués",
     });
 
-    onClose();
-  }
+    alert("✅ Travaux réalisés enregistrés.");
 
+    onClose();
+  } catch (error) {
+    console.error("Erreur générale :", error);
+    alert("Une erreur est survenue lors de l'enregistrement.");
+  }
+}
   const tabs = [
     { id: "resume", label: "Résumé", icon: "📋" },
     { id: "travaux", label: "Travaux", icon: "🛠️" },
@@ -1655,35 +1800,7 @@ const [workComment, setWorkComment] = useState("");
         <button
           className="primary"
           type="button"
-          onClick={() => {
-            onUpdate(os.id, {
-              status: "Travaux effectués",
-              workRealization: {
-                surface_m2: realSurface
-                  ? Number(realSurface)
-                  : null,
-                thickness_cm: thickness
-                  ? Number(thickness)
-                  : null,
-                sciage_ml: sciage
-                  ? Number(sciage)
-                  : null,
-                joints_ml: joints
-                  ? Number(joints)
-                  : null,
-                bouche_a_cle_u: boucheAcle
-                  ? Number(boucheAcle)
-                  : null,
-                demolition_m2: demolition
-                  ? Number(demolition)
-                  : null,
-                circulation,
-                marquage,
-                comment: workComment,
-              },
-            });
-            setStatus("Travaux effectués");
-          }}
+         onClick={save}
         >
           ✅ Transmettre les travaux réalisés
         </button>
