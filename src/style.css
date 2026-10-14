@@ -1007,3 +1007,42 @@ button {
     width: 100%;
   }
 }
+.os-photo-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 10px;
+  margin-top: 15px;
+}
+
+.os-photo-card {
+  overflow: hidden;
+  border: 1px solid #e0e4e8;
+  border-radius: 10px;
+  background: #ffffff;
+}
+
+.os-photo-card a {
+  display: block;
+}
+
+.os-photo-card img {
+  display: block;
+  width: 100%;
+  aspect-ratio: 1 / 1;
+  object-fit: cover;
+}
+
+.os-photo-name {
+  padding: 7px;
+  font-size: 11px;
+  color: #5f6875;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+@media (max-width: 700px) {
+  .os-photo-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
