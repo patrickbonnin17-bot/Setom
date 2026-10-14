@@ -1,0 +1,76 @@
+name: Patch rehabilitation zone
+
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    if: ${{ !contains(github.event.head_commit.message, '[zone-patch]') }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Patch main.jsx
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          p = Path('src/main.jsx')
+          s = p.read_text()
+
+          old_state = '''const [newOSMaterialDetail, setNewOSMaterialDetail] = useState("");\nconst [newOSSurface, setNewOSSurface] = useState("");'''
+          new_state = '''const [newOSMaterialDetail, setNewOSMaterialDetail] = useState("");\nconst [newOSSurface, setNewOSSurface] = useState("");\nconst [newOSRehabilitationZone, setNewOSRehabilitationZone] = useState("");\nconst [newOSRehabilitationOtherDetail, setNewOSRehabilitationOtherDetail] = useState("");\nconst [newOSRoadSurface, setNewOSRoadSurface] = useState("");\nconst [newOSSidewalkSurface, setNewOSSidewalkSurface] = useState("");'''
+          if old_state not in s:
+              raise SystemExit('state anchor not found')
+          s = s.replace(old_state, new_state, 1)
+
+          old_logic = '''  const surface =\n    newOSSurface.trim() === ""\n      ? null\n      : Number(newOSSurface.replace(",", "."));\n\n  if (newOSSurface.trim() !== "" && isNaN(surface)) {\n    setNewOSError("La surface doit être un nombre.");\n    setNewOSSaving(false);\n    return;\n  }'''
+          new_logic = '''  const parseSurface = (value) =>\n    value.trim() === "" ? null : Number(value.replace(",", "."));\n\n  const genericSurface = parseSurface(newOSSurface);\n  const roadSurface = parseSurface(newOSRoadSurface);\n  const sidewalkSurface = parseSurface(newOSSidewalkSurface);\n\n  if ([genericSurface, roadSurface, sidewalkSurface].some((value) => value !== null && isNaN(value))) {\n    setNewOSError("Les surfaces doivent être des nombres.");\n    setNewOSSaving(false);\n    return;\n  }\n\n  if (!newOSRehabilitationZone) {\n    setNewOSError("Veuillez sélectionner la zone de réfection.");\n    setNewOSSaving(false);\n    return;\n  }\n\n  if (newOSRehabilitationZone === "Autre" && !newOSRehabilitationOtherDetail.trim()) {\n    setNewOSError("Veuillez préciser la zone de réfection.");\n    setNewOSSaving(false);\n    return;\n  }\n\n  const surface =\n    newOSRehabilitationZone === "Chaussée"\n      ? roadSurface\n      : newOSRehabilitationZone === "Trottoir"\n        ? sidewalkSurface\n        : newOSRehabilitationZone === "Chaussée + trottoir"\n          ? (roadSurface || 0) + (sidewalkSurface || 0)\n          : genericSurface;'''
+          if old_logic not in s:
+              raise SystemExit('surface logic anchor not found')
+          s = s.replace(old_logic, new_logic, 1)
+
+          old_insert = '''      material_detail:\n        newOSMaterialDetail.trim() || newOSMaterial,\n      planned_surface_m2: surface,'''
+          new_insert = '''      material_detail:\n        newOSMaterialDetail.trim() || newOSMaterial,\n      rehabilitation_zone: newOSRehabilitationZone,\n      rehabilitation_other_detail:\n        newOSRehabilitationOtherDetail.trim() || null,\n      planned_road_surface_m2: roadSurface,\n      planned_sidewalk_surface_m2: sidewalkSurface,\n      planned_surface_m2: surface,'''
+          if old_insert not in s:
+              raise SystemExit('insert anchor not found')
+          s = s.replace(old_insert, new_insert, 1)
+
+          old_reset = '''  setNewOSMaterialDetail("");\n  setNewOSSurface("");\n  setNewOSParticularities("");'''
+          new_reset = '''  setNewOSMaterialDetail("");\n  setNewOSSurface("");\n  setNewOSRehabilitationZone("");\n  setNewOSRehabilitationOtherDetail("");\n  setNewOSRoadSurface("");\n  setNewOSSidewalkSurface("");\n  setNewOSParticularities("");'''
+          if old_reset not in s:
+              raise SystemExit('reset anchor not found')
+          s = s.replace(old_reset, new_reset, 1)
+
+          old_load = '''        intervention: row.material_detail || "Intervention",\n        deadline: row.deadline_date,'''
+          new_load = '''        intervention: row.material_detail || "Intervention",\n        rehabilitationZone: row.rehabilitation_zone,\n        roadSurface: row.planned_road_surface_m2,\n        sidewalkSurface: row.planned_sidewalk_surface_m2,\n        deadline: row.deadline_date,'''
+          if old_load not in s:
+              raise SystemExit('load anchor not found')
+          s = s.replace(old_load, new_load, 1)
+
+          old_formatted = '''    intervention: data.material_detail || "Intervention",\n\n    deadline: data.deadline_date,'''
+          new_formatted = '''    intervention: data.material_detail || "Intervention",\n\n    rehabilitationZone: data.rehabilitation_zone,\n    roadSurface: data.planned_road_surface_m2,\n    sidewalkSurface: data.planned_sidewalk_surface_m2,\n\n    deadline: data.deadline_date,'''
+          if old_formatted not in s:
+              raise SystemExit('formatted anchor not found')
+          s = s.replace(old_formatted, new_formatted, 1)
+
+          old_jsx = '''          <label>Surface prévue (m²)</label>\n          <input\n            type="number"\n            step="0.01"\n            min="0"\n            value={newOSSurface}\n            onChange={(e) => setNewOSSurface(e.target.value)}\n            placeholder="Ex. 12.5"\n          />'''
+          new_jsx = '''          <div className="rehabilitation-section">\n            <label>Zone de réfection *</label>\n            <div className="rehabilitation-cards">\n              {["Chaussée", "Trottoir", "Chaussée + trottoir", "Autre"].map((zone) => (\n                <button\n                  key={zone}\n                  type="button"\n                  className={`rehabilitation-card ${newOSRehabilitationZone === zone ? "selected" : ""}`}\n                  onClick={() => {\n                    setNewOSRehabilitationZone(zone);\n                    if (zone !== "Autre") setNewOSRehabilitationOtherDetail("");\n                    if (zone === "Chaussée") setNewOSSidewalkSurface("");\n                    if (zone === "Trottoir") setNewOSRoadSurface("");\n                  }}\n                >\n                  {zone}\n                </button>\n              ))}\n            </div>\n\n            {newOSRehabilitationZone === "Chaussée" && (\n              <div className="rehabilitation-surface-field">\n                <label>Surface chaussée prévue (m²)</label>\n                <input type="number" step="0.01" min="0" value={newOSRoadSurface} onChange={(e) => setNewOSRoadSurface(e.target.value)} placeholder="Ex. 12.5" />\n              </div>\n            )}\n\n            {newOSRehabilitationZone === "Trottoir" && (\n              <div className="rehabilitation-surface-field">\n                <label>Surface trottoir prévue (m²)</label>\n                <input type="number" step="0.01" min="0" value={newOSSidewalkSurface} onChange={(e) => setNewOSSidewalkSurface(e.target.value)} placeholder="Ex. 8.5" />\n              </div>\n            )}\n\n            {newOSRehabilitationZone === "Chaussée + trottoir" && (\n              <div className="rehabilitation-surface-grid">\n                <div>\n                  <label>Surface chaussée (m²)</label>\n                  <input type="number" step="0.01" min="0" value={newOSRoadSurface} onChange={(e) => setNewOSRoadSurface(e.target.value)} placeholder="Ex. 12.5" />\n                </div>\n                <div>\n                  <label>Surface trottoir (m²)</label>\n                  <input type="number" step="0.01" min="0" value={newOSSidewalkSurface} onChange={(e) => setNewOSSidewalkSurface(e.target.value)} placeholder="Ex. 6.5" />\n                </div>\n              </div>\n            )}\n\n            {newOSRehabilitationZone === "Autre" && (\n              <>\n                <label>Précision</label>\n                <input type="text" value={newOSRehabilitationOtherDetail} onChange={(e) => setNewOSRehabilitationOtherDetail(e.target.value)} placeholder="Préciser la zone de réfection" />\n                <label>Surface prévue (m²)</label>\n                <input type="number" step="0.01" min="0" value={newOSSurface} onChange={(e) => setNewOSSurface(e.target.value)} placeholder="Ex. 12.5" />\n              </>\n            )}\n          </div>'''
+          if old_jsx not in s:
+              raise SystemExit('JSX anchor not found')
+          s = s.replace(old_jsx, new_jsx, 1)
+
+          p.write_text(s)
+          PY
+
+      - name: Commit patch
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add src/main.jsx
+          git diff --cached --quiet && exit 0
+          git commit -m "feat: add rehabilitation zone to OS [zone-patch]"
+          git push
