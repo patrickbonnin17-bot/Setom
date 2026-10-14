@@ -737,3 +737,273 @@ button {
     min-height: 46px;
   }
 }
+/* =========================================
+   FICHE OS - NOUVEAU DESIGN
+   ========================================= */
+
+.os-detail-modal {
+  max-width: 760px;
+  width: calc(100% - 24px);
+  max-height: 92vh;
+  overflow-y: auto;
+}
+
+.os-detail-summary {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 10px;
+  margin: 18px 0;
+}
+
+.os-detail-badge {
+  border: 1px solid #e0e4e8;
+  border-radius: 10px;
+  padding: 12px;
+  background: #f8fafc;
+}
+
+.os-detail-badge span {
+  display: block;
+  font-size: 12px;
+  color: #6b7280;
+  margin-bottom: 5px;
+}
+
+.os-detail-badge strong {
+  display: block;
+  font-size: 14px;
+  color: #172033;
+}
+
+.os-tabs {
+  display: flex;
+  gap: 6px;
+  overflow-x: auto;
+  padding: 4px 0 10px;
+  border-bottom: 1px solid #e0e4e8;
+  scrollbar-width: thin;
+}
+
+.os-tab {
+  flex: 0 0 auto;
+  border: 1px solid #d7dde5;
+  background: #f8fafc;
+  color: #26344a;
+  border-radius: 9px;
+  padding: 9px 12px;
+  cursor: pointer;
+  font-size: 13px;
+  white-space: nowrap;
+}
+
+.os-tab:hover {
+  background: #eef4ff;
+}
+
+.os-tab.active {
+  background: #eaf2ff;
+  border-color: #1769e0;
+  color: #0b57d0;
+  font-weight: 600;
+}
+
+.os-tab-content {
+  padding-top: 16px;
+}
+
+.os-section h3 {
+  margin-top: 0;
+  margin-bottom: 15px;
+}
+
+.os-info-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 10px;
+}
+
+.os-info-grid > div {
+  border: 1px solid #e0e4e8;
+  border-radius: 10px;
+  padding: 12px;
+  background: #ffffff;
+}
+
+.os-info-grid span,
+.os-planning-info span {
+  display: block;
+  font-size: 12px;
+  color: #6b7280;
+  margin-bottom: 5px;
+}
+
+.os-info-grid strong,
+.os-planning-info strong {
+  display: block;
+  font-size: 14px;
+}
+
+.os-status-box {
+  margin-top: 12px;
+  padding: 14px;
+  border-radius: 10px;
+  background: #f8fafc;
+  border: 1px solid #e0e4e8;
+}
+
+.os-status-box span {
+  display: block;
+  font-size: 12px;
+  color: #6b7280;
+  margin-bottom: 5px;
+}
+
+.os-work-card {
+  border: 1px solid #e0e4e8;
+  border-radius: 10px;
+  padding: 16px;
+  background: #ffffff;
+}
+
+.os-work-card p {
+  margin: 12px 0 0;
+}
+
+.os-field {
+  margin-bottom: 16px;
+}
+
+.os-field label {
+  display: block;
+  margin-bottom: 7px;
+  font-weight: 600;
+  font-size: 14px;
+}
+
+.os-field select {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 11px 12px;
+  border: 1px solid #d7dde5;
+  border-radius: 9px;
+  background: #ffffff;
+  font-size: 14px;
+}
+
+.os-planning-info {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 10px;
+}
+
+.os-planning-info > div {
+  border: 1px solid #e0e4e8;
+  border-radius: 10px;
+  padding: 12px;
+  background: #f8fafc;
+}
+
+.os-empty-state {
+  min-height: 180px;
+  border: 1px dashed #cbd5e1;
+  border-radius: 12px;
+  background: #f8fafc;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  text-align: center;
+  padding: 20px;
+}
+
+.os-empty-state strong {
+  font-size: 15px;
+}
+
+.os-empty-state span {
+  color: #6b7280;
+  font-size: 13px;
+}
+
+.os-history {
+  border-left: 2px solid #dbe3ed;
+  padding-left: 18px;
+}
+
+.history-item {
+  display: flex;
+  gap: 12px;
+  position: relative;
+}
+
+.history-dot {
+  position: absolute;
+  left: -25px;
+  top: 3px;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: #1769e0;
+}
+
+.history-item strong {
+  display: block;
+}
+
+.history-item small {
+  display: block;
+  margin-top: 5px;
+  color: #6b7280;
+}
+
+.os-actions {
+  display: flex;
+  gap: 10px;
+  margin-top: 18px;
+  padding-top: 16px;
+  border-top: 1px solid #e0e4e8;
+}
+
+/* =========================================
+   MOBILE
+   ========================================= */
+
+@media (max-width: 700px) {
+
+  .os-detail-modal {
+    width: calc(100% - 16px);
+    max-height: 94vh;
+    padding: 16px;
+  }
+
+  .os-detail-summary {
+    grid-template-columns: repeat(2, 1fr);
+  }
+
+  .os-info-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .os-planning-info {
+    grid-template-columns: 1fr;
+  }
+
+  .os-tabs {
+    margin-left: -2px;
+    margin-right: -2px;
+  }
+
+  .os-tab {
+    padding: 8px 10px;
+    font-size: 12px;
+  }
+
+  .os-actions {
+    flex-direction: column;
+  }
+
+  .os-actions button {
+    width: 100%;
+  }
+}
