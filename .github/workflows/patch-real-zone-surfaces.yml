@@ -1,13 +1,15 @@
 name: Patch actual rehabilitation surfaces
 
 on:
-  workflow_dispatch:
+  push:
+    branches: [main]
 
 permissions:
   contents: write
 
 jobs:
   patch:
+    if: github.actor != 'github-actions[bot]'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -107,92 +109,30 @@ const [thickness, setThickness] = useState("");'''
             <div className="work-grid">
               <div>
                 <label>Surface réelle chaussée (m²)</label>
-                <input
-                  type="number"
-                  step="0.01"
-                  min="0"
-                  value={realRoadSurface}
-                  onChange={(e) => {
-                    const value = e.target.value;
-                    setRealRoadSurface(value);
-                    const total = (Number(value) || 0) + (Number(realSidewalkSurface) || 0);
-                    setRealSurface(total > 0 ? total.toFixed(2) : "");
-                  }}
-                  placeholder="Ex. 20.30"
-                />
+                <input type="number" step="0.01" min="0" value={realRoadSurface} onChange={(e) => { const value = e.target.value; setRealRoadSurface(value); const total = (Number(value) || 0) + (Number(realSidewalkSurface) || 0); setRealSurface(total > 0 ? total.toFixed(2) : ""); }} placeholder="Ex. 20.30" />
               </div>
               <div>
                 <label>Surface réelle trottoir (m²)</label>
-                <input
-                  type="number"
-                  step="0.01"
-                  min="0"
-                  value={realSidewalkSurface}
-                  onChange={(e) => {
-                    const value = e.target.value;
-                    setRealSidewalkSurface(value);
-                    const total = (Number(realRoadSurface) || 0) + (Number(value) || 0);
-                    setRealSurface(total > 0 ? total.toFixed(2) : "");
-                  }}
-                  placeholder="Ex. 6.80"
-                />
+                <input type="number" step="0.01" min="0" value={realSidewalkSurface} onChange={(e) => { const value = e.target.value; setRealSidewalkSurface(value); const total = (Number(realRoadSurface) || 0) + (Number(value) || 0); setRealSurface(total > 0 ? total.toFixed(2) : ""); }} placeholder="Ex. 6.80" />
               </div>
             </div>
           ) : (
             <div className="work-grid">
               <div>
-                <label>
-                  {os.rehabilitationZone === "Chaussée" ? "Surface réelle chaussée (m²)" : "Surface réelle trottoir (m²)"}
-                </label>
-                <input
-                  type="number"
-                  step="0.01"
-                  min="0"
-                  value={os.rehabilitationZone === "Chaussée" ? realRoadSurface : realSidewalkSurface}
-                  onChange={(e) => {
-                    const value = e.target.value;
-                    if (os.rehabilitationZone === "Chaussée") {
-                      setRealRoadSurface(value);
-                    } else {
-                      setRealSidewalkSurface(value);
-                    }
-                    setRealSurface(value);
-                  }}
-                  placeholder="Ex. 12.50"
-                />
+                <label>{os.rehabilitationZone === "Chaussée" ? "Surface réelle chaussée (m²)" : "Surface réelle trottoir (m²)"}</label>
+                <input type="number" step="0.01" min="0" value={os.rehabilitationZone === "Chaussée" ? realRoadSurface : realSidewalkSurface} onChange={(e) => { const value = e.target.value; if (os.rehabilitationZone === "Chaussée") setRealRoadSurface(value); else setRealSidewalkSurface(value); setRealSurface(value); }} placeholder="Ex. 12.50" />
               </div>
             </div>
           )}
-
-          <div className="work-result">
-            <span>Surface totale réellement réalisée</span>
-            <strong>{realSurface ? `${realSurface} m²` : "—"}</strong>
-          </div>
+          <div className="work-result"><span>Surface totale réellement réalisée</span><strong>{realSurface ? `${realSurface} m²` : "—"}</strong></div>
         </>
       ) : os.rehabilitationZone === "Autre" ? (
-        <div className="work-grid">
-          <div>
-            <label>Surface réelle (m²)</label>
-            <input
-              type="number"
-              step="0.01"
-              min="0"
-              value={realOtherSurface}
-              onChange={(e) => {
-                const value = e.target.value;
-                setRealOtherSurface(value);
-                setRealSurface(value);
-              }}
-              placeholder="Ex. 12.50"
-            />
-          </div>
-        </div>
+        <div className="work-grid"><div><label>Surface réelle (m²)</label><input type="number" step="0.01" min="0" value={realOtherSurface} onChange={(e) => { const value = e.target.value; setRealOtherSurface(value); setRealSurface(value); }} placeholder="Ex. 12.50" /></div></div>
       ) : (
       <div className="work-grid">'''
           assert marker in s, 'surface UI marker not found'
           s = s.replace(marker, replacement, 1)
 
-          # Close the existing generic grid before the work-result block when wrapped in the fallback.
           old = '''      </div>
 
       <div className="work-result">
