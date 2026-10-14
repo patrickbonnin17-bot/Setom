@@ -2157,7 +2157,7 @@ async function save() {
           <input
             type="number"
             step="0.01"
-            value={Math.max(0, (os.rehabilitationZone === "Chaussée + trottoir" ? (Number(realRoadSurface) || 0) + (Number(realSidewalkSurface) || 0) : os.rehabilitationZone === "Chaussée" ? (Number(realRoadSurface) || 0) : os.rehabilitationZone === "Trottoir" ? (Number(realSidewalkSurface) || 0) : os.rehabilitationZone === "Autre" ? (Number(realOtherSurface) || 0) : (Number(realSurface) || 0)) - (Number(os.quantity?.replace(" m²", "").replace(",", ".")) || 0)).toFixed(2)}"
+            value={Math.max(0, (os.rehabilitationZone === "Chaussée + trottoir" ? (Number(realRoadSurface) || 0) + (Number(realSidewalkSurface) || 0) : os.rehabilitationZone === "Chaussée" ? (Number(realRoadSurface) || 0) : os.rehabilitationZone === "Trottoir" ? (Number(realSidewalkSurface) || 0) : os.rehabilitationZone === "Autre" ? (Number(realOtherSurface) || 0) : (Number(realSurface) || 0)) - (Number(os.quantity?.replace(" m²", "").replace(",", ".")) || 0)).toFixed(2)}
             readOnly
           />
         </div>
