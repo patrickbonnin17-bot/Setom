@@ -38,7 +38,6 @@ jobs:
       "generate_constat_for_work_order",
       {
         p_work_order_id: os.dbId,
-        p_user_id: user.id,
       }
     );
 
