@@ -685,7 +685,7 @@ const [newOSSaving, setNewOSSaving] = useState(false);
     </div>
   </div>
 )}
-          <>
+         
             <h2>Ordres de service</h2>
 
             <div className="toolbar">
