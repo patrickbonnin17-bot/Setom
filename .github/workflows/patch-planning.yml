@@ -18,7 +18,7 @@ jobs:
         run: python scripts/patch_planning.py
       - name: Build application
         run: |
-          npm ci
+          npm install
           npm run build
       - name: Commit patched source
         run: |
