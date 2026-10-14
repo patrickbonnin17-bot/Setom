@@ -1455,6 +1455,7 @@ async function save() {
     (error?.hint ? "\n\nAide : " + error.hint : "")
   );
 }
+}
   const tabs = [
     { id: "resume", label: "Résumé", icon: "📋" },
     { id: "travaux", label: "Travaux", icon: "🛠️" },
