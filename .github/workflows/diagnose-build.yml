@@ -5,33 +5,33 @@ on:
     branches: [main]
 
 permissions:
-  contents: write
+  contents: read
 
 jobs:
   build:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-
       - uses: actions/setup-node@v4
         with:
           node-version: 22
-
       - run: npm install
-
-      - name: Locate syntax error
+      - name: Parse JSX with Babel
         shell: bash
         run: |
-          python3 - <<'PY'
-          from pathlib import Path
-          s = Path('src/main.jsx').read_text()
-          pos = 58844
-          line = s.count('\n', 0, pos) + 1
-          col = pos - s.rfind('\n', 0, pos)
-          print(f'Position {pos}: line {line}, column {col}')
-          print('BEFORE:', repr(s[max(0,pos-120):pos]))
-          print('AT:', repr(s[pos:pos+120]))
-          print('LINE:', repr(s.splitlines()[line-1]))
-          PY
-
+          npm install --no-save @babel/parser
+          node - <<'NODE'
+          const fs = require('fs');
+          const parser = require('@babel/parser');
+          const src = fs.readFileSync('src/main.jsx', 'utf8');
+          try {
+            parser.parse(src, {sourceType:'module', plugins:['jsx']});
+            console.log('Babel parse OK');
+          } catch (e) {
+            console.log('BABEL ERROR:', e.message);
+            console.log('POS:', e.pos, 'LOC:', e.loc);
+            console.log(src.slice(Math.max(0,e.pos-300), e.pos+300));
+            process.exit(1);
+          }
+          NODE
       - run: npm run build
