@@ -200,6 +200,18 @@ function App() {
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState("Tous");
   const [teamFilter, setTeamFilter] = useState("Toutes");
+  
+  const [showNewOS, setShowNewOS] = useState(false);
+const [newOSAddress, setNewOSAddress] = useState("");
+const [newOSPostalCode, setNewOSPostalCode] = useState("");
+const [newOSCity, setNewOSCity] = useState("");
+const [newOSMaterial, setNewOSMaterial] = useState("");
+const [newOSMaterialDetail, setNewOSMaterialDetail] = useState("");
+const [newOSSurface, setNewOSSurface] = useState("");
+const [newOSParticularities, setNewOSParticularities] = useState("");
+const [newOSError, setNewOSError] = useState("");
+const [newOSSaving, setNewOSSaving] = useState(false);
+  
   if (authLoading) {
     return <div>Chargement de SETOM...</div>;
   }
