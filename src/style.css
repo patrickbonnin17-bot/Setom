@@ -611,3 +611,72 @@ button {
     min-height: 50px;
   }
 }
+/* =========================
+   CARTES MATÉRIAUX
+   ========================= */
+
+.material-section {
+  margin-top: 16px;
+}
+
+.material-cards {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 12px;
+  margin-top: 8px;
+}
+
+.material-card {
+  border: 2px solid #e2e8f0;
+  background: #ffffff;
+  border-radius: 14px;
+  padding: 16px 10px;
+  min-height: 100px;
+  cursor: pointer;
+
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+
+  font-size: 14px;
+  font-weight: 600;
+  color: #334155;
+
+  transition: all 0.15s ease;
+}
+
+.material-card:hover {
+  border-color: #94a3b8;
+  transform: translateY(-1px);
+}
+
+.material-card.selected {
+  border-color: #2563eb;
+  background: #eff6ff;
+  color: #1d4ed8;
+  box-shadow: 0 0 0 2px rgba(37, 99, 235, 0.08);
+}
+
+.material-icon {
+  font-size: 30px;
+  line-height: 1;
+}
+
+/* Téléphone */
+@media (max-width: 700px) {
+  .material-cards {
+    grid-template-columns: repeat(2, 1fr);
+    gap: 10px;
+  }
+
+  .material-card {
+    min-height: 90px;
+    padding: 12px 8px;
+  }
+
+  .material-icon {
+    font-size: 26px;
+  }
+}
