@@ -156,8 +156,8 @@ function App() {
       }
 
       const formattedOS = data.map((row) => ({
-        id: `OS-${new Date(row.creation_date).getFullYear()}-${String(row.os_number).padStart(5, "0")}`,
         dbId: row.id,
+        id: `OS-${new Date(row.creation_date).getFullYear()}-${String(row.os_number).padStart(5, "0")}`,
         address: `${row.address || ""}${row.city ? `, ${row.city}` : ""}`,
         work: row.material_detail || "Intervention",
         day: null,
