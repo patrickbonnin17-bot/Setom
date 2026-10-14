@@ -1,22 +1,20 @@
-name: Apply work-save fix
+name: Fix work save
 
 on:
   push:
-    branches: [main]
-
-permissions:
-  contents: write
+    paths:
+      - '.github/workflows/fix-work-save.yml'
 
 jobs:
   patch:
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
+      - uses: actions/checkout@v4
       - name: Patch main.jsx
-        shell: python
         run: |
+          python - <<'PY'
           from pathlib import Path
           p = Path('src/main.jsx')
           s = p.read_text(encoding='utf-8')
@@ -36,7 +34,7 @@ jobs:
     onUpdate(os.id, {'''
           insert2 = '''    // 6. Générer automatiquement le constat de facturation en brouillon.
     // Le constat reste modifiable jusqu'à la validation par Eau de Toulouse.
-    const { data: generatedConstatId, error: constatError } = await supabase.rpc(
+    const { error: constatError } = await supabase.rpc(
       "generate_constat_for_work_order",
       {
         p_work_order_id: os.dbId,
@@ -54,7 +52,7 @@ jobs:
 
     // 7. Mettre également l'affichage de l'application à jour
     onUpdate(os.id, {'''
-          if marker2 in s and 'generate_constat_for_work_order' not in s:
+          if marker2 in s and 'p_work_order_id: os.dbId' not in s:
               s = s.replace(marker2, insert2, 1)
 
           old_alert = '    alert("✅ Travaux réalisés enregistrés.");'
@@ -65,14 +63,10 @@ jobs:
               s = s.replace(old_alert, new_alert, 1)
 
           p.write_text(s, encoding='utf-8')
-
-      - name: Commit patched code
-        shell: bash
+          PY
+      - name: Commit
         run: |
-          if git diff --quiet -- src/main.jsx; then
-            echo "No changes needed"
-            exit 0
-          fi
+          if git diff --quiet -- src/main.jsx; then exit 0; fi
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add src/main.jsx
