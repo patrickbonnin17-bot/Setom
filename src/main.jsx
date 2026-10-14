@@ -15,14 +15,17 @@ const days = [
 
 const statuses = [
   "Nouveau",
-  "Nouvelle intervention",
+  "À planifier",
   "Planifié",
-  "En cours de travaux",
-  "Travaux à facturer",
+  "En travaux",
+  "Travaux effectués",
+  "Constat de facturation",
   "En attente de validation",
+  "Validé",
+  "Validé avec réserve",
   "Réserve",
   "Correction à réaliser",
-  "Validé",
+  "Payé",
   "Archivé",
   "En erreur",
   "Doublon",
@@ -147,7 +150,7 @@ function App() {
     async function loadOS() {
       const { data, error } = await supabase
         .from("work_orders")
-        .select("*")
+        .select("*, interventions(id, team_id, planned_date, planned_order, status, teams(id, name))")
         .order("creation_date", { ascending: false });
 
       if (error) {
@@ -155,29 +158,46 @@ function App() {
         return;
       }
 
-      const formattedOS = data.map((row) => ({
-        dbId: row.id,
-        id: `OS-${new Date(row.creation_date).getFullYear()}-${String(row.os_number).padStart(5, "0")}`,
-        address: `${row.address || ""}${row.city ? `, ${row.city}` : ""}`,
-        work: row.material_detail || "Intervention",
-        day: null,
-        team: "Non affectée",
-        trade: row.material_detail || "Intervention",
-        sector: row.city || "",
-        status: row.status || "Nouveau",
-        quantity: row.planned_surface_m2
-          ? `${row.planned_surface_m2} m²`
-          : "",
-        intervention: row.material_detail || "Intervention",
-        rehabilitationZone: row.rehabilitation_zone,
-        rehabilitationOtherDetail: row.rehabilitation_other_detail,
-        roadSurface: row.planned_road_surface_m2,
-        sidewalkSurface: row.planned_sidewalk_surface_m2,
-        actualRoadSurface: row.actual_road_surface_m2,
-        actualSidewalkSurface: row.actual_sidewalk_surface_m2,
-        actualOtherSurface: row.actual_other_surface_m2,
-        deadline: row.deadline_date,
-      }));
+      const formattedOS = data.map((row) => {
+        const intervention = Array.isArray(row.interventions)
+          ? row.interventions[0]
+          : row.interventions;
+        const plannedDate = intervention?.planned_date || null;
+        const plannedDay = plannedDate
+          ? new Date(`${plannedDate}T12:00:00`).toLocaleDateString("fr-FR", { weekday: "long" })
+          : null;
+        const day = plannedDay
+          ? plannedDay.charAt(0).toUpperCase() + plannedDay.slice(1)
+          : null;
+
+        return {
+          dbId: row.id,
+          interventionId: intervention?.id || null,
+          id: `OS-${new Date(row.creation_date).getFullYear()}-${String(row.os_number).padStart(5, "0")}`,
+          address: `${row.address || ""}${row.city ? `, ${row.city}` : ""}`,
+          work: row.material_detail || "Intervention",
+          day,
+          plannedDate,
+          team: intervention?.teams?.name || "Non affectée",
+          teamId: intervention?.team_id || null,
+          trade: row.material_detail || "Intervention",
+          sector: row.city || "",
+          status: row.status || "Nouveau",
+          quantity: row.planned_surface_m2
+            ? `${row.planned_surface_m2} m²`
+            : "",
+          intervention: row.material_detail || "Intervention",
+          rehabilitationZone: row.rehabilitation_zone,
+          rehabilitationOtherDetail: row.rehabilitation_other_detail,
+          roadSurface: row.planned_road_surface_m2,
+          sidewalkSurface: row.planned_sidewalk_surface_m2,
+          actualRoadSurface: row.actual_road_surface_m2,
+          actualSidewalkSurface: row.actual_sidewalk_surface_m2,
+          actualOtherSurface: row.actual_other_surface_m2,
+          deadline: row.deadline_date,
+          isNight: !!row.is_night,
+        };
+      });
 
       setOsList(formattedOS);
     }
@@ -518,27 +538,18 @@ const [newOSSaving, setNewOSSaving] = useState(false);
     );
   }
 
+  const activeStatuses = new Set(["Nouveau", "À planifier", "Planifié", "En travaux", "Travaux effectués", "Constat de facturation", "En attente de validation", "Validé", "Validé avec réserve", "Réserve", "Correction à réaliser", "Payé"]);
+  const currentWeekday = new Date().toLocaleDateString("fr-FR", { weekday: "long" });
+  const currentDayName = currentWeekday.charAt(0).toUpperCase() + currentWeekday.slice(1);
   const stats = {
-    total: osList.length,
-    planning: osList.filter(
-      (o) => o.status === "À planifier"
-    ).length,
-    today: osList.filter(
-      (o) => o.day === "Lundi"
-    ).length,
-    travaux: osList.filter(
-      (o) => o.status === "En cours de travaux"
-    ).length,
-    facturation: osList.filter(
-      (o) => o.status === "Travaux à facturer"
-    ).length,
-    validation: osList.filter(
-      (o) => o.status === "En attente de validation"
-    ).length,
-    reserves: osList.filter(
-      (o) => o.status === "Réserve"
-    ).length,
-   };
+    total: osList.filter((o) => activeStatuses.has(o.status)).length,
+    planning: osList.filter((o) => o.status === "À planifier").length,
+    today: osList.filter((o) => o.day === currentDayName).length,
+    travaux: osList.filter((o) => o.status === "En travaux").length,
+    facturation: osList.filter((o) => o.status === "Travaux effectués" || o.status === "Constat de facturation").length,
+    validation: osList.filter((o) => o.status === "En attente de validation").length,
+    reserves: osList.filter((o) => o.status === "Réserve" || o.status === "Validé avec réserve" || o.status === "Correction à réaliser").length,
+  };
 
   if (authLoading) {
     return (
@@ -1431,8 +1442,10 @@ function OSCard({ os, onOpen }) {
 
 function OSModal({ os, onClose, onUpdate }) {
   const [day, setDay] = useState(os?.day || "");
+  const [plannedDate, setPlannedDate] = useState(os?.plannedDate || "");
   const [status, setStatus] = useState(os?.status || "");
   const [activeTab, setActiveTab] = useState("resume");
+  const [planningSaving, setPlanningSaving] = useState(false);
 const [attachments, setAttachments] = useState([]);
 const [attachmentsLoading, setAttachmentsLoading] = useState(false);
  const [realLength, setRealLength] = useState("");
@@ -1570,6 +1583,77 @@ useEffect(() => {
 
   loadAttachments();
 }, [os?.dbId]); 
+async function savePlanning() {
+  if (!os?.dbId) return;
+  setPlanningSaving(true);
+  try {
+    const { data: authData } = await supabase.auth.getUser();
+    const userId = authData?.user?.id || null;
+    let { data: intervention, error: interventionError } = await supabase
+      .from("interventions")
+      .select("id")
+      .eq("work_order_id", os.dbId)
+      .maybeSingle();
+
+    if (interventionError) throw interventionError;
+
+    if (!intervention) {
+      const { data: created, error } = await supabase
+        .from("interventions")
+        .insert({
+          work_order_id: os.dbId,
+          type: os.intervention || os.work || "Intervention",
+          status: plannedDate ? "Planifié" : "À planifier",
+          planned_date: plannedDate || null,
+          planned_surface_m2: Number(String(os.quantity || "").replace(" m²", "").replace(",", ".")) || null,
+        })
+        .select("id")
+        .single();
+      if (error) throw error;
+      intervention = created;
+    } else {
+      const { error } = await supabase
+        .from("interventions")
+        .update({
+          planned_date: plannedDate || null,
+          status: plannedDate ? "Planifié" : "À planifier",
+          updated_at: new Date().toISOString(),
+        })
+        .eq("id", intervention.id);
+      if (error) throw error;
+    }
+
+    const nextStatus = plannedDate ? "Planifié" : "À planifier";
+    const { error: woError } = await supabase
+      .from("work_orders")
+      .update({ status: nextStatus, updated_by: userId })
+      .eq("id", os.dbId);
+    if (woError) throw woError;
+
+    const nextDay = plannedDate
+      ? (() => {
+          const label = new Date(`${plannedDate}T12:00:00`).toLocaleDateString("fr-FR", { weekday: "long" });
+          return label.charAt(0).toUpperCase() + label.slice(1);
+        })()
+      : null;
+
+    onUpdate(os.id, {
+      day: nextDay,
+      plannedDate: plannedDate || null,
+      status: nextStatus,
+      interventionId: intervention.id,
+    });
+    setStatus(nextStatus);
+    setDay(nextDay || "");
+    alert(plannedDate ? "✅ Planning enregistré." : "✅ OS retiré du planning.");
+  } catch (error) {
+    console.error("Erreur planning :", error);
+    alert("Impossible d'enregistrer le planning :\n\n" + (error?.message || "Erreur inconnue"));
+  } finally {
+    setPlanningSaving(false);
+  }
+}
+
 async function save() {
   try {
     const {
@@ -1839,7 +1923,8 @@ async function save() {
 
     // 7. Mettre également l'affichage de l'application à jour
     onUpdate(os.id, {
-      day: day || null,
+      day: os.day || null,
+      plannedDate: os.plannedDate || null,
       status: "Travaux effectués",
       actualRoadSurface: os.rehabilitationZone === "Chaussée" || os.rehabilitationZone === "Chaussée + trottoir" ? roadActual : null,
       actualSidewalkSurface: os.rehabilitationZone === "Trottoir" || os.rehabilitationZone === "Chaussée + trottoir" ? sidewalkActual : null,
@@ -2519,29 +2604,24 @@ async function save() {
               <h3>Planning</h3>
 
               <div className="os-field">
+                <label>Date d'intervention</label>
+                <input
+                  type="date"
+                  value={plannedDate}
+                  onChange={(e) => setPlannedDate(e.target.value)}
+                />
+                <small>{day ? `Jour : ${day}` : "Aucune date planifiée"}</small>
+              </div>
 
-                <label>Jour d'intervention</label>
-
-                <select
-                  value={day}
-                  onChange={(e) =>
-                    setDay(e.target.value)
-                  }
+              <div className="os-field">
+                <button
+                  type="button"
+                  className="primary"
+                  disabled={planningSaving}
+                  onClick={savePlanning}
                 >
-                  <option value="">
-                    Non planifié
-                  </option>
-
-                  {days.map((d) => (
-                    <option
-                      key={d.name}
-                      value={d.name}
-                    >
-                      {d.name}
-                    </option>
-                  ))}
-                </select>
-
+                  {planningSaving ? "Enregistrement..." : "💾 Enregistrer le planning"}
+                </button>
               </div>
 
               <div className="os-field">
