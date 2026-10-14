@@ -15,7 +15,7 @@ const days = [
 
 const statuses = [
   "Nouveau",
-  "À planifier",
+  "Nouvelle intervention",
   "Planifié",
   "En cours de travaux",
   "Travaux à facturer",
@@ -611,23 +611,36 @@ const [newOSSaving, setNewOSSaving] = useState(false);
 
         <label>Matériau *</label>
         <select
-          value={newOSMaterial}
-          onChange={(e) => setNewOSMaterial(e.target.value)}
-          required
-        >
-          <option value="">Sélectionner...</option>
-          <option value="Béton balayé">Béton balayé</option>
-          <option value="Béton taloché">Béton taloché</option>
-          <option value="Sous-dallage">Sous-dallage</option>
-          <option value="Béton désactivé">Béton désactivé</option>
-          <option value="Béton coloré">Béton coloré</option>
-          <option value="Enrobé noir">Enrobé noir</option>
-          <option value="Enrobé rouge">Enrobé rouge</option>
-          <option value="Enrobé miel">Enrobé miel</option>
-          <option value="Enrobé autre">Enrobé autre</option>
-          <option value="Enrobé grenaillé">Enrobé grenaillé</option>
-          <option value="GE calcaire">GE calcaire</option>
-          <option value="Asphalte">Asphalte</option>
+          <div className="material-section">
+  <label>Matériau *</label>
+
+  <div className="material-cards">
+    {[
+      { value: "Béton", icon: "🧱" },
+      { value: "Enrobé", icon: "🛣️" },
+      { value: "GE calcaire", icon: "⛰️" },
+      { value: "Asphalte", icon: "⬛" },
+    ].map((material) => (
+      <button
+        key={material.value}
+        type="button"
+        className={`material-card ${
+          newOSMaterial === material.value ? "selected" : ""
+        }`}
+        onClick={() => {
+          setNewOSMaterial(material.value);
+          setNewOSMaterialDetail("");
+        }}
+      >
+        <span className="material-icon">
+          {material.icon}
+        </span>
+
+        <span>{material.value}</span>
+      </button>
+    ))}
+  </div>
+</div>
         </select>
 
         <label>Détail du matériau</label>
