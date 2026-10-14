@@ -1,0 +1,189 @@
+name: Apply rehabilitation zone UI patch
+
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    if: ${{ !contains(github.event.head_commit.message, 'apply rehabilitation zone patch') }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Patch main.jsx
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          p = Path('src/main.jsx')
+          s = p.read_text()
+
+          old = '''const [newOSSurface, setNewOSSurface] = useState("");
+const [newOSParticularities, setNewOSParticularities] = useState("");
+const [newOSError, setNewOSError] = useState("");'''
+          new = '''const [newOSSurface, setNewOSSurface] = useState("");
+const [newOSRehabilitationZone, setNewOSRehabilitationZone] = useState("");
+const [newOSRehabilitationOtherDetail, setNewOSRehabilitationOtherDetail] = useState("");
+const [newOSRoadSurface, setNewOSRoadSurface] = useState("");
+const [newOSSidewalkSurface, setNewOSSidewalkSurface] = useState("");
+const [newOSParticularities, setNewOSParticularities] = useState("");
+const [newOSError, setNewOSError] = useState("");'''
+          assert old in s, 'state block not found'
+          s = s.replace(old, new, 1)
+
+          old = '''  const surface =
+    newOSSurface.trim() === ""
+      ? null
+      : Number(newOSSurface.replace(",", "."));
+
+  if (newOSSurface.trim() !== "" && isNaN(surface)) {
+    setNewOSError("La surface doit être un nombre.");
+    setNewOSSaving(false);
+    return;
+  }'''
+          new = '''  const parseSurface = (value) =>
+    value.trim() === "" ? null : Number(value.replace(",", "."));
+
+  const genericSurface = parseSurface(newOSSurface);
+  const roadSurface = parseSurface(newOSRoadSurface);
+  const sidewalkSurface = parseSurface(newOSSidewalkSurface);
+
+  if ([genericSurface, roadSurface, sidewalkSurface].some((value) => value !== null && isNaN(value))) {
+    setNewOSError("Les surfaces doivent être des nombres.");
+    setNewOSSaving(false);
+    return;
+  }
+
+  if (!newOSRehabilitationZone) {
+    setNewOSError("Veuillez sélectionner la zone de réfection.");
+    setNewOSSaving(false);
+    return;
+  }
+
+  if (newOSRehabilitationZone === "Autre" && !newOSRehabilitationOtherDetail.trim()) {
+    setNewOSError("Veuillez préciser la zone de réfection.");
+    setNewOSSaving(false);
+    return;
+  }
+
+  const surface =
+    newOSRehabilitationZone === "Chaussée"
+      ? roadSurface
+      : newOSRehabilitationZone === "Trottoir"
+        ? sidewalkSurface
+        : newOSRehabilitationZone === "Chaussée + trottoir"
+          ? (roadSurface || 0) + (sidewalkSurface || 0)
+          : genericSurface;'''
+          assert old in s, 'surface block not found'
+          s = s.replace(old, new, 1)
+
+          old = '''      material_detail:
+        newOSMaterialDetail.trim() || newOSMaterial,
+      planned_surface_m2: surface,
+      particularities:'''
+          new = '''      material_detail:
+        newOSMaterialDetail.trim() || newOSMaterial,
+      rehabilitation_zone: newOSRehabilitationZone,
+      rehabilitation_other_detail:
+        newOSRehabilitationOtherDetail.trim() || null,
+      planned_road_surface_m2: roadSurface,
+      planned_sidewalk_surface_m2: sidewalkSurface,
+      planned_surface_m2: surface,
+      particularities:'''
+          assert old in s, 'insert block not found'
+          s = s.replace(old, new, 1)
+
+          old = '''  setNewOSMaterialDetail("");
+  setNewOSSurface("");
+  setNewOSParticularities("");'''
+          new = '''  setNewOSMaterialDetail("");
+  setNewOSSurface("");
+  setNewOSRehabilitationZone("");
+  setNewOSRehabilitationOtherDetail("");
+  setNewOSRoadSurface("");
+  setNewOSSidewalkSurface("");
+  setNewOSParticularities("");'''
+          assert old in s, 'reset block not found'
+          s = s.replace(old, new, 1)
+
+          marker = '''        <label>Surface prévue (m²)</label>
+        <input
+          type="number"
+          step="0.01"
+          min="0"
+          value={newOSSurface}
+          onChange={(e) => setNewOSSurface(e.target.value)}
+          placeholder="Ex. 12.5"
+        />'''
+          replacement = '''        <div className="rehabilitation-section">
+          <label>Zone de réfection *</label>
+          <div className="rehabilitation-cards">
+            {["Chaussée", "Trottoir", "Chaussée + trottoir", "Autre"].map((zone) => (
+              <button
+                key={zone}
+                type="button"
+                className={`rehabilitation-card ${newOSRehabilitationZone === zone ? "selected" : ""}`}
+                onClick={() => {
+                  setNewOSRehabilitationZone(zone);
+                  if (zone !== "Autre") setNewOSRehabilitationOtherDetail("");
+                  if (zone === "Chaussée") setNewOSSidewalkSurface("");
+                  if (zone === "Trottoir") setNewOSRoadSurface("");
+                }}
+              >
+                {zone}
+              </button>
+            ))}
+          </div>
+
+          {newOSRehabilitationZone === "Chaussée" && (
+            <div className="rehabilitation-surface-field">
+              <label>Surface chaussée prévue (m²)</label>
+              <input type="number" step="0.01" min="0" value={newOSRoadSurface} onChange={(e) => setNewOSRoadSurface(e.target.value)} placeholder="Ex. 12.5" />
+            </div>
+          )}
+
+          {newOSRehabilitationZone === "Trottoir" && (
+            <div className="rehabilitation-surface-field">
+              <label>Surface trottoir prévue (m²)</label>
+              <input type="number" step="0.01" min="0" value={newOSSidewalkSurface} onChange={(e) => setNewOSSidewalkSurface(e.target.value)} placeholder="Ex. 8.5" />
+            </div>
+          )}
+
+          {newOSRehabilitationZone === "Chaussée + trottoir" && (
+            <div className="rehabilitation-surface-grid">
+              <div>
+                <label>Surface chaussée (m²)</label>
+                <input type="number" step="0.01" min="0" value={newOSRoadSurface} onChange={(e) => setNewOSRoadSurface(e.target.value)} placeholder="Ex. 12.5" />
+              </div>
+              <div>
+                <label>Surface trottoir (m²)</label>
+                <input type="number" step="0.01" min="0" value={newOSSidewalkSurface} onChange={(e) => setNewOSSidewalkSurface(e.target.value)} placeholder="Ex. 6.5" />
+              </div>
+            </div>
+          )}
+
+          {newOSRehabilitationZone === "Autre" && (
+            <>
+              <label>Précision</label>
+              <input type="text" value={newOSRehabilitationOtherDetail} onChange={(e) => setNewOSRehabilitationOtherDetail(e.target.value)} placeholder="Préciser la zone de réfection" />
+              <label>Surface prévue (m²)</label>
+              <input type="number" step="0.01" min="0" value={newOSSurface} onChange={(e) => setNewOSSurface(e.target.value)} placeholder="Ex. 12.5" />
+            </>
+          )}
+        </div>'''
+          assert marker in s, 'surface UI marker not found'
+          s = s.replace(marker, replacement, 1)
+
+          p.write_text(s)
+          PY
+
+      - name: Commit patched file and remove temporary workflow
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add src/main.jsx .github/workflows/set-zone-rehabilitation.yml
+          git commit -m "apply rehabilitation zone patch" || exit 0
+          git push
