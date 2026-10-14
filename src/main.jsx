@@ -565,6 +565,125 @@ const [newOSSaving, setNewOSSaving] = useState(false);
         )}
 
         {page === "os" && (
+      {showNewOS && (
+  <div className="modal-overlay">
+    <div className="modal">
+      <div className="modal-header">
+        <h2>Nouvel ordre de service</h2>
+
+        <button
+          className="secondary"
+          type="button"
+          onClick={() => setShowNewOS(false)}
+        >
+          ✕
+        </button>
+      </div>
+
+      <form onSubmit={handleCreateOS}>
+
+        <label>Adresse *</label>
+        <input
+          type="text"
+          value={newOSAddress}
+          onChange={(e) => setNewOSAddress(e.target.value)}
+          placeholder="Ex. 12 rue de la République"
+          required
+        />
+
+        <label>Code postal</label>
+        <input
+          type="text"
+          value={newOSPostalCode}
+          onChange={(e) => setNewOSPostalCode(e.target.value)}
+          placeholder="Ex. 82000"
+        />
+
+        <label>Ville</label>
+        <input
+          type="text"
+          value={newOSCity}
+          onChange={(e) => setNewOSCity(e.target.value)}
+          placeholder="Ex. Montauban"
+        />
+
+        <label>Matériau *</label>
+        <select
+          value={newOSMaterial}
+          onChange={(e) => setNewOSMaterial(e.target.value)}
+          required
+        >
+          <option value="">Sélectionner...</option>
+          <option value="Béton balayé">Béton balayé</option>
+          <option value="Béton taloché">Béton taloché</option>
+          <option value="Sous-dallage">Sous-dallage</option>
+          <option value="Béton désactivé">Béton désactivé</option>
+          <option value="Béton coloré">Béton coloré</option>
+          <option value="Enrobé noir">Enrobé noir</option>
+          <option value="Enrobé rouge">Enrobé rouge</option>
+          <option value="Enrobé miel">Enrobé miel</option>
+          <option value="Enrobé autre">Enrobé autre</option>
+          <option value="Enrobé grenaillé">Enrobé grenaillé</option>
+          <option value="GE calcaire">GE calcaire</option>
+          <option value="Asphalte">Asphalte</option>
+        </select>
+
+        <label>Détail du matériau</label>
+        <input
+          type="text"
+          value={newOSMaterialDetail}
+          onChange={(e) => setNewOSMaterialDetail(e.target.value)}
+          placeholder="Ex. Enrobé 0/10 noir"
+        />
+
+        <label>Surface prévue (m²)</label>
+        <input
+          type="number"
+          step="0.01"
+          min="0"
+          value={newOSSurface}
+          onChange={(e) => setNewOSSurface(e.target.value)}
+          placeholder="Ex. 12.5"
+        />
+
+        <label>Particularités</label>
+        <textarea
+          value={newOSParticularities}
+          onChange={(e) => setNewOSParticularities(e.target.value)}
+          placeholder="Informations particulières concernant l'intervention..."
+          rows="4"
+        />
+
+        {newOSError && (
+          <p style={{ color: "red", marginTop: "10px" }}>
+            {newOSError}
+          </p>
+        )}
+
+        <div className="modal-actions">
+
+          <button
+            type="button"
+            className="secondary"
+            onClick={() => setShowNewOS(false)}
+          >
+            Annuler
+          </button>
+
+          <button
+            type="submit"
+            className="primary"
+            disabled={newOSSaving}
+          >
+            {newOSSaving ? "Enregistrement..." : "Créer l'OS"}
+          </button>
+
+        </div>
+
+      </form>
+    </div>
+  </div>
+)}
           <>
             <h2>Ordres de service</h2>
 
