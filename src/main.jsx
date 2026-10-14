@@ -1229,8 +1229,9 @@ function OSCard({ os, onOpen }) {
 }
 
 function OSModal({ os, onClose, onUpdate }) {
-  const [day, setDay] = useState(os.day || "");
-  const [status, setStatus] = useState(os.status);
+  const [day, setDay] = useState(os?.day || "");
+  const [status, setStatus] = useState(os?.status || "");
+  const [activeTab, setActiveTab] = useState("resume");
 
   function save() {
     onUpdate(os.id, {
@@ -1241,10 +1242,23 @@ function OSModal({ os, onClose, onUpdate }) {
     onClose();
   }
 
+  const tabs = [
+    { id: "resume", label: "Résumé", icon: "📋" },
+    { id: "travaux", label: "Travaux", icon: "🛠️" },
+    { id: "planning", label: "Planning", icon: "📅" },
+    { id: "photos", label: "Photos", icon: "📷" },
+    { id: "documents", label: "Documents", icon: "📄" },
+    { id: "constat", label: "Constat", icon: "💶" },
+    { id: "historique", label: "Historique", icon: "📜" },
+  ];
+
   return (
     <div className="modal-bg">
+      <div className="modal os-detail-modal">
 
-      <div className="modal">
+        {/* =========================
+            EN-TÊTE
+           ========================= */}
 
         <div className="modal-header">
           <div>
@@ -1255,126 +1269,361 @@ function OSModal({ os, onClose, onUpdate }) {
           <button
             className="close"
             onClick={onClose}
+            type="button"
           >
             ×
           </button>
         </div>
 
-        <hr />
+        {/* =========================
+            INFORMATIONS RAPIDES
+           ========================= */}
 
-        <h3>Informations</h3>
+        <div className="os-detail-summary">
 
-        <p>
-          <strong>Travaux :</strong>{" "}
-          {os.work}
-        </p>
-
-        <p>
-          <strong>Métier :</strong>{" "}
-          {os.trade}
-        </p>
-
-        <p>
-          <strong>Secteur :</strong>{" "}
-          {os.sector}
-        </p>
-
-        <p>
-          <strong>Quantité :</strong>{" "}
-          {os.quantity}
-        </p>
-
-        <div className="intervention">
-          <strong>Intervention</strong>
-
-          <p>
-            {os.intervention}
-          </p>
-
-          <p>
-            Équipe : {os.team}
-          </p>
-        </div>
-
-        <div className="intervention">
-
-          <strong>Planning</strong>
-
-          <p>
-            Jour d'intervention
-          </p>
-
-          <select
-            value={day}
-            onChange={(e) =>
-              setDay(e.target.value)
-            }
-          >
-            <option value="">
-              Non planifié
-            </option>
-
-            {days.map((d) => (
-              <option
-                key={d.name}
-                value={d.name}
-              >
-                {d.name}
-              </option>
-            ))}
-          </select>
-
-        </div>
-
-        <div className="intervention">
-
-          <strong>Statut OS</strong>
-
-          <p></p>
-
-          <select
-            value={status}
-            onChange={(e) =>
-              setStatus(e.target.value)
-            }
-          >
-            {statuses.map((s) => (
-              <option key={s}>
-                {s}
-              </option>
-            ))}
-          </select>
-
-        </div>
-
-        <div className="intervention">
-
-          <strong>Actions</strong>
-
-          <div className="os-actions">
-
-            <button
-              className="primary"
-              onClick={save}
-            >
-              💾 Enregistrer
-            </button>
-
-            <button
-              className="secondary"
-              onClick={() =>
-                window.open(
-                  `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(
-                    os.address
-                  )}`,
-                  "_blank"
-                )
-              }
-            >
-              🧭 Itinéraire
-            </button>
-
+          <div className="os-detail-badge">
+            <span>Statut</span>
+            <strong>{os.status || "Nouveau"}</strong>
           </div>
+
+          <div className="os-detail-badge">
+            <span>Matériau</span>
+            <strong>{os.work || "—"}</strong>
+          </div>
+
+          <div className="os-detail-badge">
+            <span>Surface</span>
+            <strong>{os.quantity || "—"}</strong>
+          </div>
+
+          <div className="os-detail-badge">
+            <span>Équipe</span>
+            <strong>{os.team || "Non affectée"}</strong>
+          </div>
+
+        </div>
+
+        {/* =========================
+            ONGLETS
+           ========================= */}
+
+        <div className="os-tabs">
+          {tabs.map((tab) => (
+            <button
+              key={tab.id}
+              type="button"
+              className={
+                activeTab === tab.id
+                  ? "os-tab active"
+                  : "os-tab"
+              }
+              onClick={() => setActiveTab(tab.id)}
+            >
+              <span>{tab.icon}</span>
+              <span>{tab.label}</span>
+            </button>
+          ))}
+        </div>
+
+        {/* =========================
+            CONTENU
+           ========================= */}
+
+        <div className="os-tab-content">
+
+          {/* RÉSUMÉ */}
+
+          {activeTab === "resume" && (
+            <div className="os-section">
+
+              <h3>Informations générales</h3>
+
+              <div className="os-info-grid">
+
+                <div>
+                  <span>Ordre de service</span>
+                  <strong>{os.id}</strong>
+                </div>
+
+                <div>
+                  <span>Adresse</span>
+                  <strong>{os.address || "—"}</strong>
+                </div>
+
+                <div>
+                  <span>Matériau</span>
+                  <strong>{os.work || "—"}</strong>
+                </div>
+
+                <div>
+                  <span>Métier</span>
+                  <strong>{os.trade || "—"}</strong>
+                </div>
+
+                <div>
+                  <span>Secteur</span>
+                  <strong>{os.sector || "—"}</strong>
+                </div>
+
+                <div>
+                  <span>Quantité prévue</span>
+                  <strong>{os.quantity || "—"}</strong>
+                </div>
+
+                <div>
+                  <span>Équipe</span>
+                  <strong>{os.team || "Non affectée"}</strong>
+                </div>
+
+                <div>
+                  <span>Jour prévu</span>
+                  <strong>{os.day || "Non planifié"}</strong>
+                </div>
+
+              </div>
+
+              <div className="os-status-box">
+                <span>Échéance</span>
+
+                <strong>
+                  {os.deadline
+                    ? new Date(os.deadline).toLocaleDateString(
+                        "fr-FR"
+                      )
+                    : "—"}
+                </strong>
+              </div>
+
+            </div>
+          )}
+
+          {/* TRAVAUX */}
+
+          {activeTab === "travaux" && (
+            <div className="os-section">
+
+              <h3>Travaux</h3>
+
+              <div className="os-work-card">
+
+                <strong>
+                  {os.intervention ||
+                    os.work ||
+                    "Intervention"}
+                </strong>
+
+                <p>
+                  Quantité prévue :{" "}
+                  <strong>
+                    {os.quantity || "Non renseignée"}
+                  </strong>
+                </p>
+
+                <p>
+                  Matériau :{" "}
+                  <strong>
+                    {os.work || "Non renseigné"}
+                  </strong>
+                </p>
+
+                <p>
+                  Aucun travail réalisé n'est encore
+                  enregistré.
+                </p>
+
+              </div>
+
+            </div>
+          )}
+
+          {/* PLANNING */}
+
+          {activeTab === "planning" && (
+            <div className="os-section">
+
+              <h3>Planning</h3>
+
+              <div className="os-field">
+
+                <label>Jour d'intervention</label>
+
+                <select
+                  value={day}
+                  onChange={(e) =>
+                    setDay(e.target.value)
+                  }
+                >
+                  <option value="">
+                    Non planifié
+                  </option>
+
+                  {days.map((d) => (
+                    <option
+                      key={d.name}
+                      value={d.name}
+                    >
+                      {d.name}
+                    </option>
+                  ))}
+                </select>
+
+              </div>
+
+              <div className="os-field">
+
+                <label>Statut OS</label>
+
+                <select
+                  value={status}
+                  onChange={(e) =>
+                    setStatus(e.target.value)
+                  }
+                >
+                  {statuses.map((s) => (
+                    <option key={s} value={s}>
+                      {s}
+                    </option>
+                  ))}
+                </select>
+
+              </div>
+
+              <div className="os-planning-info">
+
+                <div>
+                  <span>Équipe</span>
+                  <strong>
+                    {os.team || "Non affectée"}
+                  </strong>
+                </div>
+
+                <div>
+                  <span>Secteur</span>
+                  <strong>
+                    {os.sector || "—"}
+                  </strong>
+                </div>
+
+              </div>
+
+            </div>
+          )}
+
+          {/* PHOTOS */}
+
+          {activeTab === "photos" && (
+            <div className="os-section">
+
+              <h3>Photos</h3>
+
+              <div className="os-empty-state">
+                📷
+                <strong>Aucune photo affichée</strong>
+                <span>
+                  Les photos enregistrées sur cet OS
+                  seront affichées ici.
+                </span>
+              </div>
+
+            </div>
+          )}
+
+          {/* DOCUMENTS */}
+
+          {activeTab === "documents" && (
+            <div className="os-section">
+
+              <h3>Documents</h3>
+
+              <div className="os-empty-state">
+                📄
+                <strong>Aucun document affiché</strong>
+                <span>
+                  Les documents associés à cet OS
+                  seront affichés ici.
+                </span>
+              </div>
+
+            </div>
+          )}
+
+          {/* CONSTAT */}
+
+          {activeTab === "constat" && (
+            <div className="os-section">
+
+              <h3>Constat de facturation</h3>
+
+              <div className="os-empty-state">
+                💶
+                <strong>Constat non créé</strong>
+                <span>
+                  Le constat sera généré automatiquement
+                  lorsque les travaux seront déclarés
+                  effectués.
+                </span>
+              </div>
+
+            </div>
+          )}
+
+          {/* HISTORIQUE */}
+
+          {activeTab === "historique" && (
+            <div className="os-section">
+
+              <h3>Historique</h3>
+
+              <div className="os-history">
+
+                <div className="history-item">
+                  <span className="history-dot" />
+
+                  <div>
+                    <strong>Création de l'OS</strong>
+                    <small>
+                      Historique détaillé disponible
+                      après connexion aux données
+                      Supabase.
+                    </small>
+                  </div>
+                </div>
+
+              </div>
+
+            </div>
+          )}
+
+        </div>
+
+        {/* =========================
+            ACTIONS
+           ========================= */}
+
+        <div className="os-actions">
+
+          <button
+            className="primary"
+            onClick={save}
+            type="button"
+          >
+            💾 Enregistrer
+          </button>
+
+          <button
+            className="secondary"
+            type="button"
+            onClick={() =>
+              window.open(
+                `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(
+                  os.address
+                )}`,
+                "_blank"
+              )
+            }
+          >
+            🧭 Itinéraire
+          </button>
 
         </div>
 
@@ -1382,7 +1631,6 @@ function OSModal({ os, onClose, onUpdate }) {
     </div>
   );
 }
-
 createRoot(document.getElementById("root")).render(
   <React.StrictMode>
     <App />
