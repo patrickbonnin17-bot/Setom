@@ -1,0 +1,60 @@
+name: Patch OS zone display
+
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Patch main.jsx
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          p = Path('src/main.jsx')
+          s = p.read_text(encoding='utf-8')
+
+          old = '        rehabilitationZone: row.rehabilitation_zone,\n        roadSurface: row.planned_road_surface_m2,\n        sidewalkSurface: row.planned_sidewalk_surface_m2,\n        deadline: row.deadline_date,'
+          new = '        rehabilitationZone: row.rehabilitation_zone,\n        rehabilitationOtherDetail: row.rehabilitation_other_detail,\n        roadSurface: row.planned_road_surface_m2,\n        sidewalkSurface: row.planned_sidewalk_surface_m2,\n        deadline: row.deadline_date,'
+          if old not in s:
+              raise SystemExit('loadOS target not found')
+          s = s.replace(old, new, 1)
+
+          old = '    rehabilitationZone: data.rehabilitation_zone,\n    roadSurface: data.planned_road_surface_m2,\n    sidewalkSurface: data.planned_sidewalk_surface_m2,\n\n    deadline: data.deadline_date,'
+          new = '    rehabilitationZone: data.rehabilitation_zone,\n    rehabilitationOtherDetail: data.rehabilitation_other_detail,\n    roadSurface: data.planned_road_surface_m2,\n    sidewalkSurface: data.planned_sidewalk_surface_m2,\n\n    deadline: data.deadline_date,'
+          if old not in s:
+              raise SystemExit('formatted OS target not found')
+          s = s.replace(old, new, 1)
+
+          old = '          <div className="os-detail-summary">\n\n          <div className="os-detail-badge">'
+          new = '''          <div className="os-detail-summary">\n\n          <div className="os-detail-badge">'''
+          if old not in s:
+              raise SystemExit('summary target not found')
+
+          marker = '          <div className="os-detail-badge">\n            <span>Surface</span>'
+          if marker not in s:
+              raise SystemExit('surface badge target not found')
+
+          insertion = '''          <div className="os-detail-badge">\n            <span>Zone de réfection</span>\n            <strong>{os.rehabilitationZone || "—"}</strong>\n          </div>\n\n          {os.rehabilitationZone === "Autre" && os.rehabilitationOtherDetail && (\n            <div className="os-detail-badge">\n              <span>Précision</span>\n              <strong>{os.rehabilitationOtherDetail}</strong>\n            </div>\n          )}\n\n          {os.rehabilitationZone === "Chaussée + trottoir" && (\n            <>\n              <div className="os-detail-badge">\n                <span>Chaussée</span>\n                <strong>{os.roadSurface != null ? `${os.roadSurface} m²` : "—"}</strong>\n              </div>\n\n              <div className="os-detail-badge">\n                <span>Trottoir</span>\n                <strong>{os.sidewalkSurface != null ? `${os.sidewalkSurface} m²` : "—"}</strong>\n              </div>\n            </>\n          )}\n\n          {os.rehabilitationZone === "Chaussée" && (\n            <div className="os-detail-badge">\n              <span>Surface chaussée</span>\n              <strong>{os.roadSurface != null ? `${os.roadSurface} m²` : "—"}</strong>\n            </div>\n          )}\n\n          {os.rehabilitationZone === "Trottoir" && (\n            <div className="os-detail-badge">\n              <span>Surface trottoir</span>\n              <strong>{os.sidewalkSurface != null ? `${os.sidewalkSurface} m²` : "—"}</strong>\n            </div>\n          )}\n\n'''
+          s = s.replace(marker, insertion + marker, 1)
+          p.write_text(s, encoding='utf-8')
+          PY
+      - name: Commit patch
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add src/main.jsx
+          git diff --cached --quiet && exit 0
+          git commit -m "Display rehabilitation zone in OS summary"
+          git push
+      - name: Remove temporary workflow
+        if: always()
+        run: |
+          rm -f .github/workflows/patch-os-zone-display.yml
+          git add .github/workflows/patch-os-zone-display.yml
+          git diff --cached --quiet || (git commit -m "Remove temporary patch workflow" && git push)
