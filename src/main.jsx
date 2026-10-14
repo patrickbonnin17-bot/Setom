@@ -565,6 +565,7 @@ const [newOSSaving, setNewOSSaving] = useState(false);
         )}
 
         {page === "os" && (
+    <>
       {showNewOS && (
   <div className="modal-overlay">
     <div className="modal">
