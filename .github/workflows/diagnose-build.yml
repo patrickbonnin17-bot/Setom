@@ -13,52 +13,25 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Patch JSX if needed
-        shell: bash
-        run: |
-          python3 - <<'PY'
-          from pathlib import Path
-          p = Path('src/main.jsx')
-          s = p.read_text()
-          old = '''      </div>\n\n      <div className="work-result">'''
-          new = '''      </div>\n      )}\n\n      <div className="work-result">'''
-          if old in s and new not in s:
-              s = s.replace(old, new, 1)
-              p.write_text(s)
-              print('Patched missing JSX closing fragment.')
-          else:
-              print('No JSX patch required.')
-          PY
-
-      - name: Commit JSX fix
-        shell: bash
-        run: |
-          if git diff --quiet; then
-            echo "No changes to commit."
-            exit 0
-          fi
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add src/main.jsx
-          git commit -m "Fix JSX wrapper in work form"
-          git push
-
       - uses: actions/setup-node@v4
         with:
           node-version: 22
 
       - run: npm install
 
-      - name: Show syntax error context
+      - name: Locate syntax error
         shell: bash
         run: |
           python3 - <<'PY'
           from pathlib import Path
           s = Path('src/main.jsx').read_text()
           pos = 58844
-          print('--- CONTEXT AROUND 58844 ---')
-          print(repr(s[max(0,pos-500):pos+500]))
-          print('--- END CONTEXT ---')
+          line = s.count('\n', 0, pos) + 1
+          col = pos - s.rfind('\n', 0, pos)
+          print(f'Position {pos}: line {line}, column {col}')
+          print('BEFORE:', repr(s[max(0,pos-120):pos]))
+          print('AT:', repr(s[pos:pos+120]))
+          print('LINE:', repr(s.splitlines()[line-1]))
           PY
 
       - run: npm run build
