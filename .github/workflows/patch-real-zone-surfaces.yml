@@ -9,7 +9,7 @@ permissions:
 
 jobs:
   patch:
-    if: github.actor != 'github-actions[bot]'
+    if: contains(github.event.head_commit.message, 'TRIGGER_REAL_SURFACES')
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -18,53 +18,45 @@ jobs:
           fetch-depth: 0
 
       - name: Patch main.jsx
-        shell: python
         run: |
+          python3 - <<'PY'
           from pathlib import Path
           p = Path('src/main.jsx')
           s = p.read_text(encoding='utf-8')
 
-          old = 'const [realSurface, setRealSurface] = useState("");\nconst [thickness, setThickness] = useState("");'
-          new = '''const [realSurface, setRealSurface] = useState("");
+          replacements = []
+          replacements.append((
+            'const [realSurface, setRealSurface] = useState("");\nconst [thickness, setThickness] = useState("");',
+            '''const [realSurface, setRealSurface] = useState("");
 const [realRoadSurface, setRealRoadSurface] = useState(os?.actualRoadSurface ?? "");
 const [realSidewalkSurface, setRealSidewalkSurface] = useState(os?.actualSidewalkSurface ?? "");
 const [realOtherSurface, setRealOtherSurface] = useState(os?.actualOtherSurface ?? "");
-const [thickness, setThickness] = useState("");'''
-          assert old in s, 'state marker not found'
-          s = s.replace(old, new, 1)
-
-          old = 'sidewalkSurface: row.planned_sidewalk_surface_m2,\n        deadline: row.deadline_date,'
-          new = '''sidewalkSurface: row.planned_sidewalk_surface_m2,
+const [thickness, setThickness] = useState("");'''))
+          replacements.append((
+            'sidewalkSurface: row.planned_sidewalk_surface_m2,\n        deadline: row.deadline_date,',
+            '''sidewalkSurface: row.planned_sidewalk_surface_m2,
         actualRoadSurface: row.actual_road_surface_m2,
         actualSidewalkSurface: row.actual_sidewalk_surface_m2,
         actualOtherSurface: row.actual_other_surface_m2,
-        deadline: row.deadline_date,'''
-          assert old in s, 'loadOS marker not found'
-          s = s.replace(old, new, 1)
-
-          old = 'sidewalkSurface: data.planned_sidewalk_surface_m2,\n\n    deadline: data.deadline_date,'
-          new = '''sidewalkSurface: data.planned_sidewalk_surface_m2,
+        deadline: row.deadline_date,'''))
+          replacements.append((
+            'sidewalkSurface: data.planned_sidewalk_surface_m2,\n\n    deadline: data.deadline_date,',
+            '''sidewalkSurface: data.planned_sidewalk_surface_m2,
     actualRoadSurface: data.actual_road_surface_m2,
     actualSidewalkSurface: data.actual_sidewalk_surface_m2,
     actualOtherSurface: data.actual_other_surface_m2,
 
-    deadline: data.deadline_date,'''
-          assert old in s, 'formatted OS marker not found'
-          s = s.replace(old, new, 1)
-
-          old = '    // 3. Enregistrer les travaux réellement réalisés\n\n    const realizations = [];'
-          new = '''    // 3. Enregistrer les surfaces réellement réalisées par zone
+    deadline: data.deadline_date,'''))
+          replacements.append((
+            '    // 3. Enregistrer les travaux réellement réalisés\n\n    const realizations = [];',
+            '''    // 3. Enregistrer les surfaces réellement réalisées par zone
     const zone = os.rehabilitationZone || "";
     const parsedRoadSurface = realRoadSurface !== "" && !isNaN(Number(realRoadSurface)) ? Number(realRoadSurface) : null;
     const parsedSidewalkSurface = realSidewalkSurface !== "" && !isNaN(Number(realSidewalkSurface)) ? Number(realSidewalkSurface) : null;
     const parsedOtherSurface = realOtherSurface !== "" && !isNaN(Number(realOtherSurface)) ? Number(realOtherSurface) : null;
 
-    const actualRoadSurface = zone === "Chaussée + trottoir" || zone === "Chaussée"
-      ? parsedRoadSurface
-      : null;
-    const actualSidewalkSurface = zone === "Chaussée + trottoir" || zone === "Trottoir"
-      ? parsedSidewalkSurface
-      : null;
+    const actualRoadSurface = zone === "Chaussée + trottoir" || zone === "Chaussée" ? parsedRoadSurface : null;
+    const actualSidewalkSurface = zone === "Chaussée + trottoir" || zone === "Trottoir" ? parsedSidewalkSurface : null;
     const actualOtherSurface = zone === "Autre" ? parsedOtherSurface : null;
 
     const totalActualSurface =
@@ -76,61 +68,54 @@ const [thickness, setThickness] = useState("");'''
             ? actualSidewalkSurface
             : actualOtherSurface ?? (realSurface !== "" && !isNaN(Number(realSurface)) ? Number(realSurface) : null);
 
-    if (totalActualSurface !== null) {
-      setRealSurface(String(totalActualSurface));
-    }
-
-    const realizations = [];'''
-          assert old in s, 'realizations marker not found'
-          s = s.replace(old, new, 1)
-
-          old = '''      .update({
+    const realizations = [];'''))
+          replacements.append((
+            '''      .update({
         status: "Travaux effectués",
         updated_by: user.id,
-      })'''
-          new = '''      .update({
+      })''',
+            '''      .update({
         status: "Travaux effectués",
         actual_road_surface_m2: actualRoadSurface,
         actual_sidewalk_surface_m2: actualSidewalkSurface,
         actual_other_surface_m2: actualOtherSurface,
         updated_by: user.id,
-      })'''
-          assert old in s, 'work order update marker not found'
-          s = s.replace(old, new, 1)
+      })'''))
+
+          for old, new in replacements:
+              if old not in s:
+                  raise SystemExit('PATCH MARKER NOT FOUND: ' + old[:100])
+              s = s.replace(old, new, 1)
 
           marker = '''      <h4>Surface réalisée</h4>
 
       <div className="work-grid">'''
           replacement = '''      <h4>Surface réalisée</h4>
 
-      {(os.rehabilitationZone === "Chaussée" || os.rehabilitationZone === "Trottoir" || os.rehabilitationZone === "Chaussée + trottoir") ? (
+      {os.rehabilitationZone === "Chaussée + trottoir" ? (
         <>
-          {os.rehabilitationZone === "Chaussée + trottoir" ? (
-            <div className="work-grid">
-              <div>
-                <label>Surface réelle chaussée (m²)</label>
-                <input type="number" step="0.01" min="0" value={realRoadSurface} onChange={(e) => { const value = e.target.value; setRealRoadSurface(value); const total = (Number(value) || 0) + (Number(realSidewalkSurface) || 0); setRealSurface(total > 0 ? total.toFixed(2) : ""); }} placeholder="Ex. 20.30" />
-              </div>
-              <div>
-                <label>Surface réelle trottoir (m²)</label>
-                <input type="number" step="0.01" min="0" value={realSidewalkSurface} onChange={(e) => { const value = e.target.value; setRealSidewalkSurface(value); const total = (Number(realRoadSurface) || 0) + (Number(value) || 0); setRealSurface(total > 0 ? total.toFixed(2) : ""); }} placeholder="Ex. 6.80" />
-              </div>
+          <div className="work-grid">
+            <div>
+              <label>Surface réelle chaussée (m²)</label>
+              <input type="number" step="0.01" min="0" value={realRoadSurface} onChange={(e) => { const value = e.target.value; setRealRoadSurface(value); const total = (Number(value) || 0) + (Number(realSidewalkSurface) || 0); setRealSurface(total > 0 ? total.toFixed(2) : ""); }} placeholder="Ex. 20.30" />
             </div>
-          ) : (
-            <div className="work-grid">
-              <div>
-                <label>{os.rehabilitationZone === "Chaussée" ? "Surface réelle chaussée (m²)" : "Surface réelle trottoir (m²)"}</label>
-                <input type="number" step="0.01" min="0" value={os.rehabilitationZone === "Chaussée" ? realRoadSurface : realSidewalkSurface} onChange={(e) => { const value = e.target.value; if (os.rehabilitationZone === "Chaussée") setRealRoadSurface(value); else setRealSidewalkSurface(value); setRealSurface(value); }} placeholder="Ex. 12.50" />
-              </div>
+            <div>
+              <label>Surface réelle trottoir (m²)</label>
+              <input type="number" step="0.01" min="0" value={realSidewalkSurface} onChange={(e) => { const value = e.target.value; setRealSidewalkSurface(value); const total = (Number(realRoadSurface) || 0) + (Number(value) || 0); setRealSurface(total > 0 ? total.toFixed(2) : ""); }} placeholder="Ex. 6.80" />
             </div>
-          )}
+          </div>
           <div className="work-result"><span>Surface totale réellement réalisée</span><strong>{realSurface ? `${realSurface} m²` : "—"}</strong></div>
         </>
+      ) : os.rehabilitationZone === "Chaussée" ? (
+        <div className="work-grid"><div><label>Surface réelle chaussée (m²)</label><input type="number" step="0.01" min="0" value={realRoadSurface} onChange={(e) => { const value = e.target.value; setRealRoadSurface(value); setRealSurface(value); }} placeholder="Ex. 12.50" /></div></div>
+      ) : os.rehabilitationZone === "Trottoir" ? (
+        <div className="work-grid"><div><label>Surface réelle trottoir (m²)</label><input type="number" step="0.01" min="0" value={realSidewalkSurface} onChange={(e) => { const value = e.target.value; setRealSidewalkSurface(value); setRealSurface(value); }} placeholder="Ex. 8.50" /></div></div>
       ) : os.rehabilitationZone === "Autre" ? (
         <div className="work-grid"><div><label>Surface réelle (m²)</label><input type="number" step="0.01" min="0" value={realOtherSurface} onChange={(e) => { const value = e.target.value; setRealOtherSurface(value); setRealSurface(value); }} placeholder="Ex. 12.50" /></div></div>
       ) : (
       <div className="work-grid">'''
-          assert marker in s, 'surface UI marker not found'
+          if marker not in s:
+              raise SystemExit('SURFACE UI MARKER NOT FOUND')
           s = s.replace(marker, replacement, 1)
 
           old = '''      </div>
@@ -142,7 +127,8 @@ const [thickness, setThickness] = useState("");'''
 
       {(!os.rehabilitationZone || os.rehabilitationZone === "") && <div className="work-result">
         <span>Surface réellement réalisée</span>'''
-          assert old in s, 'generic surface closing marker not found'
+          if old not in s:
+              raise SystemExit('GENERIC RESULT MARKER NOT FOUND')
           s = s.replace(old, new, 1)
 
           old = '''        <strong>
@@ -157,16 +143,17 @@ const [thickness, setThickness] = useState("");'''
       </div>}
 
       <h4>Caractéristiques</h4>'''
-          assert old in s, 'generic result closing marker not found'
+          if old not in s:
+              raise SystemExit('GENERIC RESULT CLOSE MARKER NOT FOUND')
           s = s.replace(old, new, 1)
 
           p.write_text(s, encoding='utf-8')
+          PY
 
       - name: Commit changes
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add src/main.jsx
-          git diff --cached --quiet && exit 0
           git commit -m "Add separate actual rehabilitation surfaces"
           git push origin main
