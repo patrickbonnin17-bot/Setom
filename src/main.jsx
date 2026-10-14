@@ -1,6 +1,7 @@
 import React, { useState } from "react";
 import { createRoot } from "react-dom/client";
 import "./style.css";
+import { supabase } from "./supabase";
 
 const days = [
   { name: "Lundi", color: "#1976d2" },
