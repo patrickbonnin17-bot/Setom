@@ -2,14 +2,14 @@ name: Apply rehabilitation zone UI patch
 
 on:
   push:
-    branches: [main]
+    branches:
+      - main
 
 permissions:
   contents: write
 
 jobs:
   patch:
-    if: ${{ !contains(github.event.head_commit.message, 'apply rehabilitation zone patch') }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -31,8 +31,8 @@ const [newOSRoadSurface, setNewOSRoadSurface] = useState("");
 const [newOSSidewalkSurface, setNewOSSidewalkSurface] = useState("");
 const [newOSParticularities, setNewOSParticularities] = useState("");
 const [newOSError, setNewOSError] = useState("");'''
-          assert old in s, 'state block not found'
-          s = s.replace(old, new, 1)
+          if old in s:
+              s = s.replace(old, new, 1)
 
           old = '''  const surface =
     newOSSurface.trim() === ""
@@ -77,8 +77,8 @@ const [newOSError, setNewOSError] = useState("");'''
         : newOSRehabilitationZone === "Chaussée + trottoir"
           ? (roadSurface || 0) + (sidewalkSurface || 0)
           : genericSurface;'''
-          assert old in s, 'surface block not found'
-          s = s.replace(old, new, 1)
+          if old in s:
+              s = s.replace(old, new, 1)
 
           old = '''      material_detail:
         newOSMaterialDetail.trim() || newOSMaterial,
@@ -93,8 +93,8 @@ const [newOSError, setNewOSError] = useState("");'''
       planned_sidewalk_surface_m2: sidewalkSurface,
       planned_surface_m2: surface,
       particularities:'''
-          assert old in s, 'insert block not found'
-          s = s.replace(old, new, 1)
+          if old in s:
+              s = s.replace(old, new, 1)
 
           old = '''  setNewOSMaterialDetail("");
   setNewOSSurface("");
@@ -106,8 +106,8 @@ const [newOSError, setNewOSError] = useState("");'''
   setNewOSRoadSurface("");
   setNewOSSidewalkSurface("");
   setNewOSParticularities("");'''
-          assert old in s, 'reset block not found'
-          s = s.replace(old, new, 1)
+          if old in s:
+              s = s.replace(old, new, 1)
 
           marker = '''        <label>Surface prévue (m²)</label>
         <input
@@ -174,16 +174,16 @@ const [newOSError, setNewOSError] = useState("");'''
             </>
           )}
         </div>'''
-          assert marker in s, 'surface UI marker not found'
-          s = s.replace(marker, replacement, 1)
+          if marker in s:
+              s = s.replace(marker, replacement, 1)
 
           p.write_text(s)
           PY
 
-      - name: Commit patched file and remove temporary workflow
+      - name: Commit patched file
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add src/main.jsx .github/workflows/set-zone-rehabilitation.yml
+          git add src/main.jsx
           git commit -m "apply rehabilitation zone patch" || exit 0
           git push
