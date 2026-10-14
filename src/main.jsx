@@ -1466,50 +1466,52 @@ useEffect(() => {
   async function loadConstat() {
     setConstatLoading(true);
 
-    async function fetchConstat() {
-      const { data, error } = await supabase
-        .from("constats")
-        .select("*")
-        .eq("work_order_id", os.dbId)
-        .order("created_at", { ascending: false })
-        .limit(1);
+    // Read through a SECURITY DEFINER RPC so RLS on constats/constat_lines
+    // cannot make an existing constat appear as "non créé" in the UI.
+    const { data: payload, error: readError } = await supabase.rpc(
+      "get_constat_for_work_order",
+      { p_work_order_id: os.dbId }
+    );
 
-      if (error) {
-        console.error("Erreur chargement constat :", error);
-        return { constat: null, error };
+    if (readError) {
+      console.error("Erreur lecture constat :", readError);
+      if (!cancelled) {
+        setConstat(null);
+        setConstatLines([]);
+        setConstatLoading(false);
       }
-
-      const latest = data?.[0] || null;
-      if (!latest) return { constat: null, error: null };
-
-      const { data: lines, error: linesError } = await supabase
-        .from("constat_lines")
-        .select("*")
-        .eq("constat_id", latest.id)
-        .order("id");
-
-      if (linesError) console.error("Erreur chargement lignes constat :", linesError);
-      return { constat: latest, lines: lines || [], error: null };
+      return;
     }
 
-    let result = await fetchConstat();
+    let constatData = payload?.constat || null;
+    let linesData = payload?.lines || [];
 
-    // If the OS is completed but the UI cannot see a constat yet, regenerate
-    // it once. The database function is idempotent for an OS.
-    if (!result.constat && os.status === "Travaux effectués") {
+    // If completed and no constat exists, generate it once, then read it again.
+    if (!constatData && os.status === "Travaux effectués") {
       const { data: authData } = await supabase.auth.getUser();
       const userId = authData?.user?.id || null;
       const { error: rpcError } = await supabase.rpc(
         "generate_constat_for_work_order",
         { p_work_order_id: os.dbId, p_user_id: userId }
       );
-      if (rpcError) console.error("Erreur génération constat automatique :", rpcError);
-      result = await fetchConstat();
+
+      if (rpcError) {
+        console.error("Erreur génération constat automatique :", rpcError);
+      } else {
+        const { data: refreshed, error: refreshError } = await supabase.rpc(
+          "get_constat_for_work_order",
+          { p_work_order_id: os.dbId }
+        );
+        if (!refreshError) {
+          constatData = refreshed?.constat || null;
+          linesData = refreshed?.lines || [];
+        }
+      }
     }
 
     if (!cancelled) {
-      setConstat(result.constat || null);
-      setConstatLines(result.lines || []);
+      setConstat(constatData);
+      setConstatLines(linesData);
       setConstatLoading(false);
     }
   }
