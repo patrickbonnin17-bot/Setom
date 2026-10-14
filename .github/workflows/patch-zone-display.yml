@@ -2,7 +2,7 @@ name: Patch OS zone display
 on:
   push:
     branches: [main]
-    paths-ignore:
+    paths:
       - '.github/workflows/patch-zone-display.yml'
 permissions:
   contents: write
@@ -16,32 +16,36 @@ jobs:
         run: |
           python - <<'PY'
           from pathlib import Path
-          import re
           p = Path('src/main.jsx')
           s = p.read_text(encoding='utf-8')
 
           if 'rehabilitationOtherDetail: row.rehabilitation_other_detail' not in s:
-              s, n = re.subn(r'(rehabilitationZone:\s*row\.rehabilitation_zone,\s*)', r'\1        rehabilitationOtherDetail: row.rehabilitation_other_detail,\n', s, count=1)
-              if n != 1: raise SystemExit(f'load mapping not found: {n}')
+              old = '        rehabilitationZone: row.rehabilitation_zone,\n'
+              new = old + '        rehabilitationOtherDetail: row.rehabilitation_other_detail,\n'
+              if old not in s:
+                  raise SystemExit('load mapping marker not found')
+              s = s.replace(old, new, 1)
 
           if 'rehabilitationOtherDetail: data.rehabilitation_other_detail' not in s:
-              s, n = re.subn(r'(rehabilitationZone:\s*data\.rehabilitation_zone,\s*)', r'\1    rehabilitationOtherDetail: data.rehabilitation_other_detail,\n', s, count=1)
-              if n != 1: raise SystemExit(f'formatted mapping not found: {n}')
+              old = '    rehabilitationZone: data.rehabilitation_zone,\n'
+              new = old + '    rehabilitationOtherDetail: data.rehabilitation_other_detail,\n'
+              if old not in s:
+                  raise SystemExit('formatted mapping marker not found')
+              s = s.replace(old, new, 1)
 
           if '<span>Zone de réfection</span>' not in s:
               marker = '''          <div className="os-detail-summary">\n\n          <div className="os-detail-badge">\n            <span>Statut</span>'''
               block = '''          <div className="os-detail-summary">\n\n          <div className="os-detail-badge">\n            <span>Zone de réfection</span>\n            <strong>{os.rehabilitationZone || "—"}</strong>\n          </div>\n\n          {os.rehabilitationZone === "Autre" && os.rehabilitationOtherDetail && (\n            <div className="os-detail-badge">\n              <span>Précision</span>\n              <strong>{os.rehabilitationOtherDetail}</strong>\n            </div>\n          )}\n\n          {os.rehabilitationZone === "Chaussée + trottoir" && (\n            <>\n              <div className="os-detail-badge">\n                <span>Chaussée</span>\n                <strong>{os.roadSurface != null ? `${os.roadSurface} m²` : "—"}</strong>\n              </div>\n              <div className="os-detail-badge">\n                <span>Trottoir</span>\n                <strong>{os.sidewalkSurface != null ? `${os.sidewalkSurface} m²` : "—"}</strong>\n              </div>\n            </>\n          )}\n\n          {os.rehabilitationZone === "Chaussée" && (\n            <div className="os-detail-badge">\n              <span>Surface chaussée</span>\n              <strong>{os.roadSurface != null ? `${os.roadSurface} m²` : "—"}</strong>\n            </div>\n          )}\n\n          {os.rehabilitationZone === "Trottoir" && (\n            <div className="os-detail-badge">\n              <span>Surface trottoir</span>\n              <strong>{os.sidewalkSurface != null ? `${os.sidewalkSurface} m²` : "—"}</strong>\n            </div>\n          )}\n\n          <div className="os-detail-badge">\n            <span>Statut</span>'''
-              if marker not in s: raise SystemExit('summary marker not found')
+              if marker not in s:
+                  raise SystemExit('summary marker not found')
               s = s.replace(marker, block, 1)
 
           p.write_text(s, encoding='utf-8')
           PY
-      - name: Commit patch and remove workflow
+      - name: Commit patch
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add src/main.jsx
           git diff --cached --quiet || git commit -m "Display rehabilitation zone in OS summary"
-          git rm -f .github/workflows/patch-zone-display.yml
-          git commit -m "Remove temporary zone display workflow"
           git push
