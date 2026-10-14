@@ -610,7 +610,7 @@ const [newOSSaving, setNewOSSaving] = useState(false);
         />
 
         <label>Matériau *</label>
-        <select
+      
         <div className="material-section">
   <label>Matériau *</label>
 
@@ -641,7 +641,7 @@ const [newOSSaving, setNewOSSaving] = useState(false);
     ))}
   </div>
 </div>
-        </select>
+       
 
         <label>Détail du matériau</label>
         <input
