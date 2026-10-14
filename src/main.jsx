@@ -1565,22 +1565,64 @@ const [attachmentsLoading, setAttachmentsLoading] = useState(false);
 
           {/* PHOTOS */}
 
-          {activeTab === "photos" && (
-            <div className="os-section">
+         {/* PHOTOS */}
 
-              <h3>Photos</h3>
+{activeTab === "photos" && (
+  <div className="os-section">
 
-              <div className="os-empty-state">
-                📷
-                <strong>Aucune photo affichée</strong>
-                <span>
-                  Les photos enregistrées sur cet OS
-                  seront affichées ici.
-                </span>
+    <h3>Photos</h3>
+
+    {attachmentsLoading ? (
+      <div className="os-empty-state">
+        📷
+        <strong>Chargement des photos...</strong>
+      </div>
+    ) : attachments.filter(
+        (file) => file.mime_type?.startsWith("image/")
+      ).length === 0 ? (
+      <div className="os-empty-state">
+        📷
+        <strong>Aucune photo</strong>
+        <span>
+          Aucune photo n'est actuellement associée à cet OS.
+        </span>
+      </div>
+    ) : (
+      <div className="os-photo-grid">
+
+        {attachments
+          .filter(
+            (file) =>
+              file.mime_type?.startsWith("image/") &&
+              file.url
+          )
+          .map((file) => (
+            <div
+              className="os-photo-card"
+              key={file.id}
+            >
+              <a
+                href={file.url}
+                target="_blank"
+                rel="noreferrer"
+              >
+                <img
+                  src={file.url}
+                  alt={file.file_name}
+                />
+              </a>
+
+              <div className="os-photo-name">
+                {file.file_name}
               </div>
-
             </div>
-          )}
+          ))}
+
+      </div>
+    )}
+
+  </div>
+)}
 
           {/* DOCUMENTS */}
 
