@@ -1046,3 +1046,71 @@ button {
     grid-template-columns: repeat(2, 1fr);
   }
 }
+.work-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 12px;
+  margin-top: 12px;
+}
+
+.work-grid label {
+  display: block;
+  margin-bottom: 6px;
+  font-weight: 600;
+  font-size: 13px;
+}
+
+.work-grid input,
+.work-grid select,
+.os-work-card textarea {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 11px 12px;
+  border: 1px solid #d5dce5;
+  border-radius: 9px;
+  background: #f8fafc;
+  font-size: 14px;
+}
+
+.work-summary {
+  margin-bottom: 15px;
+}
+
+.work-result {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-top: 12px;
+  padding: 14px;
+  border-radius: 10px;
+  background: #eef6ff;
+}
+
+.work-result strong {
+  font-size: 18px;
+}
+
+.os-work-card h4 {
+  margin-top: 20px;
+  margin-bottom: 10px;
+}
+
+.work-actions {
+  margin-top: 20px;
+  display: flex;
+  justify-content: flex-end;
+}
+
+.work-actions button {
+  min-height: 44px;
+}
+
+@media (max-width: 600px) {
+  .work-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .work-actions button {
+    width: 100%;
+  }
+}
