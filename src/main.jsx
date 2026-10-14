@@ -195,7 +195,7 @@ function App() {
   async function handleLogout() {
     await supabase.auth.signOut();
   }
-  async function handleCreateOS(event) {
+ async function handleCreateOS(event) {
   event.preventDefault();
 
   setNewOSError("");
@@ -224,6 +224,10 @@ function App() {
     return;
   }
 
+  /* =========================
+     1. CRÉATION DE L'OS
+     ========================= */
+
   const { data, error } = await supabase
     .from("work_orders")
     .insert({
@@ -244,34 +248,121 @@ function App() {
 
   if (error) {
     console.error("Erreur création OS :", error);
+
     setNewOSError(
       "Impossible de créer l'OS : " + error.message
     );
+
     setNewOSSaving(false);
     return;
   }
+
+  /* =========================
+     2. UPLOAD DES PHOTOS/DOCUMENTS
+     ========================= */
+
+  if (newOSFiles.length > 0) {
+    for (const file of newOSFiles) {
+      try {
+        const safeFileName = file.name
+          .normalize("NFD")
+          .replace(/[\u0300-\u036f]/g, "")
+          .replace(/[^a-zA-Z0-9._-]/g, "_");
+
+        const storagePath =
+          `work-orders/${data.id}/${Date.now()}-${safeFileName}`;
+
+        const { error: uploadError } = await supabase.storage
+          .from("setom-files")
+          .upload(storagePath, file, {
+            cacheControl: "3600",
+            upsert: false,
+          });
+
+        if (uploadError) {
+          throw uploadError;
+        }
+
+        /* =========================
+           3. ENREGISTREMENT DU FICHIER
+           DANS ATTACHMENTS
+           ========================= */
+
+        const category = file.type.startsWith("image/")
+          ? "photo"
+          : "document";
+
+        const { error: attachmentError } = await supabase
+          .from("attachments")
+          .insert({
+            work_order_id: data.id,
+            category,
+            file_name: file.name,
+            storage_path: storagePath,
+            mime_type: file.type || null,
+            captured_at: new Date().toISOString(),
+            created_by: session.user.id,
+          });
+
+        if (attachmentError) {
+          throw attachmentError;
+        }
+      } catch (fileError) {
+        console.error(
+          "Erreur upload fichier :",
+          file.name,
+          fileError
+        );
+
+        setNewOSError(
+          `L'OS a été créé, mais le fichier "${file.name}" n'a pas pu être enregistré.`
+        );
+
+        setNewOSSaving(false);
+        return;
+      }
+    }
+  }
+
+  /* =========================
+     4. AJOUT DE L'OS À L'INTERFACE
+     ========================= */
 
   const formattedOS = {
     id: `OS-${new Date(data.creation_date).getFullYear()}-${String(
       data.os_number
     ).padStart(5, "0")}`,
+
     address: `${data.address || ""}${
       data.city ? `, ${data.city}` : ""
     }`,
+
     work: data.material_detail || "Intervention",
+
     day: null,
+
     team: "Non affectée",
+
     trade: data.material_detail || "Intervention",
+
     sector: data.city || "",
+
     status: data.status || "À planifier",
+
     quantity: data.planned_surface_m2
       ? `${data.planned_surface_m2} m²`
       : "",
+
     intervention: data.material_detail || "Intervention",
+
     deadline: data.deadline_date,
   };
 
   setOsList((current) => [formattedOS, ...current]);
+
+  /* =========================
+     5. FERMETURE / RESET DU FORMULAIRE
+     ========================= */
 
   setShowNewOS(false);
 
@@ -282,6 +373,7 @@ function App() {
   setNewOSMaterialDetail("");
   setNewOSSurface("");
   setNewOSParticularities("");
+  setNewOSFiles([]);
   setNewOSError("");
   setNewOSSaving(false);
 }
