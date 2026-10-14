@@ -655,7 +655,64 @@ const [newOSSaving, setNewOSSaving] = useState(false);
           placeholder="Informations particulières concernant l'intervention..."
           rows="4"
         />
+<div className="attachments-section">
+  <label>📎 Photos et documents</label>
 
+  <div className="attachments-buttons">
+    <label className="attachment-button">
+      📷 Ajouter une photo
+      <input
+        type="file"
+        accept="image/*"
+        multiple
+        capture="environment"
+        onChange={(e) => {
+          const files = Array.from(e.target.files || []);
+          setNewOSFiles((current) => [...current, ...files]);
+          e.target.value = "";
+        }}
+      />
+    </label>
+
+    <label className="attachment-button">
+      📄 Ajouter un document
+      <input
+        type="file"
+        accept=".pdf,.jpg,.jpeg,.png,.doc,.docx,.xls,.xlsx"
+        multiple
+        onChange={(e) => {
+          const files = Array.from(e.target.files || []);
+          setNewOSFiles((current) => [...current, ...files]);
+          e.target.value = "";
+        }}
+      />
+    </label>
+  </div>
+
+  {newOSFiles.length > 0 && (
+    <div className="attachments-list">
+      {newOSFiles.map((file, index) => (
+        <div className="attachment-item" key={`${file.name}-${index}`}>
+          <span>
+            {file.type.startsWith("image/") ? "🖼️" : "📄"}{" "}
+            {file.name}
+          </span>
+
+          <button
+            type="button"
+            onClick={() => {
+              setNewOSFiles((current) =>
+                current.filter((_, i) => i !== index)
+              );
+            }}
+          >
+            ×
+          </button>
+        </div>
+      ))}
+    </div>
+  )}
+</div>
         {newOSError && (
           <p style={{ color: "red", marginTop: "10px" }}>
             {newOSError}
