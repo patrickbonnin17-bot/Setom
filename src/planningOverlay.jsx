@@ -195,10 +195,6 @@ function Planner({ onClose, initialView = "mois" }) {
         }
         if (!selected) throw new Error("Impossible de trouver une place dans les 120 prochains jours pour " + fullOsNumber(order) + ". Vérifiez la capacité des équipes.");
       }
-      const lateAssignments = assignments.filter((assignment) => {
-        const order = queue.find((item) => item.id === assignment.work_order_id);
-        return order?.deadline_date && assignment.planned_date > order.deadline_date;
-      });
       setPlanningPreview({
         assignments,
         queue,
@@ -226,7 +222,7 @@ function Planner({ onClose, initialView = "mois" }) {
     if (!isOffice) { setError("Votre profil ne permet pas de valider le planning."); return; }
     const missingTeam = planningPreview.assignments.some((assignment) => !assignment.team_id || !teams.some((team) => team.id === assignment.team_id));
     if (missingTeam) { alert("Affecte une équipe à chaque OS de la proposition avant de valider."); return; }
-    const invalidDate = planningPreview.assignments.some((assignment) => !/^\\d{4}-\\d{2}-\\d{2}$/.test(assignment.planned_date || ""));
+    const invalidDate = planningPreview.assignments.some((assignment) => !/^\d{4}-\d{2}-\d{2}$/.test(assignment.planned_date || ""));
     if (invalidDate) { alert("Choisis une date valide pour chaque OS avant de valider."); return; }
     const weekendAssignments = planningPreview.assignments.filter((assignment) => {
       const day = new Date(assignment.planned_date + "T12:00:00").getDay();
