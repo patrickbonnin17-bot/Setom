@@ -16,7 +16,7 @@ const days = [
 ];
 
 const statuses = [
-  "Nouveau OS", "Planifié", "Travaux réalisés", "À vérifier", "Validé", "Réserve", "Payé", "Archivé", "En erreur", "Doublon", "Annulé",
+  "Nouveau OS", "Planifié", "En attente", "Travaux réalisés", "À vérifier", "Validé", "Réserve", "Payé", "Archivé", "En erreur", "Doublon", "Annulé",
 ];
 
 const initialOS = [];
@@ -837,7 +837,7 @@ function App() {
 function OSCard({ os, onOpen }) {
   const displayStatus = os.constatStatus === "Validé avec réserve" && !os.reserveResolvedAt ? "Réserve" : os.status;
   const statusColors = getOSStatusColors(displayStatus);
-  return <div className="os" style={{ borderLeftColor: statusColors.accent }}><div className="os-top"><div><div className="os-number">{os.id}</div><div className="os-info">📍 {os.address}</div></div><span className="badge os-status-badge" style={getOSStatusBadgeStyle(displayStatus)}>{os.constatStatus === "Validé avec réserve" && !os.reserveResolvedAt ? "Réserve" : os.status}</span></div>{os.constatStatus === "Validé avec réserve" && !os.reserveResolvedAt && os.reserveReason && <div className="os-info" style={{ color: "#9a3412" }}>🚧 Motif de réserve : {os.reserveReason}</div>}<div className="os-info">🔧 {os.work}<br/>🧭 Secteur : {os.sector || "Non classé"}<br/>👷 {os.team}<br/>📅 {os.day||"Non planifié"}<br/>📐 {os.quantity}</div><div className="os-actions"><button className="primary" onClick={onOpen}>Ouvrir l'OS</button><button className="secondary" onClick={()=>window.open(`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(os.address)}`,"_blank")}>🧭 Naviguer</button></div></div>;
+  return <div className="os" style={{ borderLeftColor: statusColors.accent }}><div className="os-top"><div><div className="os-number">{os.id}</div><div className="os-info">📍 {os.address}</div></div><span className="badge os-status-badge" style={getOSStatusBadgeStyle(displayStatus)}>{os.constatStatus === "Validé avec réserve" && !os.reserveResolvedAt ? "Réserve" : os.status}</span></div>{os.constatStatus === "Validé avec réserve" && !os.reserveResolvedAt && os.reserveReason && <div className="os-info" style={{ color: "#9a3412" }}>🚧 Motif de réserve : {os.reserveReason}</div>}{os.problemSuspended && os.suspensionReason && <div className="os-info" style={{ color: os.status === "En attente" ? "#475569" : "#b42318" }}>{os.status === "En attente" ? "⏸️ En attente : " : "⚠️ En erreur : "}{os.suspensionReason}</div>}<div className="os-info">🔧 {os.work}<br/>🧭 Secteur : {os.sector || "Non classé"}<br/>👷 {os.team}<br/>📅 {os.day||"Non planifié"}<br/>📐 {os.quantity}</div><div className="os-actions"><button className="primary" onClick={onOpen}>Ouvrir l'OS</button><button className="secondary" onClick={()=>window.open(`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(os.address)}`,"_blank")}>🧭 Naviguer</button></div></div>;
 }
 
 function OSModal({ os, onClose, onUpdate, profile }) {
@@ -1061,9 +1061,9 @@ function OSModal({ os, onClose, onUpdate, profile }) {
     marquageSurface, workComment
   ]);
 
-  async function saveIssueReport() {
+  async function saveIssueReport(targetStatus = "En erreur") {
     if (!os?.dbId || issueSaving) return;
-    if (!["Nouveau OS", "Planifié", "En erreur"].includes(os.status)) {
+    if (!["Nouveau OS", "Planifié", "En attente", "En erreur"].includes(os.status)) {
       alert("Le signalement est réservé aux OS avant transmission des travaux réalisés.");
       return;
     }
@@ -1071,44 +1071,51 @@ function OSModal({ os, onClose, onUpdate, profile }) {
       alert("Sélectionnez le motif du problème avant d'enregistrer le signalement.");
       return;
     }
+    const nextIssueStatus = ["En attente", "En erreur"].includes(targetStatus) ? targetStatus : "En erreur";
     const { data: authData, error: authError } = await supabase.auth.getUser();
     const user = authData?.user;
     if (authError || !user) { alert("Connexion requise pour signaler un problème."); return; }
     const now = new Date().toISOString();
-    const alreadyInError = os.status === "En erreur";
+    const alreadySuspended = ["En attente", "En erreur"].includes(os.status);
     setIssueSaving(true);
     try {
       const updates = {
+        status: nextIssueStatus,
         problem_suspended: true,
         suspension_reason: issueReason.trim(),
         suspension_comment: issueComment.trim() || null,
         is_night: !!issueNightProposal,
-        updated_by: user.id,
-        ...(alreadyInError ? {} : { status: "En erreur", suspension_started_at: now, suspension_restarted_at: null })
+        suspension_started_at: alreadySuspended ? (os.suspensionStartedAt || now) : now,
+        suspension_restarted_at: null,
+        updated_by: user.id
       };
       const { error: updateError } = await supabase.from("work_orders").update(updates).eq("id", os.dbId);
       if (updateError) throw updateError;
       const changes = {
-        status: "En erreur",
+        status: nextIssueStatus,
         problemSuspended: true,
         suspensionReason: issueReason.trim(),
         suspensionComment: issueComment.trim(),
-        suspensionStartedAt: alreadyInError ? (os.suspensionStartedAt || now) : now,
+        suspensionStartedAt: alreadySuspended ? (os.suspensionStartedAt || now) : now,
         suspensionRestartedAt: null,
         isNight: !!issueNightProposal
       };
-      setStatus("En erreur");
+      setStatus(nextIssueStatus);
       onUpdate(os.id, changes);
       window.dispatchEvent(new Event("setom:planning-updated"));
-      alert(alreadyInError ? "✅ Signalement mis à jour." : "✅ OS signalé en erreur. Sa date et son équipe sont conservées pour la reprise.");
+      alert(alreadySuspended
+        ? "✅ Signalement mis à jour."
+        : nextIssueStatus === "En attente"
+          ? "✅ OS mis en attente. Il est exclu du planning automatique jusqu'à sa réactivation."
+          : "✅ OS signalé en erreur. Sa date et son équipe sont conservées pour la reprise.");
     } catch (error) {
       console.error("Erreur d'enregistrement du signalement :", error);
-      alert("Impossible d'enregistrer le signalement :\n\n" + (error?.message || "Erreur inconnue"));
+      alert("Impossible d'enregistrer le signalement :\\n\\n" + (error?.message || "Erreur inconnue"));
     } finally { setIssueSaving(false); }
   }
 
   async function reactivateIssueOrder() {
-    if (!os?.dbId || os.status !== "En erreur" || issueSaving) return;
+    if (!os?.dbId || !["En erreur", "En attente"].includes(os.status) || issueSaving) return;
     const { data: authData, error: authError } = await supabase.auth.getUser();
     const user = authData?.user;
     if (authError || !user) { alert("Connexion requise pour réactiver l'OS."); return; }
@@ -1127,10 +1134,10 @@ function OSModal({ os, onClose, onUpdate, profile }) {
       setStatus(nextStatus);
       onUpdate(os.id, { status: nextStatus, problemSuspended: false, suspensionRestartedAt: now });
       window.dispatchEvent(new Event("setom:planning-updated"));
-      alert("✅ OS réactivé. Le motif reste conservé dans son historique.");
+      alert("✅ OS réactivé. Le motif reste conservé dans son historique. S'il est en retard, il sera prioritaire dans la prochaine proposition automatique.");
     } catch (error) {
       console.error("Erreur de réactivation OS :", error);
-      alert("Impossible de réactiver l'OS :\n\n" + (error?.message || "Erreur inconnue"));
+      alert("Impossible de réactiver l'OS :\\n\\n" + (error?.message || "Erreur inconnue"));
     } finally { setIssueSaving(false); }
   }
 
@@ -1138,7 +1145,7 @@ function OSModal({ os, onClose, onUpdate, profile }) {
     event.preventDefault();
     setOsEditError("");
     if (!os?.dbId || osEditSaving) return;
-    if (!["Nouveau OS", "Planifié", "En erreur"].includes(os.status)) {
+    if (!["Nouveau OS", "Planifié", "En attente", "En erreur"].includes(os.status)) {
       setOsEditError("Les informations de l'OS sont verrouillées après la transmission des travaux. Utilisez le constat pour les ajustements de facturation.");
       return;
     }
@@ -1511,7 +1518,7 @@ async function markConstatPaid() {
       {activeTab==="resume"&&<div className="os-section"><h3>Informations générales</h3><div className="os-info-grid"><div><span>Ordre de service</span><strong>{os.id}</strong></div><div><span>Adresse</span><strong>{os.address||"—"}</strong></div><div><span>Matériau</span><strong>{os.work||"—"}</strong></div><div><span>Métier</span><strong>{os.trade||"—"}</strong></div><div><span>Secteur</span><strong>{os.sector||"—"}</strong></div><div><span>Quantité prévue</span><strong>{os.quantity||"—"}</strong></div><div><span>Équipe</span><strong>{os.team||"Non affectée"}</strong></div><div><span>Jour prévu</span><strong>{os.day||"Non planifié"}</strong></div></div><div className="os-status-box"><span>Échéance</span><strong>{os.deadline?new Date(os.deadline).toLocaleDateString("fr-FR"):"—"}</strong></div><div className="card" style={{ marginTop: 18, border: "1px solid #d9e0e7" }}>
     <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
       <div><strong>📝 Informations de l'ordre de service</strong><div style={{ color: "#667085", fontSize: 12, marginTop: 4 }}>Modifier l'adresse, le matériau, la surface et l'échéance sans changer le numéro OS.</div></div>
-      {canManagePlanning && ["Nouveau OS", "Planifié", "En erreur"].includes(os.status) && <button type="button" className="secondary" onClick={() => { setOsEditError(""); setOsEditMode((value) => !value); }} disabled={osEditLoading || osEditSaving}>{osEditMode ? "Fermer" : "✏️ Modifier l'OS"}</button>}
+      {canManagePlanning && ["Nouveau OS", "Planifié", "En attente", "En erreur"].includes(os.status) && <button type="button" className="secondary" onClick={() => { setOsEditError(""); setOsEditMode((value) => !value); }} disabled={osEditLoading || osEditSaving}>{osEditMode ? "Fermer" : "✏️ Modifier l'OS"}</button>}
     </div>
     {osEditLoading && <p style={{ fontSize: 13, color: "#667085" }}>Chargement des informations…</p>}
     {osEditError && <div style={{ color: "#b42318", marginTop: 10, fontSize: 13 }}>{osEditError}</div>}
@@ -1527,7 +1534,7 @@ async function markConstatPaid() {
       <div style={{ gridColumn: "1 / -1" }}><label htmlFor="os-edit-particularities">Particularités / consignes</label><textarea id="os-edit-particularities" rows={3} value={osEditDraft.particularities} onChange={(e) => setOsEditDraft((current) => ({ ...current, particularities: e.target.value }))} style={{ width: "100%", boxSizing: "border-box" }}/></div>
       <div style={{ gridColumn: "1 / -1", display: "flex", gap: 8, flexWrap: "wrap" }}><button className="primary" type="submit" disabled={osEditSaving}>{osEditSaving ? "Enregistrement…" : "💾 Enregistrer l'OS"}</button><button className="secondary" type="button" disabled={osEditSaving} onClick={() => { setOsEditMode(false); setOsEditError(""); }}>Annuler</button></div>
     </form>}
-    {!["Nouveau OS", "Planifié", "En erreur"].includes(os.status) && <p style={{ fontSize: 12, color: "#667085", marginBottom: 0 }}>Les champs de l'OS sont verrouillés après transmission des travaux ; le constat dispose de ses propres outils de correction.</p>}
+    {!["Nouveau OS", "Planifié", "En attente", "En erreur"].includes(os.status) && <p style={{ fontSize: 12, color: "#667085", marginBottom: 0 }}>Les champs de l'OS sont verrouillés après transmission des travaux ; le constat dispose de ses propres outils de correction.</p>}
   </div><div className="os-issue-panel" style={{ marginTop: 18, padding: 16, border: "1px solid #d9e0e7", borderRadius: 12, background: "#fbfcfe" }}>
   <h3 style={{ marginTop: 0 }}>⚠️ Aléas, erreurs et travail de nuit</h3>
   <p style={{ color: "#667085", fontSize: 13 }}>Signalez une contrainte avant la transmission des travaux. La date et l'équipe prévues sont conservées pendant la suspension.</p>
@@ -1537,9 +1544,9 @@ async function markConstatPaid() {
     {os.suspensionRestartedAt && <div style={{ fontSize: 12, marginTop: 4 }}>Repris le {new Date(os.suspensionRestartedAt).toLocaleDateString("fr-FR")}</div>}
   </div>}
   <label style={{ display: "block", fontWeight: 600, marginBottom: 6 }}>Motif du problème</label>
-  <select value={issueReason} onChange={(e) => setIssueReason(e.target.value)} disabled={issueSaving || !["Nouveau OS", "Planifié", "En erreur"].includes(os.status)} style={{ width: "100%", padding: 10, border: "1px solid #d0d5dd", borderRadius: 8, marginBottom: 12, boxSizing: "border-box" }}>
+  <select value={issueReason} onChange={(e) => setIssueReason(e.target.value)} disabled={issueSaving || !["Nouveau OS", "Planifié", "En attente", "En erreur"].includes(os.status)} style={{ width: "100%", padding: 10, border: "1px solid #d0d5dd", borderRadius: 8, marginBottom: 12, boxSizing: "border-box" }}>
     <option value="">Choisir un motif…</option>
-    <option value="Voirie non prête">Voirie non prête</option>
+    <option value="Travaux préparatoires non terminés">Travaux préparatoires non terminés</option><option value="Intervention Eau de Toulouse non terminée">Intervention Eau de Toulouse non terminée</option><option value="Signalisation à mettre en place">Signalisation à mettre en place</option><option value="Accès / stationnement impossible">Accès / stationnement impossible</option><option value="Voirie non prête">Voirie non prête</option>
     <option value="Accès impossible">Accès impossible</option>
     <option value="Réseaux ou intervention préalable">Réseaux ou intervention préalable</option>
     <option value="Travaux techniquement impossibles">Travaux techniquement impossibles</option>
@@ -1547,14 +1554,19 @@ async function markConstatPaid() {
     <option value="Autre">Autre</option>
   </select>
   <label style={{ display: "block", fontWeight: 600, marginBottom: 6 }}>Précisions / actions nécessaires</label>
-  <textarea value={issueComment} onChange={(e) => setIssueComment(e.target.value)} disabled={issueSaving || !["Nouveau OS", "Planifié", "En erreur"].includes(os.status)} placeholder="Ex. intervention préalable à terminer, accès bloqué, contact à rappeler…" rows={3} style={{ width: "100%", padding: 10, border: "1px solid #d0d5dd", borderRadius: 8, marginBottom: 12, boxSizing: "border-box", font: "inherit" }} />
+  <textarea value={issueComment} onChange={(e) => setIssueComment(e.target.value)} disabled={issueSaving || !["Nouveau OS", "Planifié", "En attente", "En erreur"].includes(os.status)} placeholder="Ex. intervention préalable à terminer, accès bloqué, contact à rappeler…" rows={3} style={{ width: "100%", padding: 10, border: "1px solid #d0d5dd", borderRadius: 8, marginBottom: 12, boxSizing: "border-box", font: "inherit" }} />
   <label style={{ display: "flex", alignItems: "flex-start", gap: 8, fontWeight: 500, marginBottom: 14 }}>
-    <input type="checkbox" checked={issueNightProposal} onChange={(e) => setIssueNightProposal(e.target.checked)} disabled={issueSaving || !["Nouveau OS", "Planifié", "En erreur"].includes(os.status)} style={{ marginTop: 3 }} />
+    <input type="checkbox" checked={issueNightProposal} onChange={(e) => setIssueNightProposal(e.target.checked)} disabled={issueSaving || !["Nouveau OS", "Planifié", "En attente", "En erreur"].includes(os.status)} style={{ marginTop: 3 }} />
     <span>Proposer une intervention de nuit si les travaux sont impossibles en journée.</span>
   </label>
-  {["Nouveau OS", "Planifié", "En erreur"].includes(os.status) ? <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
-    <button type="button" className="primary" onClick={saveIssueReport} disabled={issueSaving}>{issueSaving ? "Enregistrement…" : os.status === "En erreur" ? "Enregistrer le signalement" : "Signaler l'OS en erreur"}</button>
-    {os.status === "En erreur" && <button type="button" className="secondary" onClick={reactivateIssueOrder} disabled={issueSaving}>Réactiver l'OS</button>}
+  {["Nouveau OS", "Planifié", "En attente", "En erreur"].includes(os.status) ? <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
+    {["En attente", "En erreur"].includes(os.status) ? <>
+      <button type="button" className="primary" onClick={() => saveIssueReport(os.status)} disabled={issueSaving}>{issueSaving ? "Enregistrement…" : "Enregistrer le signalement"}</button>
+      <button type="button" className="secondary" onClick={reactivateIssueOrder} disabled={issueSaving}>↻ Remettre en planification</button>
+    </> : <>
+      <button type="button" className="secondary" onClick={() => saveIssueReport("En attente")} disabled={issueSaving}>{issueSaving ? "Enregistrement…" : "⏸️ Mettre en attente"}</button>
+      <button type="button" className="primary" onClick={() => saveIssueReport("En erreur")} disabled={issueSaving}>{issueSaving ? "Enregistrement…" : "🚨 Signaler l'OS en erreur"}</button>
+    </>}
   </div> : <p style={{ fontSize: 12, color: "#667085", marginBottom: 0 }}>Le signalement est verrouillé après transmission des travaux. Le constat suit son propre circuit de validation.</p>}
 </div></div>}
       {activeTab==="travaux"&&<div className="os-section"><h3>Travaux réalisés</h3><fieldset disabled={!canEditWork} style={{ border: 0, padding: 0, margin: 0, minWidth: 0 }}><div className="os-work-card"><div className="work-summary"><strong>{os.intervention||os.work||"Intervention"}</strong><p>Quantité prévue : <strong>{os.quantity||"Non renseignée"}</strong></p><p>Matériau : <strong>{os.work||"Non renseigné"}</strong></p></div><hr/><h4>Surface réellement réalisée</h4>
