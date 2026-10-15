@@ -1,86 +1,77 @@
-// Dashboard cards: open the OS list filtered to the OS represented by the clicked counter.
-// This stays isolated from the main workflow so dashboard navigation cannot alter OS data.
+// Dashboard counters: navigate to the OS concerned by the clicked counter.
+// This is intentionally isolated from the workflow/data layer: it only changes the OS list view.
 (function installDashboardNavigation() {
   const filters = {
-    "OS actifs": "__ACTIVE__",
-    "À planifier": "À planifier",
-    "Travaux en cours": "Travaux en cours",
-    "À facturer": "__BILLING__",
-    "Validation": "__VALIDATION__",
-    "Réserves": "__RESERVES__",
-    "OS en erreur": "En erreur",
+    "OS actifs": { type: "statuses", statuses: ["Nouveau", "À planifier", "Planifié", "En travaux", "Travaux en cours", "En erreur", "Travaux réalisés", "Constat à vérifier", "Travaux effectués", "Constat de facturation", "En attente de validation", "Validé", "Validé avec réserve", "Réserve", "Correction à réaliser", "Payé"] },
+    "À planifier": { type: "statuses", statuses: ["À planifier"] },
+    "Travaux en cours": { type: "statuses", statuses: ["En travaux", "Travaux en cours", "Travaux réalisés"] },
+    "À facturer": { type: "statuses", statuses: ["Travaux effectués", "Constat de facturation"] },
+    "Validation": { type: "statuses", statuses: ["En attente de validation", "Constat à vérifier", "Constat validé"] },
+    "Réserves": { type: "reserve" },
+    "OS en erreur": { type: "statuses", statuses: ["En erreur"] },
   };
 
+  let activeFilter = null;
+  let observer = null;
+
   function getCardLabel(card) {
-    const first = card?.querySelector("div");
-    return String(first?.textContent || "").trim();
+    return String(card?.querySelector(":scope > div:first-child")?.textContent || "").trim();
   }
 
-  function selectStatus(value) {
-    const selects = Array.from(document.querySelectorAll("select"));
-    const statusSelect = selects.find((select) => Array.from(select.options).some((option) => option.value === "À planifier"));
-    if (!statusSelect) return false;
+  function getOsCards() {
+    return Array.from(document.querySelectorAll(".os-list .os"));
+  }
 
-    const optionExists = Array.from(statusSelect.options).some((option) => option.value === value);
-    if (!optionExists) return false;
-    statusSelect.value = value;
-    statusSelect.dispatchEvent(new Event("change", { bubbles: true }));
+  function getBadge(card) {
+    return String(card.querySelector(".badge")?.textContent || "").trim();
+  }
+
+  function isCardMatch(card, filter) {
+    if (!filter) return true;
+    const badge = getBadge(card);
+    if (filter.type === "statuses") return filter.statuses.includes(badge);
+    if (filter.type === "reserve") return badge === "Réserve à lever" || badge === "Réserve" || badge === "Correction à réaliser";
     return true;
   }
 
-  function openOSFilter(label) {
+  function applyOsFilter() {
+    if (!activeFilter) return;
+    const cards = getOsCards();
+    if (!cards.length) return;
+    cards.forEach((card) => {
+      card.style.display = isCardMatch(card, activeFilter) ? "" : "none";
+    });
+  }
+
+  function openOSFilter(filter) {
+    activeFilter = filter;
     const navButton = Array.from(document.querySelectorAll("nav button"))
-      .find((button) => String(button.textContent || "").includes("Ordres") || String(button.textContent || "").includes("OS"));
+      .find((button) => String(button.textContent || "").includes("📋 OS"));
     if (!navButton) return;
     navButton.click();
-
-    window.setTimeout(() => {
-      const selects = Array.from(document.querySelectorAll("select"));
-      const statusSelect = selects.find((select) => Array.from(select.options).some((option) => option.value === "À planifier"));
-      if (!statusSelect) return;
-
-      if (label === "__ACTIVE__") {
-        // Keep the complete active list visible.
-        const tous = Array.from(statusSelect.options).find((option) => option.value === "Tous");
-        if (tous) {
-          statusSelect.value = "Tous";
-          statusSelect.dispatchEvent(new Event("change", { bubbles: true }));
-        }
-        return;
-      }
-
-      if (label === "__BILLING__") {
-        // Facturation can contain two workflow statuses; use the search box to avoid hiding one of them.
-        const search = document.querySelector('input[placeholder*="Rechercher OS"]');
-        if (search) {
-          search.value = "";
-          search.dispatchEvent(new Event("input", { bubbles: true }));
-        }
-        return;
-      }
-
-      if (label === "__VALIDATION__") {
-        // Validation is represented by the constat-validation workflow states.
-        // Keep the OS page open and let the user see the matching cards without changing the DB.
-        return;
-      }
-
-      if (label === "__RESERVES__") return;
-      selectStatus(label);
-    }, 80);
+    window.setTimeout(applyOsFilter, 80);
+    window.setTimeout(applyOsFilter, 250);
   }
 
   document.addEventListener("click", (event) => {
     const card = event.target.closest?.(".cards .card");
     if (!card) return;
     const label = getCardLabel(card);
-    if (!filters[label]) return;
+    const filter = filters[label];
+    if (!filter) return;
     event.preventDefault();
     event.stopPropagation();
-    openOSFilter(filters[label]);
+    openOSFilter(filter);
   }, true);
 
+  // React recreates the OS cards when the page/filter changes. Reapply the dashboard filter
+  // after each render without touching the underlying React state or database.
+  observer = new MutationObserver(() => {
+    if (activeFilter) window.requestAnimationFrame(applyOsFilter);
+  });
+  observer.observe(document.getElementById("root") || document.body, { childList: true, subtree: true });
+
   const style = document.createElement("style");
-  style.textContent = ".cards .card { cursor: pointer; } .cards .card:hover { transform: translateY(-1px); }";
+  style.textContent = ".cards .card { cursor: pointer; transition: transform .12s ease; } .cards .card:hover { transform: translateY(-1px); }";
   document.head.appendChild(style);
 })();
