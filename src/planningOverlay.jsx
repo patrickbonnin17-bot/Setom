@@ -70,7 +70,7 @@ function Planner({ onClose, initialView = "mois" }) {
     setRouteTeamId((current) => teamRows.some((team) => team.id === current) ? current : (teamRows[0]?.id || ""));
     setOrders((rows || []).map((r) => {
       const i = byWO.get(r.id);
-      return { ...r, osLabel, sector_name: sectorById.get(r.sector_id) || "Non classé", interventionId: i?.id || null, planned_date: i?.planned_date || null, planned_order: Number(i?.planned_order || 0), team_id: i?.team_id || null, team_name: byTeam.get(i?.team_id) || "Non affectée" };
+      return { ...r, osLabel, sector_name: sectorById.get(r.sector_id) || "Non classé", interventionId: i?.id || null, intervention_status: i?.status || null, planned_date: i?.planned_date || null, planned_order: Number(i?.planned_order || 0), team_id: i?.team_id || null, team_name: byTeam.get(i?.team_id) || "Non affectée" };
     }));
     setLoading(false);
   }
@@ -85,13 +85,14 @@ function Planner({ onClose, initialView = "mois" }) {
   }, [orders]);
 
   async function autoPlanUnplanned() {
+    const inconsistent = orders.filter((order) => STATUS_PLANIFIABLE.includes(order.status) && !order.planned_date && order.intervention_status && !["À planifier", "Planifié"].includes(order.intervention_status));
     const queue = orders
-      .filter((order) => STATUS_PLANIFIABLE.includes(order.status) && !order.planned_date)
+      .filter((order) => STATUS_PLANIFIABLE.includes(order.status) && !order.planned_date && (!order.intervention_status || ["À planifier", "Planifié"].includes(order.intervention_status)))
       .sort((a, b) => String(a.deadline_date || "9999-12-31").localeCompare(String(b.deadline_date || "9999-12-31")) || String(a.sector_name || "").localeCompare(String(b.sector_name || ""), "fr") || a.os_number - b.os_number);
-    if (!queue.length) { setError("Aucun OS à planifier automatiquement."); return; }
+    if (!queue.length) { setError(inconsistent.length ? inconsistent.length + " OS ont un statut d'intervention incohérent avec leur statut OS. Ils ont été laissés intacts : ouvrez-les et vérifiez leur historique avant de les replanifier." : "Aucun OS à planifier automatiquement."); return; }
     if (!teams.length) { setError("Aucune équipe active. Créez d'abord les équipes et, si besoin, leurs secteurs habituels dans l'onglet Équipes."); return; }
     const startingLabel = new Date(selectedDate + "T12:00:00").toLocaleDateString("fr-FR");
-    if (!window.confirm("Planifier automatiquement " + queue.length + " OS à partir du " + startingLabel + " ? Les OS déjà planifiés ne seront pas déplacés. Les journées sont réparties du lundi au vendredi selon les secteurs et les capacités des équipes.")) return;
+    if (!window.confirm("Planifier automatiquement " + queue.length + " OS à partir du " + startingLabel + " ? Les OS déjà planifiés ne seront pas déplacés. Les journées sont réparties du lundi au vendredi selon les secteurs et les capacités des équipes." + (inconsistent.length ? "\\n\\n" + inconsistent.length + " OS ayant un historique d'intervention incohérent seront ignorés pour préserver leurs données." : ""))) return;
     const { data: authData, error: authError } = await supabase.auth.getUser();
     const user = authData?.user;
     if (authError || !user) { setError("Connexion requise pour planifier automatiquement."); return; }
@@ -160,7 +161,7 @@ function Planner({ onClose, initialView = "mois" }) {
       if (Number(result?.planned_count) !== assignments.length) throw new Error("La base n'a pas confirmé la planification de tous les OS.");
       window.dispatchEvent(new Event("setom:planning-updated"));
       await load();
-      alert("✅ " + assignments.length + " OS planifiés. Les échéances, les secteurs et les capacités des équipes ont été pris en compte. Vérifiez la carte et le classeur avant l'envoi aux équipes.");
+      alert("✅ " + assignments.length + " OS planifiés. Les échéances, les secteurs et les capacités des équipes ont été pris en compte." + (inconsistent.length ? "\\n\\n" + inconsistent.length + " OS à statut incohérent ont été laissés intacts." : "") + "\\n\\nVérifiez la carte et le classeur avant l'envoi aux équipes.");
     } catch (autoError) {
       console.error("Erreur de planification automatique :", autoError);
       setError(autoError?.message || "Impossible d'appliquer la planification automatique.");
