@@ -123,6 +123,7 @@ function App() {
           sidewalkSurface: row.planned_sidewalk_surface_m2, actualRoadSurface: row.actual_road_surface_m2,
           actualSidewalkSurface: row.actual_sidewalk_surface_m2, actualOtherSurface: row.actual_other_surface_m2,
           deadline: row.deadline_date, isNight: !!row.is_night,
+          problemSuspended: !!row.problem_suspended, suspensionReason: row.suspension_reason || "", suspensionComment: row.suspension_comment || "", suspensionStartedAt: row.suspension_started_at || null, suspensionRestartedAt: row.suspension_restarted_at || null,
         };
       });
       if (!cancelled) setOsList(formattedOS);
@@ -178,7 +179,8 @@ function App() {
       rehabilitationZone: data.rehabilitation_zone, rehabilitationOtherDetail: data.rehabilitation_other_detail,
       roadSurface: data.planned_road_surface_m2, sidewalkSurface: data.planned_sidewalk_surface_m2,
       actualRoadSurface: data.actual_road_surface_m2, actualSidewalkSurface: data.actual_sidewalk_surface_m2, actualOtherSurface: data.actual_other_surface_m2,
-      deadline: data.deadline_date,
+      deadline: data.deadline_date, isNight: !!data.is_night, problemSuspended: !!data.problem_suspended,
+      suspensionReason: data.suspension_reason || "", suspensionComment: data.suspension_comment || "", suspensionStartedAt: data.suspension_started_at || null, suspensionRestartedAt: data.suspension_restarted_at || null,
     };
     setOsList((current) => [formattedOS, ...current]); setShowNewOS(false);
     setNewOSAddress(""); setNewOSPostalCode(""); setNewOSCity(""); setNewOSMaterial(""); setNewOSMaterialDetail(""); setNewOSSurface("");
@@ -197,7 +199,7 @@ function App() {
     setOsList((current) => current.map((os) => os.id === id ? { ...os, ...changes } : os));
     setSelectedOS((current) => current && current.id === id ? { ...current, ...changes } : current);
   }
-  const activeStatuses = new Set(["Nouveau", "À planifier", "Planifié", "En travaux", "Travaux en cours", "Travaux réalisés", "Constat à vérifier", "Constat validé", "Travaux effectués", "Constat de facturation", "En attente de validation", "Validé", "Validé avec réserve", "Réserve", "Correction à réaliser", "Payé"]);
+  const activeStatuses = new Set(["Nouveau", "À planifier", "Planifié", "En travaux", "Travaux en cours", "En erreur", "Travaux réalisés", "Constat à vérifier", "Constat validé", "Travaux effectués", "Constat de facturation", "En attente de validation", "Validé", "Validé avec réserve", "Réserve", "Correction à réaliser", "Payé"]);
   const currentWeekday = new Date().toLocaleDateString("fr-FR", { weekday: "long" });
   const currentDayName = currentWeekday.charAt(0).toUpperCase() + currentWeekday.slice(1);
   const stats = {
@@ -268,6 +270,16 @@ function OSModal({ os, onClose, onUpdate }) {
   const [circulationType, setCirculationType] = useState(""); const [circulationHours, setCirculationHours] = useState(""); const [marquageSurface, setMarquageSurface] = useState(""); const [workComment, setWorkComment] = useState("");
   const [constat, setConstat] = useState(null); const [constatLines, setConstatLines] = useState([]); const [constatLoading, setConstatLoading] = useState(false); const [constatEditMode, setConstatEditMode] = useState(false); const [editableConstatLines, setEditableConstatLines] = useState([]); const [constatEditObservations, setConstatEditObservations] = useState(""); const [constatSaving, setConstatSaving] = useState(false);
   const [previewAttachment, setPreviewAttachment] = useState(null);
+  const [issueReason, setIssueReason] = useState(os?.suspensionReason || "");
+  const [issueComment, setIssueComment] = useState(os?.suspensionComment || "");
+  const [issueNightProposal, setIssueNightProposal] = useState(!!os?.isNight);
+  const [issueSaving, setIssueSaving] = useState(false);
+
+  useEffect(() => {
+    setIssueReason(os?.suspensionReason || "");
+    setIssueComment(os?.suspensionComment || "");
+    setIssueNightProposal(!!os?.isNight);
+  }, [os?.dbId, os?.suspensionReason, os?.suspensionComment, os?.isNight]);
 
   useEffect(() => {
     if (!os?.dbId) return; let cancelled = false;
@@ -297,6 +309,79 @@ function OSModal({ os, onClose, onUpdate }) {
     }
     loadAttachments();
   }, [os?.dbId]);
+
+  async function saveIssueReport() {
+    if (!os?.dbId || issueSaving) return;
+    if (!["À planifier", "Planifié", "Travaux en cours", "En erreur"].includes(os.status)) {
+      alert("Le signalement est réservé aux OS avant transmission des travaux réalisés.");
+      return;
+    }
+    if (!issueReason.trim()) {
+      alert("Sélectionnez le motif du problème avant d'enregistrer le signalement.");
+      return;
+    }
+    const { data: authData, error: authError } = await supabase.auth.getUser();
+    const user = authData?.user;
+    if (authError || !user) { alert("Connexion requise pour signaler un problème."); return; }
+    const now = new Date().toISOString();
+    const alreadyInError = os.status === "En erreur";
+    setIssueSaving(true);
+    try {
+      const updates = {
+        problem_suspended: true,
+        suspension_reason: issueReason.trim(),
+        suspension_comment: issueComment.trim() || null,
+        is_night: !!issueNightProposal,
+        updated_by: user.id,
+        ...(alreadyInError ? {} : { status: "En erreur", suspension_started_at: now, suspension_restarted_at: null })
+      };
+      const { error: updateError } = await supabase.from("work_orders").update(updates).eq("id", os.dbId);
+      if (updateError) throw updateError;
+      const changes = {
+        status: "En erreur",
+        problemSuspended: true,
+        suspensionReason: issueReason.trim(),
+        suspensionComment: issueComment.trim(),
+        suspensionStartedAt: alreadyInError ? (os.suspensionStartedAt || now) : now,
+        suspensionRestartedAt: null,
+        isNight: !!issueNightProposal
+      };
+      setStatus("En erreur");
+      onUpdate(os.id, changes);
+      window.dispatchEvent(new Event("setom:planning-updated"));
+      alert(alreadyInError ? "✅ Signalement mis à jour." : "✅ OS signalé en erreur. Sa date et son équipe sont conservées pour la reprise.");
+    } catch (error) {
+      console.error("Erreur d'enregistrement du signalement :", error);
+      alert("Impossible d'enregistrer le signalement :\n\n" + (error?.message || "Erreur inconnue"));
+    } finally { setIssueSaving(false); }
+  }
+
+  async function reactivateIssueOrder() {
+    if (!os?.dbId || os.status !== "En erreur" || issueSaving) return;
+    const { data: authData, error: authError } = await supabase.auth.getUser();
+    const user = authData?.user;
+    if (authError || !user) { alert("Connexion requise pour réactiver l'OS."); return; }
+    const nextStatus = plannedDate ? "Planifié" : "À planifier";
+    if (!window.confirm("Réactiver cet OS et le remettre " + (plannedDate ? "à sa date planifiée" : "dans la file À planifier") + " ?")) return;
+    setIssueSaving(true);
+    try {
+      const now = new Date().toISOString();
+      const { error: updateError } = await supabase.from("work_orders").update({
+        status: nextStatus,
+        problem_suspended: false,
+        suspension_restarted_at: now,
+        updated_by: user.id
+      }).eq("id", os.dbId);
+      if (updateError) throw updateError;
+      setStatus(nextStatus);
+      onUpdate(os.id, { status: nextStatus, problemSuspended: false, suspensionRestartedAt: now });
+      window.dispatchEvent(new Event("setom:planning-updated"));
+      alert("✅ OS réactivé. Le motif reste conservé dans son historique.");
+    } catch (error) {
+      console.error("Erreur de réactivation OS :", error);
+      alert("Impossible de réactiver l'OS :\n\n" + (error?.message || "Erreur inconnue"));
+    } finally { setIssueSaving(false); }
+  }
 
   async function savePlanning() {
     if(!os?.dbId)return; setPlanningSaving(true);
@@ -413,7 +498,35 @@ function OSModal({ os, onClose, onUpdate }) {
     <div className="os-detail-summary"><div className="os-detail-badge"><span>Zone de réfection</span><strong>{os.rehabilitationZone||"—"}</strong></div>{os.rehabilitationZone==="Autre"&&os.rehabilitationOtherDetail&&<div className="os-detail-badge"><span>Précision</span><strong>{os.rehabilitationOtherDetail}</strong></div>}{os.rehabilitationZone==="Chaussée + trottoir"&&<><div className="os-detail-badge"><span>Chaussée</span><strong>{os.roadSurface!=null?`${os.roadSurface} m²`:"—"}</strong></div><div className="os-detail-badge"><span>Trottoir</span><strong>{os.sidewalkSurface!=null?`${os.sidewalkSurface} m²`:"—"}</strong></div></>}{os.rehabilitationZone==="Chaussée"&&<div className="os-detail-badge"><span>Surface chaussée</span><strong>{os.roadSurface!=null?`${os.roadSurface} m²`:"—"}</strong></div>}{os.rehabilitationZone==="Trottoir"&&<div className="os-detail-badge"><span>Surface trottoir</span><strong>{os.sidewalkSurface!=null?`${os.sidewalkSurface} m²`:"—"}</strong></div>}<div className="os-detail-badge"><span>Statut</span><strong>{os.status||"Nouveau"}</strong></div><div className="os-detail-badge"><span>Matériau</span><strong>{os.work||"—"}</strong></div><div className="os-detail-badge"><span>Surface</span><strong>{os.quantity||"—"}</strong></div><div className="os-detail-badge"><span>Équipe</span><strong>{os.team||"Non affectée"}</strong></div></div>
     <div className="os-tabs">{tabs.map((tab)=><button key={tab.id} type="button" className={activeTab===tab.id?"os-tab active":"os-tab"} onClick={()=>setActiveTab(tab.id)}><span>{tab.icon}</span><span>{tab.label}</span></button>)}</div>
     <div className="os-tab-content">
-      {activeTab==="resume"&&<div className="os-section"><h3>Informations générales</h3><div className="os-info-grid"><div><span>Ordre de service</span><strong>{os.id}</strong></div><div><span>Adresse</span><strong>{os.address||"—"}</strong></div><div><span>Matériau</span><strong>{os.work||"—"}</strong></div><div><span>Métier</span><strong>{os.trade||"—"}</strong></div><div><span>Secteur</span><strong>{os.sector||"—"}</strong></div><div><span>Quantité prévue</span><strong>{os.quantity||"—"}</strong></div><div><span>Équipe</span><strong>{os.team||"Non affectée"}</strong></div><div><span>Jour prévu</span><strong>{os.day||"Non planifié"}</strong></div></div><div className="os-status-box"><span>Échéance</span><strong>{os.deadline?new Date(os.deadline).toLocaleDateString("fr-FR"):"—"}</strong></div></div>}
+      {activeTab==="resume"&&<div className="os-section"><h3>Informations générales</h3><div className="os-info-grid"><div><span>Ordre de service</span><strong>{os.id}</strong></div><div><span>Adresse</span><strong>{os.address||"—"}</strong></div><div><span>Matériau</span><strong>{os.work||"—"}</strong></div><div><span>Métier</span><strong>{os.trade||"—"}</strong></div><div><span>Secteur</span><strong>{os.sector||"—"}</strong></div><div><span>Quantité prévue</span><strong>{os.quantity||"—"}</strong></div><div><span>Équipe</span><strong>{os.team||"Non affectée"}</strong></div><div><span>Jour prévu</span><strong>{os.day||"Non planifié"}</strong></div></div><div className="os-status-box"><span>Échéance</span><strong>{os.deadline?new Date(os.deadline).toLocaleDateString("fr-FR"):"—"}</strong></div><div className="os-issue-panel" style={{ marginTop: 18, padding: 16, border: "1px solid #d9e0e7", borderRadius: 12, background: "#fbfcfe" }}>
+  <h3 style={{ marginTop: 0 }}>⚠️ Aléas, erreurs et travail de nuit</h3>
+  <p style={{ color: "#667085", fontSize: 13 }}>Signalez une contrainte avant la transmission des travaux. La date et l'équipe prévues sont conservées pendant la suspension.</p>
+  {os.status === "En erreur" && <div style={{ padding: 10, borderRadius: 8, background: "#fff1f2", color: "#9f1239", marginBottom: 12 }}>
+    <strong>OS suspendu / en erreur</strong>
+    {os.suspensionStartedAt && <div style={{ fontSize: 12, marginTop: 4 }}>Depuis le {new Date(os.suspensionStartedAt).toLocaleDateString("fr-FR")}</div>}
+    {os.suspensionRestartedAt && <div style={{ fontSize: 12, marginTop: 4 }}>Repris le {new Date(os.suspensionRestartedAt).toLocaleDateString("fr-FR")}</div>}
+  </div>}
+  <label style={{ display: "block", fontWeight: 600, marginBottom: 6 }}>Motif du problème</label>
+  <select value={issueReason} onChange={(e) => setIssueReason(e.target.value)} disabled={issueSaving || !["À planifier", "Planifié", "Travaux en cours", "En erreur"].includes(os.status)} style={{ width: "100%", padding: 10, border: "1px solid #d0d5dd", borderRadius: 8, marginBottom: 12, boxSizing: "border-box" }}>
+    <option value="">Choisir un motif…</option>
+    <option value="Voirie non prête">Voirie non prête</option>
+    <option value="Accès impossible">Accès impossible</option>
+    <option value="Réseaux ou intervention préalable">Réseaux ou intervention préalable</option>
+    <option value="Travaux techniquement impossibles">Travaux techniquement impossibles</option>
+    <option value="Matériau ou BPU à confirmer">Matériau ou BPU à confirmer</option>
+    <option value="Autre">Autre</option>
+  </select>
+  <label style={{ display: "block", fontWeight: 600, marginBottom: 6 }}>Précisions / actions nécessaires</label>
+  <textarea value={issueComment} onChange={(e) => setIssueComment(e.target.value)} disabled={issueSaving || !["À planifier", "Planifié", "Travaux en cours", "En erreur"].includes(os.status)} placeholder="Ex. intervention préalable à terminer, accès bloqué, contact à rappeler…" rows={3} style={{ width: "100%", padding: 10, border: "1px solid #d0d5dd", borderRadius: 8, marginBottom: 12, boxSizing: "border-box", font: "inherit" }} />
+  <label style={{ display: "flex", alignItems: "flex-start", gap: 8, fontWeight: 500, marginBottom: 14 }}>
+    <input type="checkbox" checked={issueNightProposal} onChange={(e) => setIssueNightProposal(e.target.checked)} disabled={issueSaving || !["À planifier", "Planifié", "Travaux en cours", "En erreur"].includes(os.status)} style={{ marginTop: 3 }} />
+    <span>Proposer une intervention de nuit si les travaux sont impossibles en journée.</span>
+  </label>
+  {["À planifier", "Planifié", "Travaux en cours", "En erreur"].includes(os.status) ? <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
+    <button type="button" className="primary" onClick={saveIssueReport} disabled={issueSaving}>{issueSaving ? "Enregistrement…" : os.status === "En erreur" ? "Enregistrer le signalement" : "Signaler l'OS en erreur"}</button>
+    {os.status === "En erreur" && <button type="button" className="secondary" onClick={reactivateIssueOrder} disabled={issueSaving}>Réactiver l'OS</button>}
+  </div> : <p style={{ fontSize: 12, color: "#667085", marginBottom: 0 }}>Le signalement est verrouillé après transmission des travaux. Le constat suit son propre circuit de validation.</p>}
+</div></div>}
       {activeTab==="travaux"&&<div className="os-section"><h3>Travaux réalisés</h3><div className="os-work-card"><div className="work-summary"><strong>{os.intervention||os.work||"Intervention"}</strong><p>Quantité prévue : <strong>{os.quantity||"Non renseignée"}</strong></p><p>Matériau : <strong>{os.work||"Non renseigné"}</strong></p></div><hr/><h4>Surface réellement réalisée</h4>
         {os.rehabilitationZone==="Chaussée + trottoir"&&<><div className="work-subsection"><strong>Chaussée</strong><div className="work-grid"><div><label>Longueur chaussée (m)</label><input type="number" step="0.01" min="0" value={roadLength} onChange={(e)=>{const value=e.target.value;setRoadLength(value);const l=Number(value),w=Number(roadWidth);setRealRoadSurface(l>0&&w>0?(l*w).toFixed(2):"");}} placeholder="Ex. 4"/></div><div><label>Largeur chaussée (m)</label><input type="number" step="0.01" min="0" value={roadWidth} onChange={(e)=>{const value=e.target.value;setRoadWidth(value);const l=Number(roadLength),w=Number(value);setRealRoadSurface(l>0&&w>0?(l*w).toFixed(2):"");}} placeholder="Ex. 1"/></div></div><div className="work-result"><span>Surface chaussée</span><strong>{realRoadSurface?`${realRoadSurface} m²`:"—"}</strong></div></div><div className="work-subsection"><strong>Trottoir</strong><div className="work-grid"><div><label>Longueur trottoir (m)</label><input type="number" step="0.01" min="0" value={sidewalkLength} onChange={(e)=>{const value=e.target.value;setSidewalkLength(value);const l=Number(value),w=Number(sidewalkWidth);setRealSidewalkSurface(l>0&&w>0?(l*w).toFixed(2):"");}} placeholder="Ex. 2"/></div><div><label>Largeur trottoir (m)</label><input type="number" step="0.01" min="0" value={sidewalkWidth} onChange={(e)=>{const value=e.target.value;setSidewalkWidth(value);const l=Number(sidewalkLength),w=Number(value);setRealSidewalkSurface(l>0&&w>0?(l*w).toFixed(2):"");}} placeholder="Ex. 1"/></div></div><div className="work-result"><span>Surface trottoir</span><strong>{realSidewalkSurface?`${realSidewalkSurface} m²`:"—"}</strong></div></div></>}
         {os.rehabilitationZone==="Chaussée"&&<div className="work-subsection"><strong>Chaussée</strong><div className="work-grid"><div><label>Longueur chaussée (m)</label><input type="number" step="0.01" min="0" value={roadLength} onChange={(e)=>{const value=e.target.value;setRoadLength(value);const l=Number(value),w=Number(roadWidth);setRealRoadSurface(l>0&&w>0?(l*w).toFixed(2):"");}} placeholder="Ex. 5"/></div><div><label>Largeur chaussée (m)</label><input type="number" step="0.01" min="0" value={roadWidth} onChange={(e)=>{const value=e.target.value;setRoadWidth(value);const l=Number(roadLength),w=Number(value);setRealRoadSurface(l>0&&w>0?(l*w).toFixed(2):"");}} placeholder="Ex. 3"/></div></div><div className="work-result"><span>Surface chaussée</span><strong>{realRoadSurface?`${realRoadSurface} m²`:"—"}</strong></div></div>}
