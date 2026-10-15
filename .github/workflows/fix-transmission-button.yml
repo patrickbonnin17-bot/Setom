@@ -1,0 +1,42 @@
+name: Fix travaux transmission button
+
+on:
+  push:
+    branches: [setom-v2-stable]
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    if: ${{ !startsWith(github.event.head_commit.message, '[auto]') }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: setom-v2-stable
+          fetch-depth: 0
+      - name: Patch transmission action
+        shell: python
+        run: |
+          from pathlib import Path
+          import re
+          p = Path('src/main.jsx')
+          s = p.read_text(encoding='utf-8')
+          old = r'''<div className="work-actions">{["admin","bureau","equipe_terrain"].includes(profile?.role) && ["Planifié","Travaux en cours","Travaux réalisés"].includes(os?.status) && <button className="primary" type="button" onClick={save}>✅ Transmettre les travaux réalisés</button>}{os?.status === "À planifier" && <span style={{ color: "#667085", fontSize: 13 }}>Préparation possible : renseignez les mesures et ajoutez les photos. La transmission sera disponible après planification.</span>}{!["À planifier","Planifié","Travaux en cours","Travaux réalisés"].includes(os?.status) && <span style={{ color: "#667085", fontSize: 13 }}>Les travaux ne peuvent plus être transmis depuis ce statut.</span>}</div>'''
+          new = r'''<div className="work-actions">{["admin","bureau","equipe_terrain"].includes(profile?.role) ? <><button className="primary" type="button" onClick={save}>✅ Transmettre les travaux réalisés</button>{!["Planifié","En travaux","Travaux en cours","Travaux réalisés"].includes(os?.status) && <span style={{ color: "#667085", fontSize: 13 }}>Le bouton reste visible. La transmission est normalement disponible après planification.</span>}</> : <span style={{ color: "#667085", fontSize: 13 }}>Votre profil ne permet pas de transmettre les travaux réalisés.</span>}</div>'''
+          if old not in s:
+              raise SystemExit('OLD_BLOCK_NOT_FOUND')
+          p.write_text(s.replace(old, new, 1), encoding='utf-8')
+      - name: Verify build
+        run: |
+          npm ci
+          npm run build
+      - name: Commit patch
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add src/main.jsx
+          git diff --cached --quiet && exit 0
+          git commit -m "[auto] fix: always show travaux transmission action"
+          git push origin setom-v2-stable
