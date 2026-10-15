@@ -1090,7 +1090,7 @@ const [newOSSaving, setNewOSSaving] = useState(false);
     </label>
 
     <label className="attachment-button">
-      🖼️ Choisir / télécharger une photo
+      🖼️ Choisir une image dans Photos ou Fichiers
       <input type="file" accept="image/*" multiple
         onChange={(e) => {
           const files = Array.from(e.target.files || []).filter((file) => file.type.startsWith("image/"));
@@ -2583,7 +2583,7 @@ async function save() {
             />
           </label>
           <label className="attachment-button">
-            🖼️ Choisir / télécharger une photo
+            🖼️ Choisir une image dans Photos ou Fichiers
             <input type="file" accept="image/*" multiple
               onChange={(e) => {
                 const files = Array.from(e.target.files || []).filter((file) => file.type.startsWith("image/"));
