@@ -444,6 +444,70 @@ function OSModal({ os, onClose, onUpdate }) {
   function removeEditableConstatLine(index){setEditableConstatLines((current)=>current.filter((_,i)=>i!==index));}
   async function saveConstatManual(){if(!constat||constatLocked)return;setConstatSaving(true);try{const cleanLines=editableConstatLines.map((line)=>({bpu_line_id:line.bpu_line_id||"",designation:String(line.designation||"").trim()||"Prestation",quantity:Number(line.quantity)||0,unit:String(line.unit||"").trim(),unit_price:Number(line.unit_price)||0,thickness_cm:line.thickness_cm===""?"":Number(line.thickness_cm),observations:line.observations||"",actual_quantity:line.actual_quantity===""?"":Number(line.actual_quantity),billing_coefficient:line.billing_coefficient===""?"":Number(line.billing_coefficient),reference_thickness_cm:line.reference_thickness_cm===""?"":Number(line.reference_thickness_cm),actual_thickness_cm:line.actual_thickness_cm===""?"":Number(line.actual_thickness_cm)}));const {data,error}=await supabase.rpc("update_constat_manual",{p_work_order_id:os.dbId,p_constat_id:constat.id,p_observations:constatEditObservations||null,p_lines:cleanLines});if(error)throw error;setConstat(data?.constat||null);setConstatLines(data?.lines||[]);setConstatEditMode(false);alert("✅ Constat modifié manuellement.");}catch(error){console.error("Erreur modification constat :",error);alert("Impossible d'enregistrer le constat :\n\n"+(error?.message||"Erreur inconnue"));}finally{setConstatSaving(false);}}
 
+  async function markConstatPaid() {
+    if (!constat || !os?.dbId || constatSaving) return;
+    if (!["Validé", "Validé avec réserve"].includes(constat.status) || os.status !== "Travaux effectués") {
+      alert("Le paiement est disponible uniquement après validation du constat et passage de l'OS en Travaux effectués.");
+      return;
+    }
+    if (!window.confirm("Confirmer que ce constat a été payé ? Cette action fera passer l'OS au statut « Payé ».") ) return;
+    const { data: authData, error: authError } = await supabase.auth.getUser();
+    const user = authData?.user;
+    if (authError || !user) { alert("Connexion requise pour enregistrer le paiement."); return; }
+    setConstatSaving(true);
+    try {
+      const { data: result, error } = await supabase.rpc("mark_constat_paid_for_work_order", {
+        p_work_order_id: os.dbId,
+        p_constat_id: constat.id,
+        p_user_id: user.id
+      });
+      if (error) throw error;
+      if (result?.constat_status !== "Payé" || result?.work_order_status !== "Payé") {
+        throw new Error("La base n'a pas confirmé le passage du constat et de l'OS au statut Payé.");
+      }
+      setConstat({ ...constat, status: "Payé" });
+      setStatus("Payé");
+      onUpdate(os.id, { status: "Payé" });
+      window.dispatchEvent(new Event("setom:planning-updated"));
+      alert("✅ Paiement enregistré. L'OS peut maintenant être archivé.");
+    } catch (error) {
+      console.error("Erreur d'enregistrement du paiement :", error);
+      alert("Impossible d'enregistrer le paiement :\n\n" + (error?.message || "Erreur inconnue"));
+    } finally { setConstatSaving(false); }
+  }
+
+  async function archiveOSAfterPayment() {
+    if (!constat || !os?.dbId || constatSaving) return;
+    if (constat.status !== "Payé" || os.status !== "Payé") {
+      alert("L'archivage est autorisé uniquement lorsque le constat et l'OS sont payés.");
+      return;
+    }
+    if (!window.confirm("Archiver cet OS payé ? Il restera consultable, mais sera retiré des opérations actives.")) return;
+    const { data: authData, error: authError } = await supabase.auth.getUser();
+    const user = authData?.user;
+    if (authError || !user) { alert("Connexion requise pour archiver l'OS."); return; }
+    setConstatSaving(true);
+    try {
+      const { data: result, error } = await supabase.rpc("archive_paid_work_order", {
+        p_work_order_id: os.dbId,
+        p_constat_id: constat.id,
+        p_user_id: user.id
+      });
+      if (error) throw error;
+      if (result?.constat_status !== "Archivé" || result?.work_order_status !== "Archivé") {
+        throw new Error("La base n'a pas confirmé l'archivage du constat et de l'OS.");
+      }
+      setConstat({ ...constat, status: "Archivé" });
+      setStatus("Archivé");
+      onUpdate(os.id, { status: "Archivé" });
+      window.dispatchEvent(new Event("setom:planning-updated"));
+      alert("✅ OS archivé. Il reste conservé dans l'historique.");
+    } catch (error) {
+      console.error("Erreur d'archivage OS :", error);
+      alert("Impossible d'archiver l'OS :\n\n" + (error?.message || "Erreur inconnue"));
+    } finally { setConstatSaving(false); }
+  }
+
   async function validateConstat(){
     if(!constat||constatLocked||constatEditMode||constatSaving)return;
     if(!["Brouillon","À vérifier","À valider"].includes(constat.status||"Brouillon")){
@@ -545,7 +609,11 @@ function OSModal({ os, onClose, onUpdate }) {
           <div className="os-info-grid"><div><span>Statut</span><strong>{constat.status||"Brouillon"}</strong></div><div><span>Date</span><strong>{constat.constat_date?new Date(constat.constat_date).toLocaleDateString("fr-FR"):"—"}</strong></div><div><span>Total</span><strong>{Number(constat.total_amount||0).toFixed(2)} €</strong></div></div>
           <div style={{margin:"18px 0",padding:16,border:"1px solid #d9e0e7",borderRadius:12,background:"#f8fafc"}}><h4 style={{margin:"0 0 6px"}}>📷 Photos des travaux réalisés</h4><p style={{fontSize:13,color:"#667085",margin:"0 0 12px"}}>Photos déjà enregistrées dans l'onglet Travaux. Aucun nouvel envoi n'est nécessaire pour le constat.</p>{travauxPhotos.length===0?<div style={{fontSize:14,color:"#667085",padding:"8px 0"}}>Aucune photo des travaux réalisés enregistrée pour cet OS.</div>:<div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(120px,1fr))",gap:10}}>{travauxPhotos.map((file)=><button key={file.id} type="button" onClick={()=>setPreviewAttachment(file)} style={{border:"1px solid #d0d5dd",background:"#fff",borderRadius:10,padding:4,cursor:"pointer",textAlign:"left",overflow:"hidden"}}><img src={file.url} alt={file.file_name||"Photo des travaux réalisés"} style={{display:"block",width:"100%",height:110,objectFit:"cover",borderRadius:7}}/><span style={{display:"block",fontSize:11,padding:"5px 3px 2px",whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis",color:"#475467"}}>{file.file_name||"Photo"}</span></button>)}</div>}</div>
           {!constatLocked&&!constatEditMode&&<div className="os-empty-state" style={{marginTop:16,marginBottom:16}}><strong>Le constat peut être validé après vérification.</strong><button className="primary" type="button" disabled={constatSaving} onClick={validateConstat}>{constatSaving?"Validation...":"✅ Valider le constat"}</button></div>}
-          {constatLocked?<div className="os-empty-state" style={{marginTop:16}}>🔒<strong>Constat verrouillé</strong><span>Ce constat ne peut plus être modifié car il est {constat.status?.toLowerCase()}.</span></div>:!constatEditMode?<div style={{display:"flex",gap:10,flexWrap:"wrap",margin:"16px 0"}}><button className="primary" type="button" onClick={startConstatEdit}>✏️ Modifier le constat</button><button className="secondary" type="button" onClick={regenerateConstatFromWorks}>↻ Recalculer depuis les travaux</button></div>:<div style={{margin:"16px 0"}}><div style={{display:"flex",gap:10,flexWrap:"wrap",marginBottom:12}}><button className="primary" type="button" disabled={constatSaving} onClick={saveConstatManual}>{constatSaving?"Enregistrement...":"💾 Enregistrer les modifications"}</button><button className="secondary" type="button" disabled={constatSaving} onClick={()=>setConstatEditMode(false)}>Annuler</button><button className="secondary" type="button" disabled={constatSaving} onClick={regenerateConstatFromWorks}>↻ Recalculer depuis les travaux</button></div><label>Observations du constat</label><textarea value={constatEditObservations} onChange={(e)=>setConstatEditObservations(e.target.value)} rows="3" placeholder="Observation ou précision de facturation..."/><h4>Détail des prestations — modification manuelle</h4><div style={{overflowX:"auto",border:"1px solid #ddd",borderRadius:10}}><table style={{width:"100%",minWidth:900,borderCollapse:"collapse"}}><thead><tr><th style={{textAlign:"left",padding:8}}>Prestation</th><th style={{padding:8}}>Qté</th><th style={{padding:8}}>Unité</th><th style={{padding:8}}>Prix unitaire</th><th style={{padding:8}}>Montant</th><th style={{padding:8}}>Épaisseur</th><th style={{padding:8}}>Observation</th><th style={{padding:8}}></th></tr></thead><tbody>{editableConstatLines.map((line,index)=><tr key={line.id||index}><td style={{padding:6}}><input style={{width:"100%"}} value={line.designation} onChange={(e)=>updateEditableConstatLine(index,"designation",e.target.value)}/></td><td style={{padding:6}}><input type="number" step="0.01" min="0" style={{width:90}} value={line.quantity} onChange={(e)=>updateEditableConstatLine(index,"quantity",e.target.value)}/></td><td style={{padding:6}}><input style={{width:75}} value={line.unit} onChange={(e)=>updateEditableConstatLine(index,"unit",e.target.value)}/></td><td style={{padding:6}}><input type="number" step="0.01" min="0" style={{width:110}} value={line.unit_price} onChange={(e)=>updateEditableConstatLine(index,"unit_price",e.target.value)}/></td><td style={{padding:6,textAlign:"right",fontWeight:700}}>{(Number(line.quantity)*Number(line.unit_price)).toFixed(2)} €</td><td style={{padding:6}}><input type="number" step="0.1" min="0" style={{width:90}} value={line.thickness_cm} onChange={(e)=>updateEditableConstatLine(index,"thickness_cm",e.target.value)}/></td><td style={{padding:6}}><input style={{width:180}} value={line.observations} onChange={(e)=>updateEditableConstatLine(index,"observations",e.target.value)}/></td><td style={{padding:6}}><button className="secondary" type="button" onClick={()=>removeEditableConstatLine(index)}>✕</button></td></tr>)}</tbody></table></div><button className="secondary" type="button" style={{marginTop:10}} onClick={addEditableConstatLine}>+ Ajouter une prestation</button></div>}
+          {constatLocked?<div className="os-empty-state" style={{marginTop:16}}>🔒<strong>Constat verrouillé</strong><span>Ce constat ne peut plus être modifié car il est {constat.status?.toLowerCase()}.</span>
+            {["Validé","Validé avec réserve"].includes(constat.status)&&os.status==="Travaux effectués"&&<button className="primary" type="button" disabled={constatSaving} onClick={markConstatPaid}>{constatSaving?"Enregistrement…":"💶 Enregistrer le paiement"}</button>}
+            {constat.status==="Payé"&&os.status==="Payé"&&<button className="primary" type="button" disabled={constatSaving} onClick={archiveOSAfterPayment}>{constatSaving?"Archivage…":"📦 Archiver l'OS payé"}</button>}
+            {constat.status==="Archivé"&&<span>OS et constat archivés. Ils restent consultables dans l'historique.</span>}
+          </div>:!constatEditMode?<div style={{display:"flex",gap:10,flexWrap:"wrap",margin:"16px 0"}}><button className="primary" type="button" onClick={startConstatEdit}>✏️ Modifier le constat</button><button className="secondary" type="button" onClick={regenerateConstatFromWorks}>↻ Recalculer depuis les travaux</button></div>:<div style={{margin:"16px 0"}}><div style={{display:"flex",gap:10,flexWrap:"wrap",marginBottom:12}}><button className="primary" type="button" disabled={constatSaving} onClick={saveConstatManual}>{constatSaving?"Enregistrement...":"💾 Enregistrer les modifications"}</button><button className="secondary" type="button" disabled={constatSaving} onClick={()=>setConstatEditMode(false)}>Annuler</button><button className="secondary" type="button" disabled={constatSaving} onClick={regenerateConstatFromWorks}>↻ Recalculer depuis les travaux</button></div><label>Observations du constat</label><textarea value={constatEditObservations} onChange={(e)=>setConstatEditObservations(e.target.value)} rows="3" placeholder="Observation ou précision de facturation..."/><h4>Détail des prestations — modification manuelle</h4><div style={{overflowX:"auto",border:"1px solid #ddd",borderRadius:10}}><table style={{width:"100%",minWidth:900,borderCollapse:"collapse"}}><thead><tr><th style={{textAlign:"left",padding:8}}>Prestation</th><th style={{padding:8}}>Qté</th><th style={{padding:8}}>Unité</th><th style={{padding:8}}>Prix unitaire</th><th style={{padding:8}}>Montant</th><th style={{padding:8}}>Épaisseur</th><th style={{padding:8}}>Observation</th><th style={{padding:8}}></th></tr></thead><tbody>{editableConstatLines.map((line,index)=><tr key={line.id||index}><td style={{padding:6}}><input style={{width:"100%"}} value={line.designation} onChange={(e)=>updateEditableConstatLine(index,"designation",e.target.value)}/></td><td style={{padding:6}}><input type="number" step="0.01" min="0" style={{width:90}} value={line.quantity} onChange={(e)=>updateEditableConstatLine(index,"quantity",e.target.value)}/></td><td style={{padding:6}}><input style={{width:75}} value={line.unit} onChange={(e)=>updateEditableConstatLine(index,"unit",e.target.value)}/></td><td style={{padding:6}}><input type="number" step="0.01" min="0" style={{width:110}} value={line.unit_price} onChange={(e)=>updateEditableConstatLine(index,"unit_price",e.target.value)}/></td><td style={{padding:6,textAlign:"right",fontWeight:700}}>{(Number(line.quantity)*Number(line.unit_price)).toFixed(2)} €</td><td style={{padding:6}}><input type="number" step="0.1" min="0" style={{width:90}} value={line.thickness_cm} onChange={(e)=>updateEditableConstatLine(index,"thickness_cm",e.target.value)}/></td><td style={{padding:6}}><input style={{width:180}} value={line.observations} onChange={(e)=>updateEditableConstatLine(index,"observations",e.target.value)}/></td><td style={{padding:6}}><button className="secondary" type="button" onClick={()=>removeEditableConstatLine(index)}>✕</button></td></tr>)}</tbody></table></div><button className="secondary" type="button" style={{marginTop:10}} onClick={addEditableConstatLine}>+ Ajouter une prestation</button></div>}
           {!constatEditMode&&<><h4>Détail des prestations</h4>{constatLines.length===0?<div className="os-empty-state"><span>Aucune prestation.</span></div>:constatLines.map((line)=><div className="os-info-grid" key={line.id}><div><span>{line.designation}</span><strong>{Number(line.quantity||0).toFixed(2)} {line.unit||""} × {Number(line.unit_price||0).toFixed(2)} € = {Number(line.amount||0).toFixed(2)} €</strong></div></div>)}{constat.observations&&<div className="os-info-grid" style={{marginTop:10}}><div><span>Observations</span><strong>{constat.observations}</strong></div></div>}</>}
         </div>}
       </div>}
