@@ -105,6 +105,13 @@ function App() {
       if (!cancelled && settingsRow) setAppSettings(settingsRow);
       const osLabel = String(settingsRow?.os_label || "OS").trim() || "OS";
       const workOrderIds = (rows || []).map((row) => row.id);
+      let constats = [];
+      if (workOrderIds.length) {
+        const constatResult = await supabase.from("constats").select("id, work_order_id, status, reserved_at, reserve_reason, reserve_resolved_at").in("work_order_id", workOrderIds).order("created_at", { ascending: false });
+        if (!constatResult.error) constats = constatResult.data || []; else console.error("Erreur chargement des réserves :", constatResult.error);
+      }
+      const constatByOS = new Map();
+      for (const constatRow of constats) if (!constatByOS.has(constatRow.work_order_id)) constatByOS.set(constatRow.work_order_id, constatRow);
       let interventions = [];
       if (workOrderIds.length) {
         const result = await supabase.from("interventions").select("id, work_order_id, team_id, planned_date, planned_order, status").in("work_order_id", workOrderIds);
@@ -127,6 +134,7 @@ function App() {
       }
       const formattedOS = (rows || []).map((row) => {
         const intervention = interventionByOS.get(row.id) || null;
+        const latestConstat = constatByOS.get(row.id) || null;
         const plannedDate = intervention?.planned_date || null;
         const plannedDay = plannedDate ? new Date(plannedDate + "T12:00:00").toLocaleDateString("fr-FR", { weekday: "long" }) : null;
         const day = plannedDay ? plannedDay.charAt(0).toUpperCase() + plannedDay.slice(1) : null;
@@ -138,6 +146,7 @@ function App() {
           work: row.material_detail || "Intervention", day, plannedDate,
           team: teamById.get(intervention?.team_id) || "Non affectée", teamId: intervention?.team_id || null,
           trade: row.material_detail || "Intervention", sector: sectorById.get(row.sector_id) || "Non classé", sectorId: row.sector_id || "", status: row.status || "Nouveau",
+          constatStatus: latestConstat?.status || null, reservedAt: latestConstat?.reserved_at || null, reserveReason: latestConstat?.reserve_reason || "", reserveResolvedAt: latestConstat?.reserve_resolved_at || null,
           quantity: row.planned_surface_m2 ? String(row.planned_surface_m2) + " m²" : "",
           intervention: row.material_detail || "Intervention", rehabilitationZone: row.rehabilitation_zone,
           rehabilitationOtherDetail: row.rehabilitation_other_detail, roadSurface: row.planned_road_surface_m2,
@@ -294,7 +303,7 @@ function App() {
     travaux: osList.filter((o) => o.status === "En travaux" || o.status === "Travaux en cours" || o.status === "Travaux réalisés").length,
     facturation: osList.filter((o) => o.status === "Travaux effectués" || o.status === "Constat de facturation").length,
     validation: osList.filter((o) => o.status === "En attente de validation" || o.status === "Constat à vérifier" || o.status === "Constat validé").length,
-    reserves: osList.filter((o) => o.status === "Réserve" || o.status === "Validé avec réserve" || o.status === "Correction à réaliser").length,
+    reserves: osList.filter((o) => o.status === "Réserve" || o.status === "Correction à réaliser" || (o.constatStatus === "Validé avec réserve" && !o.reserveResolvedAt)).length,
     errors: osList.filter((o) => o.status === "En erreur").length,
   };
 
@@ -340,7 +349,7 @@ function App() {
         </form>
         {dbTeams.length === 0 ? <div className="card"><strong>Aucune équipe enregistrée</strong><p>Ajoutez vos équipes ici pour pouvoir les affecter aux OS dans le planning.</p></div> : <div className="cards">{dbTeams.map((team) => { const count = osList.filter((os) => os.teamId === team.id).length; return <div className="card" key={team.id} style={{ opacity: team.active ? 1 : .65 }}><div style={{ display: "flex", justifyContent: "space-between", alignItems: "start", gap: 12 }}><strong>👷 {team.name}</strong><span className="badge">{team.active ? "Active" : "Inactive"}</span></div><div>{team.team_type === "sous-traitant" ? "Sous-traitant" : "Équipe interne"}</div>{team.usual_sector_id && <div style={{ color: "#475467", fontSize: 13 }}>Secteur habituel : {dbSectors.find((sector) => sector.id === team.usual_sector_id)?.name || "Secteur inactif"}</div>}<div className="number">{count}</div><div>OS affecté{count === 1 ? "" : "s"}</div>{team.indicative_capacity && <div style={{ marginTop: 8, color: "#667085", fontSize: 13 }}>Capacité indicative : {team.indicative_capacity} m²/jour</div>}<button className="secondary" disabled={teamSaving} style={{ marginTop: 12 }} onClick={() => toggleTeamActive(team)}>{team.active ? "Désactiver" : "Réactiver"}</button></div>; })}</div>}
       </>}
-      {page === "reserves" && <><h2>Réserves et corrections</h2><div className="os-list">{osList.filter((os)=>os.status==="Réserve"||os.status==="Correction à réaliser").map((os)=><OSCard key={os.id} os={os} onOpen={()=>setSelectedOS(os)}/>)}{osList.filter((os)=>os.status==="Réserve"||os.status==="Correction à réaliser").length===0&&<div className="card">Aucune réserve en cours.</div>}</div></>}{page === "settings" && <><h2>Paramètres du marché</h2>
+      {page === "reserves" && <><h2>Réserves et corrections</h2><div className="os-list">{osList.filter((os)=>os.status==="Réserve"||os.status==="Correction à réaliser"||(os.constatStatus==="Validé avec réserve"&&!os.reserveResolvedAt)).map((os)=><OSCard key={os.id} os={os} onOpen={()=>setSelectedOS(os)}/>)}{osList.filter((os)=>os.status==="Réserve"||os.status==="Correction à réaliser"||(os.constatStatus==="Validé avec réserve"&&!os.reserveResolvedAt)).length===0&&<div className="card">Aucune réserve en cours.</div>}</div></>}{page === "settings" && <><h2>Paramètres du marché</h2>
         {!appSettings ? <div className="card">Chargement des paramètres…</div> : <form onSubmit={saveAppSettings} className="card" style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(230px,1fr))", gap: 14, alignItems: "start" }}>
           <div><label htmlFor="setting-company">Nom de l'application / entreprise</label><input id="setting-company" value={appSettings.company_name || ""} onChange={(e) => setAppSettings((current) => ({ ...current, company_name: e.target.value }))} required style={{ width: "100%", boxSizing: "border-box" }}/></div>
           <div><label htmlFor="setting-donor">Donneur d'ordre</label><input id="setting-donor" value={appSettings.donor_name || ""} onChange={(e) => setAppSettings((current) => ({ ...current, donor_name: e.target.value }))} required style={{ width: "100%", boxSizing: "border-box" }}/></div>
@@ -362,7 +371,7 @@ function App() {
 }
 
 function OSCard({ os, onOpen }) {
-  return <div className="os" style={{borderLeftColor:os.day?getDayColor(os.day):"#777"}}><div className="os-top"><div><div className="os-number">{os.id}</div><div className="os-info">📍 {os.address}</div></div><span className="badge">{os.status}</span></div><div className="os-info">🔧 {os.work}<br/>🧭 Secteur : {os.sector || "Non classé"}<br/>👷 {os.team}<br/>📅 {os.day||"Non planifié"}<br/>📐 {os.quantity}</div><div className="os-actions"><button className="primary" onClick={onOpen}>Ouvrir l'OS</button><button className="secondary" onClick={()=>window.open(`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(os.address)}`,"_blank")}>🧭 Naviguer</button></div></div>;
+  return <div className="os" style={{borderLeftColor:os.day?getDayColor(os.day):"#777"}}><div className="os-top"><div><div className="os-number">{os.id}</div><div className="os-info">📍 {os.address}</div></div><span className="badge">{os.constatStatus === "Validé avec réserve" && !os.reserveResolvedAt ? "Réserve à lever" : os.status}</span></div><div className="os-info">🔧 {os.work}<br/>🧭 Secteur : {os.sector || "Non classé"}<br/>👷 {os.team}<br/>📅 {os.day||"Non planifié"}<br/>📐 {os.quantity}</div><div className="os-actions"><button className="primary" onClick={onOpen}>Ouvrir l'OS</button><button className="secondary" onClick={()=>window.open(`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(os.address)}`,"_blank")}>🧭 Naviguer</button></div></div>;
 }
 
 function OSModal({ os, onClose, onUpdate }) {
@@ -650,9 +659,67 @@ function OSModal({ os, onClose, onUpdate }) {
   function removeEditableConstatLine(index){setEditableConstatLines((current)=>current.filter((_,i)=>i!==index));}
   async function saveConstatManual(){if(!constat||constatLocked)return;setConstatSaving(true);try{const cleanLines=editableConstatLines.map((line)=>({bpu_line_id:line.bpu_line_id||"",designation:String(line.designation||"").trim()||"Prestation",quantity:Number(line.quantity)||0,unit:String(line.unit||"").trim(),unit_price:Number(line.unit_price)||0,thickness_cm:line.thickness_cm===""?"":Number(line.thickness_cm),observations:line.observations||"",actual_quantity:line.actual_quantity===""?"":Number(line.actual_quantity),billing_coefficient:line.billing_coefficient===""?"":Number(line.billing_coefficient),reference_thickness_cm:line.reference_thickness_cm===""?"":Number(line.reference_thickness_cm),actual_thickness_cm:line.actual_thickness_cm===""?"":Number(line.actual_thickness_cm)}));const {data,error}=await supabase.rpc("update_constat_manual",{p_work_order_id:os.dbId,p_constat_id:constat.id,p_observations:constatEditObservations||null,p_lines:cleanLines});if(error)throw error;setConstat(data?.constat||null);setConstatLines(data?.lines||[]);setConstatEditMode(false);alert("✅ Constat modifié manuellement.");}catch(error){console.error("Erreur modification constat :",error);alert("Impossible d'enregistrer le constat :\n\n"+(error?.message||"Erreur inconnue"));}finally{setConstatSaving(false);}}
 
-  async function markConstatPaid() {
+      async function markConstatWithReserve() {
+      if (!constat || !os?.dbId || constatSaving) return;
+      if (constat.status !== "Validé" || os.status !== "Travaux effectués") {
+        alert("Le retour en réserve est disponible après validation du constat.");
+        return;
+      }
+      const reason = window.prompt("Motif du retour en réserve (obligatoire) :");
+      if (!reason || !reason.trim()) return;
+      const { data: authData, error: authError } = await supabase.auth.getUser();
+      const user = authData?.user;
+      if (authError || !user) { alert("Connexion requise pour enregistrer la réserve."); return; }
+      setConstatSaving(true);
+      try {
+        const { data: result, error } = await supabase.rpc("mark_constat_with_reserve", {
+          p_work_order_id: os.dbId,
+          p_constat_id: constat.id,
+          p_user_id: user.id,
+          p_reason: reason.trim()
+        });
+        if (error) throw error;
+        if (result?.constat_status !== "Validé avec réserve") throw new Error("La base n'a pas confirmé l'enregistrement de la réserve.");
+        const reservedAt = new Date().toISOString();
+        setConstat({ ...constat, status: "Validé avec réserve", reserved_at: reservedAt, reserve_reason: reason.trim(), reserve_resolved_at: null, reserve_resolved_by: null });
+        onUpdate(os.id, { constatStatus: "Validé avec réserve", reservedAt, reserveReason: reason.trim(), reserveResolvedAt: null });
+        window.dispatchEvent(new Event("setom:planning-updated"));
+        alert("✅ Réserve enregistrée. Le paiement restera bloqué jusqu'à la levée de la réserve.");
+      } catch (error) {
+        console.error("Erreur enregistrement réserve :", error);
+        alert("Impossible d'enregistrer la réserve :\n\n" + (error?.message || "Erreur inconnue"));
+      } finally { setConstatSaving(false); }
+    }
+
+    async function resolveConstatReserve() {
+      if (!constat || !os?.dbId || constatSaving) return;
+      if (constat.status !== "Validé avec réserve" || constat.reserve_resolved_at) return;
+      if (!window.confirm("Confirmer que les corrections demandées ont été réalisées et que la réserve est levée ?")) return;
+      const { data: authData, error: authError } = await supabase.auth.getUser();
+      const user = authData?.user;
+      if (authError || !user) { alert("Connexion requise pour lever la réserve."); return; }
+      setConstatSaving(true);
+      try {
+        const { data: result, error } = await supabase.rpc("resolve_constat_reserve", {
+          p_work_order_id: os.dbId,
+          p_constat_id: constat.id,
+          p_user_id: user.id
+        });
+        if (error) throw error;
+        if (result?.constat_status !== "Validé avec réserve" || !result?.reserve_resolved_at) throw new Error("La base n'a pas confirmé la levée de la réserve.");
+        setConstat({ ...constat, reserve_resolved_at: result.reserve_resolved_at, reserve_resolved_by: user.id });
+        onUpdate(os.id, { reserveResolvedAt: result.reserve_resolved_at });
+        window.dispatchEvent(new Event("setom:planning-updated"));
+        alert("✅ Réserve levée. Le paiement peut maintenant être enregistré après confirmation du règlement.");
+      } catch (error) {
+        console.error("Erreur levée réserve :", error);
+        alert("Impossible de lever la réserve :\n\n" + (error?.message || "Erreur inconnue"));
+      } finally { setConstatSaving(false); }
+    }
+
+async function markConstatPaid() {
     if (!constat || !os?.dbId || constatSaving) return;
-    if (!["Validé", "Validé avec réserve"].includes(constat.status) || os.status !== "Travaux effectués") {
+    if (!(constat.status === "Validé" || (constat.status === "Validé avec réserve" && !!constat.reserve_resolved_at)) || os.status !== "Travaux effectués") {
       alert("Le paiement est disponible uniquement après validation du constat et passage de l'OS en Travaux effectués.");
       return;
     }
@@ -836,7 +903,9 @@ function OSModal({ os, onClose, onUpdate }) {
           <div style={{margin:"18px 0",padding:16,border:"1px solid #d9e0e7",borderRadius:12,background:"#f8fafc"}}><h4 style={{margin:"0 0 6px"}}>📷 Photos des travaux réalisés</h4><p style={{fontSize:13,color:"#667085",margin:"0 0 12px"}}>Photos déjà enregistrées dans l'onglet Travaux. Aucun nouvel envoi n'est nécessaire pour le constat.</p>{travauxPhotos.length===0?<div style={{fontSize:14,color:"#667085",padding:"8px 0"}}>Aucune photo des travaux réalisés enregistrée pour cet OS.</div>:<div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(120px,1fr))",gap:10}}>{travauxPhotos.map((file)=><button key={file.id} type="button" onClick={()=>setPreviewAttachment(file)} style={{border:"1px solid #d0d5dd",background:"#fff",borderRadius:10,padding:4,cursor:"pointer",textAlign:"left",overflow:"hidden"}}><img src={file.url} alt={file.file_name||"Photo des travaux réalisés"} style={{display:"block",width:"100%",height:110,objectFit:"cover",borderRadius:7}}/><span style={{display:"block",fontSize:11,padding:"5px 3px 2px",whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis",color:"#475467"}}>{file.file_name||"Photo"}</span></button>)}</div>}</div>
           {!constatLocked&&!constatEditMode&&<div className="os-empty-state" style={{marginTop:16,marginBottom:16}}><strong>Le constat peut être validé après vérification.</strong><button className="primary" type="button" disabled={constatSaving} onClick={validateConstat}>{constatSaving?"Validation...":"✅ Valider le constat"}</button></div>}
           {constatLocked?<div className="os-empty-state" style={{marginTop:16}}>🔒<strong>Constat verrouillé</strong><span>Ce constat ne peut plus être modifié car il est {constat.status?.toLowerCase()}.</span>
-            {["Validé","Validé avec réserve"].includes(constat.status)&&os.status==="Travaux effectués"&&<button className="primary" type="button" disabled={constatSaving} onClick={markConstatPaid}>{constatSaving?"Enregistrement…":"💶 Enregistrer le paiement"}</button>}
+            {constat.status==="Validé"&&os.status==="Travaux effectués"&&<button className="secondary" type="button" disabled={constatSaving} onClick={markConstatWithReserve}>{constatSaving?"Enregistrement…":"🚧 Enregistrer un retour en réserve"}</button>}
+            {constat.status==="Validé avec réserve"&&<div style={{ marginTop: 10, padding: 12, borderRadius: 8, background: constat.reserve_resolved_at ? "#f0fdf4" : "#fff7ed", color: constat.reserve_resolved_at ? "#166534" : "#9a3412" }}><strong>{constat.reserve_resolved_at ? "Réserve levée" : "Réserve à lever"}</strong>{constat.reserve_reason&&<p style={{ margin: "6px 0" }}>Motif : {constat.reserve_reason}</p>}{constat.reserved_at&&<small>Signalée le {new Date(constat.reserved_at).toLocaleDateString("fr-FR")}</small>}{!constat.reserve_resolved_at&&<div><button className="primary" type="button" disabled={constatSaving} onClick={resolveConstatReserve} style={{ marginTop: 8 }}>{constatSaving?"Enregistrement…":"✅ Marquer la réserve levée"}</button></div>}{constat.reserve_resolved_at&&<p style={{ marginBottom: 0, fontSize: 12 }}>Levée le {new Date(constat.reserve_resolved_at).toLocaleDateString("fr-FR")}. Le constat peut être payé dès confirmation du règlement.</p>}</div>}
+            {(constat.status==="Validé"||(constat.status==="Validé avec réserve"&&!!constat.reserve_resolved_at))&&os.status==="Travaux effectués"&&<button className="primary" type="button" disabled={constatSaving} onClick={markConstatPaid}>{constatSaving?"Enregistrement…":"💶 Enregistrer le paiement"}</button>}
             {constat.status==="Payé"&&os.status==="Payé"&&<button className="primary" type="button" disabled={constatSaving} onClick={archiveOSAfterPayment}>{constatSaving?"Archivage…":"📦 Archiver l'OS payé"}</button>}
             {constat.status==="Archivé"&&<span>OS et constat archivés. Ils restent consultables dans l'historique.</span>}
           </div>:!constatEditMode?<div style={{display:"flex",gap:10,flexWrap:"wrap",margin:"16px 0"}}><button className="primary" type="button" onClick={startConstatEdit}>✏️ Modifier le constat</button><button className="secondary" type="button" onClick={regenerateConstatFromWorks}>↻ Recalculer depuis les travaux</button></div>:<div style={{margin:"16px 0"}}><div style={{display:"flex",gap:10,flexWrap:"wrap",marginBottom:12}}><button className="primary" type="button" disabled={constatSaving} onClick={saveConstatManual}>{constatSaving?"Enregistrement...":"💾 Enregistrer les modifications"}</button><button className="secondary" type="button" disabled={constatSaving} onClick={()=>setConstatEditMode(false)}>Annuler</button><button className="secondary" type="button" disabled={constatSaving} onClick={regenerateConstatFromWorks}>↻ Recalculer depuis les travaux</button></div><label>Observations du constat</label><textarea value={constatEditObservations} onChange={(e)=>setConstatEditObservations(e.target.value)} rows="3" placeholder="Observation ou précision de facturation..."/><h4>Détail des prestations — modification manuelle</h4><div style={{overflowX:"auto",border:"1px solid #ddd",borderRadius:10}}><table style={{width:"100%",minWidth:900,borderCollapse:"collapse"}}><thead><tr><th style={{textAlign:"left",padding:8}}>Prestation</th><th style={{padding:8}}>Qté</th><th style={{padding:8}}>Unité</th><th style={{padding:8}}>Prix unitaire</th><th style={{padding:8}}>Montant</th><th style={{padding:8}}>Épaisseur</th><th style={{padding:8}}>Observation</th><th style={{padding:8}}></th></tr></thead><tbody>{editableConstatLines.map((line,index)=><tr key={line.id||index}><td style={{padding:6}}><input style={{width:"100%"}} value={line.designation} onChange={(e)=>updateEditableConstatLine(index,"designation",e.target.value)}/></td><td style={{padding:6}}><input type="number" step="0.01" min="0" style={{width:90}} value={line.quantity} onChange={(e)=>updateEditableConstatLine(index,"quantity",e.target.value)}/></td><td style={{padding:6}}><input style={{width:75}} value={line.unit} onChange={(e)=>updateEditableConstatLine(index,"unit",e.target.value)}/></td><td style={{padding:6}}><input type="number" step="0.01" min="0" style={{width:110}} value={line.unit_price} onChange={(e)=>updateEditableConstatLine(index,"unit_price",e.target.value)}/></td><td style={{padding:6,textAlign:"right",fontWeight:700}}>{(Number(line.quantity)*Number(line.unit_price)).toFixed(2)} €</td><td style={{padding:6}}><input type="number" step="0.1" min="0" style={{width:90}} value={line.thickness_cm} onChange={(e)=>updateEditableConstatLine(index,"thickness_cm",e.target.value)}/></td><td style={{padding:6}}><input style={{width:180}} value={line.observations} onChange={(e)=>updateEditableConstatLine(index,"observations",e.target.value)}/></td><td style={{padding:6}}><button className="secondary" type="button" onClick={()=>removeEditableConstatLine(index)}>✕</button></td></tr>)}</tbody></table></div><button className="secondary" type="button" style={{marginTop:10}} onClick={addEditableConstatLine}>+ Ajouter une prestation</button></div>}
