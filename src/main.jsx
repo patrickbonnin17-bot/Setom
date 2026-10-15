@@ -885,14 +885,14 @@ function OSModal({ os, onClose, onUpdate, profile }) {
 
   useEffect(() => {
     if (!os?.dbId) return;
-    if (!["admin","bureau"].includes(profile?.role)) { setConstat(null); setConstatLines([]); setConstatLoading(false); return undefined; }
+    if (!["admin","bureau","eau_de_toulouse"].includes(profile?.role)) { setConstat(null); setConstatLines([]); setConstatLoading(false); return undefined; }
     let cancelled = false;
     async function loadConstat() {
       setConstatLoading(true);
       const { data: payload, error: readError } = await supabase.rpc("get_constat_for_work_order", { p_work_order_id: os.dbId });
       if (readError) { console.error("Erreur lecture constat :", readError); if(!cancelled){setConstat(null);setConstatLines([]);setConstatLoading(false);} return; }
       let constatData = payload?.constat || null, linesData = payload?.lines || [];
-      if (!constatData && os.status === "Travaux effectués") {
+      if (!constatData && os.status === "Travaux effectués" && ["admin","bureau"].includes(profile?.role)) {
         const { data: authData } = await supabase.auth.getUser(); const userId = authData?.user?.id || null;
         const { error: rpcError } = await supabase.rpc("regenerate_constat_for_work_order", { p_work_order_id: os.dbId, p_user_id: userId });
         if (!rpcError) { const { data: refreshed, error: refreshError } = await supabase.rpc("get_constat_for_work_order", { p_work_order_id: os.dbId }); if(!refreshError){constatData=refreshed?.constat||null;linesData=refreshed?.lines||[];} } else console.error("Erreur génération constat automatique :", rpcError);
