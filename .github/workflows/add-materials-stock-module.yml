@@ -1,0 +1,94 @@
+name: Add materials stock module
+
+on:
+  push:
+    paths:
+      - '.github/workflows/add-materials-stock-module.yml'
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - name: Patch SETOM materials module
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          p = Path('src/main.jsx')
+          s = p.read_text(encoding='utf-8')
+
+          def replace_once(old, new, label):
+              global s
+              if old not in s:
+                  raise SystemExit(f'Missing patch anchor: {label}')
+              s = s.replace(old, new, 1)
+
+          replace_once(
+              '  const [dbMaterials, setDbMaterials] = useState([]);\n  const [materialSaveIds, setMaterialSaveIds] = useState([]);',
+              '  const [dbMaterials, setDbMaterials] = useState([]);\n  const [materialSaveIds, setMaterialSaveIds] = useState([]);\n  const [materialsDayDate, setMaterialsDayDate] = useState(new Date().toISOString().slice(0, 10));\n  const [truckLoads, setTruckLoads] = useState({});\n  const [truckLoadSaving, setTruckLoadSaving] = useState(false);',
+              'state'
+          )
+
+          replace_once(
+              'select("id, name, category, active, planning_difficulty, indicative_capacity_m2, sort_order")',
+              'select("id, name, category, active, planning_difficulty, indicative_capacity_m2, density_t_m3, default_thickness_cm, purchase_price_per_t, sort_order")',
+              'material select'
+          )
+
+          replace_once(
+              'indicative_capacity_m2: material.indicative_capacity_m2 == null ? "" : String(material.indicative_capacity_m2), sort_order: String(material.sort_order ?? "0")',
+              'indicative_capacity_m2: material.indicative_capacity_m2 == null ? "" : String(material.indicative_capacity_m2), density_t_m3: material.density_t_m3 == null ? "" : String(material.density_t_m3), default_thickness_cm: material.default_thickness_cm == null ? "" : String(material.default_thickness_cm), purchase_price_per_t: material.purchase_price_per_t == null ? "" : String(material.purchase_price_per_t), sort_order: String(material.sort_order ?? "0")',
+              'material mapping'
+          )
+
+          replace_once(
+              '  async function saveMaterialCatalogItem(material) {',
+              '''  async function saveTruckLoad(materialId, value) {\n    setTruckLoadSaving(true);\n    try {\n      const quantity = String(value ?? "").trim() === "" ? 0 : Number(String(value).replace(",", "."));\n      if (!Number.isFinite(quantity) || quantity < 0) throw new Error("La quantité chargée doit être un nombre positif ou nul.");\n      const { data: authData } = await supabase.auth.getUser();\n      const userId = authData?.user?.id || null;\n      const { error } = await supabase.from("truck_daily_loads").upsert({ load_date: materialsDayDate, material_id: materialId, loaded_quantity: quantity, unit: "t", created_by: userId, updated_at: new Date().toISOString() }, { onConflict: "load_date,material_id" });\n      if (error) throw error;\n      setTruckLoads((current) => ({ ...current, [materialId]: String(quantity) }));\n    } catch (error) {\n      alert("Impossible d'enregistrer le chargement camion :\\n\\n" + (error?.message || "Erreur inconnue"));\n    } finally { setTruckLoadSaving(false); }\n  }\n\n  async function saveMaterialCatalogItem(material) {''',
+              'load function'
+          )
+
+          replace_once(
+              '  async function handleCreateTeam(event) {',
+              '''  useEffect(() => {\n    if (!session || page !== "materials") return;\n    let cancelled = false;\n    async function loadTruckLoads() {\n      const { data, error } = await supabase.from("truck_daily_loads").select("material_id, loaded_quantity").eq("load_date", materialsDayDate);\n      if (cancelled) return;\n      if (error) { console.error("Erreur chargement stock camion :", error); setTruckLoads({}); return; }\n      setTruckLoads(Object.fromEntries((data || []).map((row) => [row.material_id, String(row.loaded_quantity ?? "")] )));\n    }\n    loadTruckLoads();\n    return () => { cancelled = true; };\n  }, [session?.user?.id, page, materialsDayDate]);\n\n  async function handleCreateTeam(event) {''',
+              'truck load effect'
+          )
+
+          replace_once(
+              '      const payload = { name: String(material.name).trim(), category: String(material.category).trim(), planning_difficulty: difficulty, indicative_capacity_m2: capacity, sort_order: order, active: !!material.active };',
+              '      const density = String(material.density_t_m3 ?? "").trim() === "" ? null : Number(String(material.density_t_m3).replace(",", "."));\n      const thickness = String(material.default_thickness_cm ?? "").trim() === "" ? null : Number(String(material.default_thickness_cm).replace(",", "."));\n      const purchasePrice = String(material.purchase_price_per_t ?? "").trim() === "" ? null : Number(String(material.purchase_price_per_t).replace(",", "."));\n      if (density !== null && (!Number.isFinite(density) || density <= 0)) { setMaterialsError("La masse volumique doit être supérieure à zéro."); return; }\n      if (thickness !== null && (!Number.isFinite(thickness) || thickness <= 0)) { setMaterialsError("L'épaisseur par défaut doit être supérieure à zéro."); return; }\n      if (purchasePrice !== null && (!Number.isFinite(purchasePrice) || purchasePrice < 0)) { setMaterialsError("Le prix d'achat doit être positif ou nul."); return; }\n      const payload = { name: String(material.name).trim(), category: String(material.category).trim(), planning_difficulty: difficulty, indicative_capacity_m2: capacity, density_t_m3: density, default_thickness_cm: thickness, purchase_price_per_t: purchasePrice, sort_order: order, active: !!material.active };',
+              'material save payload'
+          )
+
+          replace_once(
+              '.from("materials").update(payload).eq("id", material.id).select("id, name, category, active, planning_difficulty, indicative_capacity_m2, sort_order").single();',
+              '.from("materials").update(payload).eq("id", material.id).select("id, name, category, active, planning_difficulty, indicative_capacity_m2, density_t_m3, default_thickness_cm, purchase_price_per_t, sort_order").single();',
+              'material save select'
+          )
+
+          replace_once(
+              'indicative_capacity_m2: data.indicative_capacity_m2 == null ? "" : String(data.indicative_capacity_m2), sort_order: String(data.sort_order ?? "0")',
+              'indicative_capacity_m2: data.indicative_capacity_m2 == null ? "" : String(data.indicative_capacity_m2), density_t_m3: data.density_t_m3 == null ? "" : String(data.density_t_m3), default_thickness_cm: data.default_thickness_cm == null ? "" : String(data.default_thickness_cm), purchase_price_per_t: data.purchase_price_per_t == null ? "" : String(data.purchase_price_per_t), sort_order: String(data.sort_order ?? "0")',
+              'material save mapping'
+          )
+
+          anchor = '  if (authLoading) return <div style={{ padding: "40px", textAlign: "center" }}><h1>SETOM</h1><p>Chargement...</p></div>;'
+          daily = '''  const plannedMaterialOS = osList.filter((os) => os.plannedDate === materialsDayDate && ["Planifié", "Nouveau OS"].includes(os.status));\n  const materialDayRows = plannedMaterialOS.map((os) => {\n    const surface = Number(String(os.quantity || "").replace(" m²", "").replace(",", ".")) || 0;\n    const text = String(os.work || "").toLowerCase();\n    const material = dbMaterials.find((item) => { const name = String(item.name || "").toLowerCase(); const category = String(item.category || "").toLowerCase(); return (name && text.includes(name)) || (category && text.includes(category)); });\n    const thickness = Number(material?.default_thickness_cm) || 0;\n    const density = Number(material?.density_t_m3) || 0;\n    const volume = surface > 0 && thickness > 0 ? surface * thickness / 100 : 0;\n    const tonnage = volume > 0 && density > 0 ? volume * density : 0;\n    const cost = tonnage > 0 && Number(material?.purchase_price_per_t) >= 0 ? tonnage * Number(material.purchase_price_per_t) : 0;\n    return { os, surface, material, thickness, density, volume, tonnage, cost };\n  });\n  const materialDayTotals = materialDayRows.reduce((acc, row) => { const key = row.material?.id || "missing"; if (!acc[key]) acc[key] = { material: row.material, surface: 0, volume: 0, tonnage: 0, cost: 0, missingParams: false }; acc[key].surface += row.surface; acc[key].volume += row.volume; acc[key].tonnage += row.tonnage; acc[key].cost += row.cost; acc[key].missingParams ||= !row.material || row.thickness <= 0 || row.density <= 0; return acc; }, {});\n  const materialDayTotalTonnage = Object.values(materialDayTotals).reduce((sum, row) => sum + row.tonnage, 0);\n\n'''
+          replace_once(anchor, daily + anchor, 'daily calculations')
+
+          old = '''      </>}{page === "materials" && <><h2>Catalogue des matériaux</h2>\n        <p style={{ color: "#667085", marginTop: -6 }}>Le catalogue pilote les choix du formulaire de nouvel OS. La capacité indicative et le coefficient de difficulté servent de paramètres de planification ; laissez la capacité vide si elle n'est pas définie.</p>'''
+          new = '''      </>}{page === "materials" && <><h2>Matériaux & préparation camion</h2>\n        <div className="card" style={{ marginBottom: 16, border: "1px solid #d0d5dd" }}>\n          <div style={{ display: "flex", justifyContent: "space-between", gap: 12, alignItems: "center", flexWrap: "wrap" }}>\n            <div><h3 style={{ margin: 0 }}>🚛 Préparation de la journée</h3><p style={{ color: "#667085", margin: "5px 0 0" }}>SETOM additionne les OS planifiés, calcule les volumes puis estime le tonnage à charger.</p></div>\n            <input type="date" value={materialsDayDate} onChange={(e) => setMaterialsDayDate(e.target.value)} />\n          </div>\n          <div className="cards" style={{ margin: "16px 0" }}><div className="card"><strong>{plannedMaterialOS.length}</strong><div>OS prévus</div></div><div className="card"><strong>{materialDayTotalTonnage.toFixed(2)} t</strong><div>Tonnage estimé</div></div></div>\n          {materialDayRows.length === 0 ? <div style={{ padding: 12, background: "#f8fafc", borderRadius: 8 }}>Aucun OS planifié pour cette date.</div> : <div style={{ overflowX: "auto" }}><table style={{ width: "100%", borderCollapse: "collapse", minWidth: 820 }}><thead><tr>{["OS","Matériau","Surface","Épaisseur","Volume","Tonnage","Coût matière estimé"].map((h) => <th key={h} style={{ textAlign: "left", padding: 8, borderBottom: "1px solid #e4e7ec" }}>{h}</th>)}</tr></thead><tbody>{materialDayRows.map((row) => <tr key={row.os.id}><td style={{ padding: 8 }}>{row.os.id}</td><td style={{ padding: 8 }}>{row.material?.name || row.os.work || "Matériau non paramétré"}</td><td style={{ padding: 8 }}>{row.surface.toFixed(2)} m²</td><td style={{ padding: 8 }}>{row.thickness ? row.thickness + " cm" : "⚠️ à définir"}</td><td style={{ padding: 8 }}>{row.volume ? row.volume.toFixed(3) + " m³" : "—"}</td><td style={{ padding: 8, fontWeight: 700 }}>{row.tonnage ? row.tonnage.toFixed(2) + " t" : "⚠️"}</td><td style={{ padding: 8 }}>{row.material?.purchase_price_per_t !== "" && row.tonnage ? row.cost.toFixed(2) + " €" : "—"}</td></tr>)}</tbody></table></div>}\n          <h4 style={{ marginBottom: 8 }}>Chargement du camion</h4>\n          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(250px,1fr))", gap: 10 }}>{Object.values(materialDayTotals).filter((row) => row.material).map((row) => { const loaded = Number(truckLoads[row.material.id]) || 0; const remaining = loaded - row.tonnage; return <div className="card" key={row.material.id}><strong>{row.material.name}</strong><div style={{ fontSize: 13, color: "#667085", margin: "5px 0" }}>Besoin estimé : <strong>{row.tonnage.toFixed(2)} t</strong></div><div style={{ display: "flex", gap: 8, alignItems: "end" }}><div style={{ flex: 1 }}><label>Chargé (t)</label><input type="number" min="0" step="0.01" value={truckLoads[row.material.id] || ""} onChange={(e) => setTruckLoads((current) => ({ ...current, [row.material.id]: e.target.value }))} /></div><button className="secondary" type="button" disabled={truckLoadSaving} onClick={() => saveTruckLoad(row.material.id, truckLoads[row.material.id])}>💾</button></div><div style={{ marginTop: 8, fontWeight: 700, color: remaining < 0 ? "#b42318" : "#027a48" }}>{remaining < 0 ? "⚠️ Manque " + Math.abs(remaining).toFixed(2) + " t" : "Stock estimé restant : " + remaining.toFixed(2) + " t"}</div></div>; })}</div>\n          <p style={{ fontSize: 12, color: "#667085", marginBottom: 0 }}>Les densités et épaisseurs sont des paramètres du catalogue. Elles doivent être adaptées à tes matériaux réels avant d'utiliser le calcul comme référence de chargement.</p>\n        </div>\n        <h3>Catalogue des matériaux</h3>\n        <p style={{ color: "#667085", marginTop: -6 }}>Le catalogue pilote les choix du formulaire de nouvel OS et les calculs de volume, tonnage et coût matière.</p>'''
+          replace_once(old, new, 'materials page header')
+
+          old2 = '''              <div><label style={{ display: "block", fontSize: 12 }}>Capacité (m²/j)</label><input type="number" min="0.1" step="0.1" value={material.indicative_capacity_m2} onChange={(e) => setDbMaterials((current) => current.map((item) => item.id === material.id ? { ...item, indicative_capacity_m2: e.target.value } : item))} placeholder="Réf. globale" style={{ width: "100%", boxSizing: "border-box" }}/></div>\n              <div><label style={{ display: "block", fontSize: 12 }}>Difficulté (coef.)</label><input type="number" min="0.1" step="0.1" value={material.planning_difficulty} onChange={(e) => setDbMaterials((current) => current.map((item) => item.id === material.id ? { ...item, planning_difficulty: e.target.value } : item))} style={{ width: "100%", boxSizing: "border-box" }}/></div>'''
+          new2 = '''              <div><label style={{ display: "block", fontSize: 12 }}>Capacité (m²/j)</label><input type="number" min="0.1" step="0.1" value={material.indicative_capacity_m2} onChange={(e) => setDbMaterials((current) => current.map((item) => item.id === material.id ? { ...item, indicative_capacity_m2: e.target.value } : item))} placeholder="Réf. globale" style={{ width: "100%", boxSizing: "border-box" }}/></div>\n              <div><label style={{ display: "block", fontSize: 12 }}>Masse volumique (t/m³)</label><input type="number" min="0.1" step="0.01" value={material.density_t_m3} onChange={(e) => setDbMaterials((current) => current.map((item) => item.id === material.id ? { ...item, density_t_m3: e.target.value } : item))} placeholder="Ex. 2.35" style={{ width: "100%", boxSizing: "border-box" }}/></div>\n              <div><label style={{ display: "block", fontSize: 12 }}>Épaisseur défaut (cm)</label><input type="number" min="0.1" step="0.5" value={material.default_thickness_cm} onChange={(e) => setDbMaterials((current) => current.map((item) => item.id === material.id ? { ...item, default_thickness_cm: e.target.value } : item))} placeholder="Ex. 5" style={{ width: "100%", boxSizing: "border-box" }}/></div>\n              <div><label style={{ display: "block", fontSize: 12 }}>Prix achat (€/t)</label><input type="number" min="0" step="0.01" value={material.purchase_price_per_t} onChange={(e) => setDbMaterials((current) => current.map((item) => item.id === material.id ? { ...item, purchase_price_per_t: e.target.value } : item))} placeholder="Ex. 85" style={{ width: "100%", boxSizing: "border-box" }}/></div>\n              <div><label style={{ display: "block", fontSize: 12 }}>Difficulté (coef.)</label><input type="number" min="0.1" step="0.1" value={material.planning_difficulty} onChange={(e) => setDbMaterials((current) => current.map((item) => item.id === material.id ? { ...item, planning_difficulty: e.target.value } : item))} style={{ width: "100%", boxSizing: "border-box" }}/></div>'''
+          replace_once(old2, new2, 'material parameter fields')
+
+          p.write_text(s, encoding='utf-8')
+          PY
+          git config user.name 'SETOM Bot'
+          git config user.email 'setom-bot@users.noreply.github.com'
+          git add src/main.jsx
+          git commit -m 'feat: daily material tonnage and truck stock' || echo 'No changes to commit'
+          git push
