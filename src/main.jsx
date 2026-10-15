@@ -2569,47 +2569,7 @@ async function save() {
 
       </div>
 
-      <h4>Autres travaux</h4>
-
-      <div className="work-grid">
-
-        <div>
-          <label>Circulation</label>
-          <select value={circulationType} onChange={(e) => setCirculationType(e.target.value)}>
-            <option value="">Non renseignée</option>
-            <option value="K10">2 agents avec panneaux K10</option>
-            <option value="FEUX">2 feux tricolores à batterie</option>
-          </select>
-          {circulationType && (
-            <input
-              type="number"
-              min="0"
-              step="0.5"
-              value={circulationHours}
-              onChange={(e) => setCirculationHours(e.target.value)}
-              placeholder="Durée en heures"
-            />
-          )}
-          {circulationHours && !isNaN(Number(circulationHours)) && (
-            <small>{(Number(circulationHours) / 4).toFixed(2)} unité(s) de 1/2 journée facturable(s)</small>
-          )}
-        </div>
-
-        <div>
-          <label>Marquage — surface de peinture (m²)</label>
-          <input
-            type="number"
-            min="0"
-            step="0.01"
-            value={marquageSurface}
-            onChange={(e) => setMarquageSurface(e.target.value)}
-            placeholder="Surface de peinture uniquement"
-          />
-        </div>
-
-      </div>
-
-<div className="attachments-section" style={{ marginTop: 18 }}>
+      <div className="attachments-section" style={{ marginTop: 18 }}>
         <label>📷 Photos des travaux réalisés — obligatoires pour valider le constat</label>
         <div className="attachments-buttons">
           <label className="attachment-button">
@@ -2660,6 +2620,48 @@ async function save() {
           </span>
         </div>
       </div>
+
+      <h4>Autres travaux</h4>
+
+      <div className="work-grid">
+
+        <div>
+          <label>Circulation</label>
+          <select value={circulationType} onChange={(e) => setCirculationType(e.target.value)}>
+            <option value="">Non renseignée</option>
+            <option value="K10">2 agents avec panneaux K10</option>
+            <option value="FEUX">2 feux tricolores à batterie</option>
+          </select>
+          {circulationType && (
+            <input
+              type="number"
+              min="0"
+              step="0.5"
+              value={circulationHours}
+              onChange={(e) => setCirculationHours(e.target.value)}
+              placeholder="Durée en heures"
+            />
+          )}
+          {circulationHours && !isNaN(Number(circulationHours)) && (
+            <small>{(Number(circulationHours) / 4).toFixed(2)} unité(s) de 1/2 journée facturable(s)</small>
+          )}
+        </div>
+
+        <div>
+          <label>Marquage — surface de peinture (m²)</label>
+          <input
+            type="number"
+            min="0"
+            step="0.01"
+            value={marquageSurface}
+            onChange={(e) => setMarquageSurface(e.target.value)}
+            placeholder="Surface de peinture uniquement"
+          />
+        </div>
+
+      </div>
+
+
 
       <h4>Observations</h4>
 
@@ -2992,11 +2994,7 @@ async function save() {
 
         <div className="os-actions">
 
-{activeTab === "travaux" && (
-            <button className="primary" onClick={save} type="button">
-              💾 Enregistrer les travaux
-            </button>
-          )}
+
 
           <button
             className="secondary"
