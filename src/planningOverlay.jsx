@@ -1,6 +1,8 @@
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
 import { supabase } from "./supabase";
+import L from "leaflet";
+import "leaflet/dist/leaflet.css";
 import "./planningOverlay.css";
 
 const DAY_COLORS = ["#1976d2", "#2e8b57", "#f39c12", "#8e44ad", "#d32f2f", "#16a6a6", "#e83e8c"];
@@ -22,10 +24,17 @@ function Planner({ onClose }) {
   const [loading, setLoading] = useState(true);
   const [savingId, setSavingId] = useState(null);
   const [error, setError] = useState("");
+  const [mapStatus, setMapStatus] = useState("La carte charge les adresses des OS.");
+  const [geoPoints, setGeoPoints] = useState({});
+  const [routeSummary, setRouteSummary] = useState("Sélectionnez une journée pour afficher son itinéraire.");
+  const mapElementRef = useRef(null);
+  const mapInstanceRef = useRef(null);
+  const markerLayerRef = useRef(null);
+  const routeLayerRef = useRef(null);
 
   async function load() {
     setLoading(true); setError("");
-    const { data: rows, error: woError } = await supabase.from("work_orders").select("id, os_number, creation_date, address, city, material_detail, planned_surface_m2, status, deadline_date, is_night").in("status", STATUS_PLANIFIABLE).order("os_number", { ascending: true });
+    const { data: rows, error: woError } = await supabase.from("work_orders").select("id, os_number, creation_date, address, postal_code, city, material_detail, planned_surface_m2, status, deadline_date, is_night").order("os_number", { ascending: true });
     if (woError) { setError(woError.message); setLoading(false); return; }
     const ids = (rows || []).map((r) => r.id);
     let interventions = [];
@@ -35,7 +44,11 @@ function Planner({ onClose }) {
     }
     const allTeams = await supabase.from("teams").select("id, name").order("name");
     const teamRows = allTeams.error ? [] : (allTeams.data || []);
-    const byWO = new Map(interventions.map((x) => [x.work_order_id, x]));
+    const byWO = new Map();
+    for (const item of interventions) {
+      const previous = byWO.get(item.work_order_id);
+      if (!previous || (!previous.planned_date && item.planned_date)) byWO.set(item.work_order_id, item);
+    }
     const byTeam = new Map(teamRows.map((x) => [x.id, x.name]));
     setTeams(teamRows);
     setOrders((rows || []).map((r) => {
@@ -55,8 +68,11 @@ function Planner({ onClose }) {
   }, [orders]);
 
   async function planOrder(order, date, teamId = order.team_id) {
+    if (!STATUS_PLANIFIABLE.includes(order.status)) { setError("Cet OS a déjà quitté la file de planification. Sa date reste visible dans le classeur."); return; }
     setSavingId(order.id); setError("");
     try {
+      const { data: authData, error: authError } = await supabase.auth.getUser();
+      if (authError || !authData?.user) throw new Error("Connexion requise pour modifier le planning.");
       let interventionId = order.interventionId;
       if (!interventionId) {
         const { data, error: insertError } = await supabase.from("interventions").insert({ work_order_id: order.id, type: order.material_detail || "Intervention", status: date ? "Planifié" : "À planifier", planned_date: date || null, planned_surface_m2: order.planned_surface_m2 || null, team_id: teamId || null, planned_order: date ? 1 : 0 }).select("id").single();
@@ -67,8 +83,9 @@ function Planner({ onClose }) {
         if (updateError) throw updateError;
       }
       const newStatus = date ? "Planifié" : "À planifier";
-      const { error: statusError } = await supabase.from("work_orders").update({ status: newStatus }).eq("id", order.id);
+      const { error: statusError } = await supabase.from("work_orders").update({ status: newStatus, updated_by: authData.user.id }).eq("id", order.id);
       if (statusError) throw statusError;
+      window.dispatchEvent(new Event("setom:planning-updated"));
       setOrders((current) => current.map((x) => x.id === order.id ? { ...x, interventionId, planned_date: date || null, team_id: teamId || null, team_name: teams.find((t) => t.id === teamId)?.name || "Non affectée", status: newStatus, planned_order: date ? (x.planned_order || 1) : 0 } : x));
     } catch (e) { setError(e?.message || "Impossible d'enregistrer le planning."); }
     finally { setSavingId(null); }
@@ -82,6 +99,7 @@ function Planner({ onClose }) {
   }
 
   async function reorderOrder(order, delta) {
+    if (!STATUS_PLANIFIABLE.includes(order.status)) return;
     const list = [...(byDate.get(order.planned_date) || [])];
     const index = list.findIndex((x) => x.id === order.id);
     const target = index + delta;
@@ -96,6 +114,7 @@ function Planner({ onClose }) {
       if (first.error) throw first.error;
       const second = await supabase.from("interventions").update({ planned_order: b }).eq("id", other.interventionId);
       if (second.error) throw second.error;
+      window.dispatchEvent(new Event("setom:planning-updated"));
       setOrders((currentOrders) => currentOrders.map((x) => x.id === current.id ? { ...x, planned_order: a } : x.id === other.id ? { ...x, planned_order: b } : x));
     } catch (e) { setError(e?.message || "Impossible de modifier l'ordre d'intervention."); }
     finally { setSavingId(null); }
@@ -106,6 +125,136 @@ function Planner({ onClose }) {
   const monthCells = useMemo(() => { const first = new Date(cursor.getFullYear(), cursor.getMonth(), 1, 12); const start = startOfWeek(first); return Array.from({ length: 42 }, (_, i) => addDays(start, i)); }, [cursor]);
   const weekCells = useMemo(() => Array.from({ length: 7 }, (_, i) => addDays(startOfWeek(cursor), i)), [cursor]);
   const selectedOrders = byDate.get(selectedDate) || [];
+  const mapOrders = useMemo(() => orders.filter((o) => STATUS_PLANIFIABLE.includes(o.status)), [orders]);
+  const geoTargets = useMemo(() => orders.filter((o) => STATUS_PLANIFIABLE.includes(o.status) || !!o.planned_date), [orders]);
+
+  useEffect(() => {
+    if (view !== "carte" || !mapElementRef.current) return;
+    const map = L.map(mapElementRef.current, { zoomControl: true, scrollWheelZoom: true }).setView([43.6045, 1.444], 12);
+    L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", { maxZoom: 19, attribution: '&copy; <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noreferrer">OpenStreetMap contributors</a>' }).addTo(map);
+    const markers = L.layerGroup().addTo(map);
+    mapInstanceRef.current = map;
+    markerLayerRef.current = markers;
+    map.whenReady(() => map.invalidateSize());
+    return () => {
+      map.remove();
+      mapInstanceRef.current = null;
+      markerLayerRef.current = null;
+      routeLayerRef.current = null;
+    };
+  }, [view]);
+
+  useEffect(() => {
+    if (view !== "carte" || !geoTargets.length) return;
+    let cancelled = false;
+    async function geocodeOrders() {
+      let cache = {};
+      try { cache = JSON.parse(sessionStorage.getItem("setom-geocodes-v1") || "{}"); } catch { cache = {}; }
+      const next = {};
+      let processed = 0;
+      setMapStatus("Localisation des adresses des OS…");
+      for (const order of geoTargets) {
+        if (cancelled) return;
+        const addressParts = [order.address, order.postal_code, order.city, "France"].filter(Boolean);
+        const query = addressParts.join(" ");
+        const cacheKey = query.toLocaleLowerCase("fr-FR");
+        let point = Object.prototype.hasOwnProperty.call(cache, cacheKey) ? cache[cacheKey] : undefined;
+        if (point === undefined) {
+          try {
+            const params = new URLSearchParams({ q: query, limit: "1" });
+            const response = await fetch("https://data.geopf.fr/geocodage/search?" + params.toString(), { headers: { Accept: "application/json" } });
+            if (!response.ok) throw new Error("Service de géocodage indisponible (HTTP " + response.status + ").");
+            const payload = await response.json();
+            const coordinates = payload?.features?.[0]?.geometry?.coordinates;
+            point = Array.isArray(coordinates) && coordinates.length >= 2 ? { lat: Number(coordinates[1]), lon: Number(coordinates[0]) } : null;
+            cache[cacheKey] = point;
+            try { sessionStorage.setItem("setom-geocodes-v1", JSON.stringify(cache)); } catch { /* cache facultatif */ }
+          } catch (geocodeError) {
+            console.warn("Géocodage indisponible pour", query, geocodeError);
+            point = null;
+          }
+        }
+        if (point && Number.isFinite(point.lat) && Number.isFinite(point.lon)) next[order.id] = point;
+        processed += 1;
+        if (!cancelled) {
+          setGeoPoints({ ...next });
+          setMapStatus("Localisation des adresses : " + processed + "/" + geoTargets.length + "…");
+        }
+      }
+      if (!cancelled) {
+        setGeoPoints(next);
+        const located = Object.keys(next).length;
+        setMapStatus(located + "/" + geoTargets.length + " adresses localisées. Les adresses non reconnues restent accessibles dans la liste.");
+      }
+    }
+    geocodeOrders();
+    return () => { cancelled = true; };
+  }, [view, geoTargets]);
+
+  useEffect(() => {
+    if (view !== "carte" || !mapInstanceRef.current || !markerLayerRef.current) return;
+    markerLayerRef.current.clearLayers();
+    const locatedOrders = mapOrders.filter((order) => geoPoints[order.id]);
+    for (const order of locatedOrders) {
+      const point = geoPoints[order.id];
+      const isPlanned = !!order.planned_date;
+      const color = isPlanned ? "#2563eb" : "#dc2626";
+      const marker = L.circleMarker([point.lat, point.lon], { radius: 8, color, weight: 2, fillColor: color, fillOpacity: 0.9 }).addTo(markerLayerRef.current);
+      const label = document.createElement("span");
+      label.textContent = fullOsNumber(order) + " · " + (order.address || "Adresse non renseignée");
+      marker.bindTooltip(label, { direction: "top", opacity: 0.95 });
+      marker.on("click", () => {
+        if (order.planned_date) {
+          setSelectedDate(order.planned_date);
+          setCursor(new Date(order.planned_date + "T12:00:00"));
+        }
+      });
+    }
+    if (locatedOrders.length > 0) {
+      const bounds = L.latLngBounds(locatedOrders.map((order) => [geoPoints[order.id].lat, geoPoints[order.id].lon]));
+      mapInstanceRef.current.fitBounds(bounds, { padding: [28, 28], maxZoom: locatedOrders.length === 1 ? 15 : 14 });
+    }
+  }, [view, mapOrders, geoPoints]);
+
+  useEffect(() => {
+    const map = mapInstanceRef.current;
+    if (view !== "carte" || !map) return;
+    let cancelled = false;
+    if (routeLayerRef.current) { map.removeLayer(routeLayerRef.current); routeLayerRef.current = null; }
+    const stops = (byDate.get(selectedDate) || []).filter((order) => geoPoints[order.id]);
+    if (stops.length === 0) { setRouteSummary("Aucun OS géolocalisé sur cette journée."); return; }
+    if (stops.length === 1) { setRouteSummary("1 arrêt planifié. Ajoutez un autre OS à la journée pour calculer un itinéraire."); map.setView([geoPoints[stops[0].id].lat, geoPoints[stops[0].id].lon], 14); return; }
+    setRouteSummary("Calcul de l’itinéraire de " + stops.length + " arrêts…");
+    async function calculateRoute() {
+      try {
+        const coordinates = stops.map((order) => geoPoints[order.id].lon + "," + geoPoints[order.id].lat).join(";");
+        const response = await fetch("https://router.project-osrm.org/route/v1/driving/" + coordinates + "?overview=full&geometries=geojson");
+        if (!response.ok) throw new Error("Service d’itinéraire indisponible (HTTP " + response.status + ").");
+        const payload = await response.json();
+        const route = payload?.routes?.[0];
+        if (!route?.geometry?.coordinates?.length) throw new Error("Aucun itinéraire routier trouvé pour ces adresses.");
+        if (cancelled || !mapInstanceRef.current) return;
+        const latLngs = route.geometry.coordinates.map(([lon, lat]) => [lat, lon]);
+        routeLayerRef.current = L.polyline(latLngs, { color: "#175cd3", weight: 5, opacity: 0.82 }).addTo(mapInstanceRef.current);
+        mapInstanceRef.current.fitBounds(routeLayerRef.current.getBounds(), { padding: [35, 35] });
+        const km = (Number(route.distance || 0) / 1000).toLocaleString("fr-FR", { maximumFractionDigits: 1 });
+        const minutes = Math.round(Number(route.duration || 0) / 60);
+        setRouteSummary(stops.length + " arrêts · " + km + " km · environ " + minutes + " min de conduite (estimation routière).");
+      } catch (routeError) {
+        if (!cancelled) { console.warn("Calcul d’itinéraire impossible :", routeError); setRouteSummary("Itinéraire indisponible pour le moment. Les OS restent planifiables sur la carte."); }
+      }
+    }
+    calculateRoute();
+    return () => { cancelled = true; };
+  }, [view, selectedDate, byDate, geoPoints]);
+
+  function navigateDate(delta) {
+    if (view === "mois") { setCursor(new Date(cursor.getFullYear(), cursor.getMonth() + delta, 1, 12)); return; }
+    const step = view === "semaine" || view === "classeur-semaine" ? 7 : 1;
+    const next = addDays(new Date(selectedDate + "T12:00:00"), delta * step);
+    setSelectedDate(iso(next));
+    setCursor(next);
+  }
 
   function renderOrder(order) {
     const dayOrders = byDate.get(order.planned_date) || [];
@@ -114,15 +263,15 @@ function Planner({ onClose }) {
       <strong>{fullOsNumber(order)}</strong>
       <span>{order.address}{order.city ? `, ${order.city}` : ""}</span>
       <small>{order.material_detail || "Intervention"} · {order.planned_surface_m2 ? `${order.planned_surface_m2} m²` : "surface non renseignée"}</small>
-      <div className="setom-plan-order-actions">
-        <button disabled={savingId === order.id || index === 0} title="Monter" onClick={() => reorderOrder(order, -1)}>↑</button>
-        <button disabled={savingId === order.id || index === dayOrders.length - 1} title="Descendre" onClick={() => reorderOrder(order, 1)}>↓</button>
+      {STATUS_PLANIFIABLE.includes(order.status) ? <div className="setom-plan-order-actions">
+        <button disabled={savingId === order.id || index === 0} title="Monter dans l'itinéraire" onClick={() => reorderOrder(order, -1)}>↑</button>
+        <button disabled={savingId === order.id || index === dayOrders.length - 1} title="Descendre dans l'itinéraire" onClick={() => reorderOrder(order, 1)}>↓</button>
         <button disabled={savingId === order.id} title="Jour précédent" onClick={() => moveOrder(order, -1)}>←</button>
         <button disabled={savingId === order.id} title="Jour suivant" onClick={() => moveOrder(order, 1)}>→</button>
         <select value={order.team_id || ""} onChange={(e) => changeOrderTeam(order, e.target.value || null)} disabled={savingId === order.id}>
           <option value="">Équipe</option>{teams.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}
         </select>
-      </div>
+      </div> : <small className="setom-order-status-readonly">Statut conservé : {order.status}</small>}
     </div>;
   }
 
@@ -131,17 +280,35 @@ function Planner({ onClose }) {
       <header className="setom-planner-header"><div><h2>📅 Planning SETOM</h2><p>Planning réel des OS à planifier et planifiés</p></div><button onClick={onClose}>✕</button></header>
       {error && <div className="setom-plan-error">⚠️ {error}</div>}
       <div className="setom-plan-toolbar">
-        <div className="setom-plan-tabs">{[["mois","Mois"],["semaine","Semaine"],["jour","Jour"],["classeur","Classeur"],["classeur-semaine","Classeur semaine"]].map(([id,label]) => <button key={id} className={view === id ? "active" : ""} onClick={() => setView(id)}>{label}</button>)}</div>
-        <div className="setom-plan-nav"><button onClick={() => setCursor(new Date(cursor.getFullYear(), cursor.getMonth() - 1, 1, 12))}>‹</button><strong>{view === "mois" ? monthLabel(cursor) : new Date(selectedDate + "T12:00:00").toLocaleDateString("fr-FR", { weekday: "long", day: "numeric", month: "long", year: "numeric" })}</strong><button onClick={() => setCursor(new Date(cursor.getFullYear(), cursor.getMonth() + 1, 1, 12))}>›</button><button onClick={() => { const now = new Date(); setCursor(now); setSelectedDate(iso(now)); }}>Aujourd'hui</button></div>
+        <div className="setom-plan-tabs">{[["mois","Mois"],["semaine","Semaine"],["jour","Jour"],["carte","Carte / itinéraire"],["classeur","Classeur"],["classeur-semaine","Classeur semaine"]].map(([id,label]) => <button key={id} className={view === id ? "active" : ""} onClick={() => setView(id)}>{label}</button>)}</div>
+        <div className="setom-plan-nav"><button onClick={() => navigateDate(-1)}>‹</button><strong>{view === "mois" ? monthLabel(cursor) : new Date(selectedDate + "T12:00:00").toLocaleDateString("fr-FR", { weekday: "long", day: "numeric", month: "long", year: "numeric" })}</strong><button onClick={() => navigateDate(1)}>›</button><button onClick={() => { const now = new Date(); setCursor(now); setSelectedDate(iso(now)); }}>Aujourd'hui</button></div>
       </div>
       {loading ? <div className="setom-plan-loading">Chargement du planning…</div> : <>
+        {view === "carte" && <div className="setom-map-layout">
+          <div className="setom-map-main">
+            <div className="setom-map-route-summary"><div><strong>Itinéraire du {new Date(selectedDate + "T12:00:00").toLocaleDateString("fr-FR", { weekday: "long", day: "numeric", month: "long" })}</strong><span>{routeSummary}</span></div><span className="setom-map-legend"><i className="unplanned"></i> À planifier <i className="planned"></i> Planifié</span></div>
+            <div ref={mapElementRef} className="setom-map-canvas" aria-label="Carte interactive des OS planifiables"></div>
+            <small className="setom-map-attribution">{mapStatus} · Fond cartographique © OpenStreetMap contributors · Géocodage IGN Géoplateforme · calcul routier OSRM (service public de démonstration).</small>
+          </div>
+          <aside className="setom-map-order-list"><header><strong>OS à planifier</strong><span>{mapOrders.length} OS</span></header>
+            {mapOrders.map((o) => <article className="setom-map-order" key={o.id}>
+              <strong>{fullOsNumber(o)}</strong><span>{o.address}{o.city ? `, ${o.city}` : ""}</span>
+              <small>{o.material_detail || "Intervention"} · {o.planned_surface_m2 ? `${o.planned_surface_m2} m²` : "surface non renseignée"}{o.is_night ? " · Nuit" : ""}</small>
+              <label>Date de passage<input type="date" value={o.planned_date || selectedDate} disabled={savingId === o.id} onChange={(e) => planOrder(o, e.target.value || null, o.team_id)} /></label>
+              <label>Équipe<select value={o.team_id || ""} onChange={(e) => changeOrderTeam(o, e.target.value || null)} disabled={savingId === o.id}><option value="">Non affectée</option>{teams.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}</select></label>
+              <button disabled={savingId === o.id || o.planned_date === selectedDate} onClick={() => planOrder(o, selectedDate, o.team_id)}>{o.planned_date ? "Déplacer vers cette journée" : "Ajouter à cette journée"}</button>
+              {o.planned_date && <button className="setom-map-remove" disabled={savingId === o.id} onClick={() => planOrder(o, null, o.team_id)}>Retirer du planning</button>}
+            </article>)}
+            {mapOrders.length === 0 && <p className="setom-week-binder-empty">Aucun OS dans la file « À planifier / Planifié ».</p>}
+          </aside>
+        </div>}
         {view === "mois" && <div className="setom-month-grid">{monthCells.map((date) => { const key = iso(date); const items = byDate.get(key) || []; const inMonth = date.getMonth() === cursor.getMonth(); return <button key={key} className={`setom-month-cell ${inMonth ? "" : "muted"} ${key === selectedDate ? "selected" : ""}`} onClick={() => { setSelectedDate(key); setCursor(new Date(date.getFullYear(), date.getMonth(), 1, 12)); }}><div className="setom-month-day"><span>{date.getDate()}</span>{items.length > 0 && <b>{items.length}</b>}</div>{items.slice(0, 3).map((o) => <div className="setom-mini-order" key={o.id}>{String(o.os_number).padStart(5, "0")} · {o.address}</div>)}{items.length > 3 && <small>+ {items.length - 3} autre(s)</small>}</button>; })}</div>}
         {view === "semaine" && <div className="setom-week-grid">{weekCells.map((date, i) => { const key = iso(date); return <div className="setom-week-col" key={key}><div className="setom-week-head" style={{ borderTopColor: DAY_COLORS[i] }}><strong>{dayNames[i]}</strong><span>{date.getDate()}/{date.getMonth() + 1}</span></div><div className="setom-week-body">{(byDate.get(key) || []).map(renderOrder)}{(byDate.get(key) || []).length === 0 && <button className="setom-drop-empty" onClick={() => { setSelectedDate(key); setView("jour"); }}>+ Ajouter un OS</button>}</div></div>; })}</div>}
-        {view === "jour" && <div className="setom-day-view"><div className="setom-day-title"><strong>{new Date(selectedDate + "T12:00:00").toLocaleDateString("fr-FR", { weekday: "long", day: "numeric", month: "long", year: "numeric" })}</strong><span>{selectedOrders.length} OS planifié(s)</span></div>{selectedOrders.map(renderOrder)}<div className="setom-add-row"><select defaultValue="" onChange={(e) => { const o = orders.find((x) => String(x.id) === e.target.value); if (o) planOrder(o, selectedDate, o.team_id); e.target.value = ""; }}><option value="">+ Ajouter un OS à cette journée…</option>{orders.filter((o) => !o.planned_date).map((o) => <option key={o.id} value={o.id}>{fullOsNumber(o)} · {o.address}</option>)}</select></div></div>}
+        {view === "jour" && <div className="setom-day-view"><div className="setom-day-title"><strong>{new Date(selectedDate + "T12:00:00").toLocaleDateString("fr-FR", { weekday: "long", day: "numeric", month: "long", year: "numeric" })}</strong><span>{selectedOrders.length} OS planifié(s)</span></div>{selectedOrders.map(renderOrder)}<div className="setom-add-row"><select defaultValue="" onChange={(e) => { const o = orders.find((x) => String(x.id) === e.target.value); if (o) planOrder(o, selectedDate, o.team_id); e.target.value = ""; }}><option value="">+ Ajouter un OS à cette journée…</option>{orders.filter((o) => STATUS_PLANIFIABLE.includes(o.status) && !o.planned_date).map((o) => <option key={o.id} value={o.id}>{fullOsNumber(o)} · {o.address}</option>)}</select></div></div>}
         {view === "classeur" && <div className="setom-binder"><div className="setom-binder-head"><div><strong>Classeur journalier</strong><span>{new Date(selectedDate + "T12:00:00").toLocaleDateString("fr-FR", { weekday: "long", day: "numeric", month: "long", year: "numeric" })}</span></div><button onClick={() => window.print()}>🖨️ Imprimer</button></div>{selectedOrders.map((o, i) => <div className="setom-binder-card" key={o.id}><div className="setom-binder-number" style={{ background: DAY_COLORS[(new Date(selectedDate + "T12:00:00").getDay() + 6) % 7] }}>{i + 1}</div><div><strong>{fullOsNumber(o)}</strong><span>{o.address}{o.city ? `, ${o.city}` : ""}</span><span>{o.material_detail || "Intervention"} · {o.planned_surface_m2 ? `${o.planned_surface_m2} m²` : "—"}</span><span>Équipe : {o.team_name}</span></div><div className="setom-binder-actions"><button onClick={() => reorderOrder(o, -1)}>↑</button><button onClick={() => reorderOrder(o, 1)}>↓</button></div></div>)}{selectedOrders.length === 0 && <p>Aucun OS planifié ce jour.</p>}</div>}
         {view === "classeur-semaine" && <div className="setom-week-binder">{weekCells.map((date, i) => { const key = iso(date); const items = byDate.get(key) || []; return <section className="setom-week-binder-day" key={key}><header style={{ borderLeftColor: DAY_COLORS[i] }}><strong>{dayNames[i]}</strong><span>{date.toLocaleDateString("fr-FR", { day: "2-digit", month: "2-digit", year: "numeric" })} · {items.length} OS</span></header>{items.map((o, index) => <div className="setom-week-binder-row" key={o.id}><b>{index + 1}</b><strong>{fullOsNumber(o)}</strong><span>{o.address}{o.city ? `, ${o.city}` : ""}</span><span>{o.material_detail || "Intervention"}</span><span>{o.team_name}</span></div>)}{items.length === 0 && <div className="setom-week-binder-empty">Aucun OS planifié</div>}</section>; })}<button className="primary setom-print-week" onClick={() => window.print()}>🖨️ Imprimer le classeur hebdomadaire</button></div>}
       </>}
-      <footer className="setom-plan-footer"><strong>OS non planifiés : {orders.filter((o) => !o.planned_date).length}</strong><span>Date, équipe et ordre d'intervention sont enregistrés dans SETOM.</span></footer>
+      <footer className="setom-plan-footer"><strong>OS non planifiés : {orders.filter((o) => STATUS_PLANIFIABLE.includes(o.status) && !o.planned_date).length}</strong><span>Date, équipe et ordre d'intervention sont enregistrés dans SETOM.</span></footer>
     </div>
   </div>;
 }
