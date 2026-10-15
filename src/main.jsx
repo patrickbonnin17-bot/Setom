@@ -830,7 +830,7 @@ function OSCard({ os, onOpen }) {
   return <div className="os" style={{ borderLeftColor: statusColors.accent }}><div className="os-top"><div><div className="os-number">{os.id}</div><div className="os-info">📍 {os.address}</div></div><span className="badge os-status-badge" style={getOSStatusBadgeStyle(displayStatus)}>{os.constatStatus === "Validé avec réserve" && !os.reserveResolvedAt ? "Réserve à lever" : os.status}</span></div>{os.constatStatus === "Validé avec réserve" && !os.reserveResolvedAt && os.reserveReason && <div className="os-info" style={{ color: "#9a3412" }}>🚧 Motif de réserve : {os.reserveReason}</div>}<div className="os-info">🔧 {os.work}<br/>🧭 Secteur : {os.sector || "Non classé"}<br/>👷 {os.team}<br/>📅 {os.day||"Non planifié"}<br/>📐 {os.quantity}</div><div className="os-actions"><button className="primary" onClick={onOpen}>Ouvrir l'OS</button><button className="secondary" onClick={()=>window.open(`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(os.address)}`,"_blank")}>🧭 Naviguer</button></div></div>;
 }
 
-function OSModal({ os, onClose, onUpdate }) {
+function OSModal({ os, onClose, onUpdate, profile }) {
   const [day, setDay] = useState(os?.day || "");
   const [plannedDate, setPlannedDate] = useState(os?.plannedDate || "");
   const [status, setStatus] = useState(os?.status || "");
@@ -884,7 +884,9 @@ function OSModal({ os, onClose, onUpdate }) {
   }, [os?.dbId]);
 
   useEffect(() => {
-    if (!os?.dbId) return; let cancelled = false;
+    if (!os?.dbId) return;
+    if (!["admin","bureau"].includes(profile?.role)) { setConstat(null); setConstatLines([]); setConstatLoading(false); return undefined; }
+    let cancelled = false;
     async function loadConstat() {
       setConstatLoading(true);
       const { data: payload, error: readError } = await supabase.rpc("get_constat_for_work_order", { p_work_order_id: os.dbId });
@@ -892,13 +894,13 @@ function OSModal({ os, onClose, onUpdate }) {
       let constatData = payload?.constat || null, linesData = payload?.lines || [];
       if (!constatData && os.status === "Travaux effectués") {
         const { data: authData } = await supabase.auth.getUser(); const userId = authData?.user?.id || null;
-        const { error: rpcError } = await supabase.rpc("generate_constat_for_work_order", { p_work_order_id: os.dbId, p_user_id: userId });
+        const { error: rpcError } = await supabase.rpc("regenerate_constat_for_work_order", { p_work_order_id: os.dbId, p_user_id: userId });
         if (!rpcError) { const { data: refreshed, error: refreshError } = await supabase.rpc("get_constat_for_work_order", { p_work_order_id: os.dbId }); if(!refreshError){constatData=refreshed?.constat||null;linesData=refreshed?.lines||[];} } else console.error("Erreur génération constat automatique :", rpcError);
       }
       if(!cancelled){setConstat(constatData);setConstatLines(linesData);setConstatLoading(false);}
     }
     loadConstat(); return ()=>{cancelled=true;};
-  }, [os?.dbId, os?.status]);
+  }, [os?.dbId, os?.status, profile?.role]);
 
   useEffect(() => {
     if (!os?.dbId) return;
@@ -1101,8 +1103,14 @@ function OSModal({ os, onClose, onUpdate }) {
       const {error:prepareInterventionError}=await supabase.from("interventions").update({status:"Travaux en cours",actual_surface_m2:totalActualSurface>0?totalActualSurface:null}).eq("id",intervention.id);if(prepareInterventionError)throw new Error("Impossible de préparer la transmission des travaux : "+prepareInterventionError.message);
       const {error:updateInterventionError}=await supabase.from("interventions").update({status:"Travaux effectués",actual_date:new Date().toISOString().slice(0,10),actual_surface_m2:totalActualSurface>0?totalActualSurface:null}).eq("id",intervention.id);if(updateInterventionError)throw new Error("Impossible de transmettre les travaux : "+updateInterventionError.message);
       const {data:refreshedOS,error:refreshError}=await supabase.from("work_orders").select("status,actual_road_surface_m2,actual_sidewalk_surface_m2,actual_other_surface_m2").eq("id",os.dbId).single();if(refreshError)throw new Error("Les travaux ont été transmis, mais l'OS n'a pas pu être relu : "+refreshError.message);
-      const {data:constatPayload,error:constatReadError}=await supabase.rpc("get_constat_for_work_order",{p_work_order_id:os.dbId});if(!constatReadError){setConstat(constatPayload?.constat||null);setConstatLines(constatPayload?.lines||[]);}else console.error("Constat transmis mais lecture impossible :",constatReadError);
-      const finalStatus=refreshedOS?.status||"Constat à vérifier";onUpdate(os.id,{day:os.day||null,plannedDate:os.plannedDate||null,status:finalStatus,actualRoadSurface:refreshedOS?.actual_road_surface_m2??(roadActual||null),actualSidewalkSurface:refreshedOS?.actual_sidewalk_surface_m2??(sidewalkActual||null),actualOtherSurface:refreshedOS?.actual_other_surface_m2??(otherActual||null),interventionId:intervention.id});setActiveTab("constat");alert(finalStatus==="Constat à vérifier"?"✅ Travaux transmis. Le constat automatique est prêt à être vérifié.":"✅ Travaux enregistrés. Statut actuel de l'OS : "+finalStatus+".");
+      if (["admin","bureau"].includes(profile?.role)) {
+        const {data:constatPayload,error:constatReadError}=await supabase.rpc("get_constat_for_work_order",{p_work_order_id:os.dbId});
+        if(!constatReadError){setConstat(constatPayload?.constat||null);setConstatLines(constatPayload?.lines||[]);} else console.error("Constat transmis mais lecture impossible :",constatReadError);
+      }
+      const finalStatus=refreshedOS?.status||"Constat à vérifier";
+      onUpdate(os.id,{day:os.day||null,plannedDate:os.plannedDate||null,status:finalStatus,actualRoadSurface:refreshedOS?.actual_road_surface_m2??(roadActual||null),actualSidewalkSurface:refreshedOS?.actual_sidewalk_surface_m2??(sidewalkActual||null),actualOtherSurface:refreshedOS?.actual_other_surface_m2??(otherActual||null),interventionId:intervention.id});
+      setActiveTab(["admin","bureau"].includes(profile?.role) ? "constat" : "travaux");
+      alert(finalStatus==="Constat à vérifier"?"✅ Travaux transmis. Le constat automatique est prêt à être vérifié.":"✅ Travaux enregistrés. Statut actuel de l'OS : "+finalStatus+".");
     }catch(error){console.error("Erreur générale lors de la transmission des travaux :",error);alert("Erreur lors de l'enregistrement :\n\n"+(error?.message||"Erreur inconnue")+(error?.details?"\n\nDétails : "+error.details:"")+(error?.hint?"\n\nAide : "+error.hint:""));}
   }
 
@@ -1281,9 +1289,16 @@ async function markConstatPaid() {
     }finally{setConstatSaving(false);}
   }
 
-  async function regenerateConstatFromWorks(){if(!constat||constatLocked)return;if(!window.confirm("Recalculer le constat à partir des travaux réalisés ?\n\nLes modifications manuelles actuellement présentes dans le constat seront remplacées."))return;const {data:authData}=await supabase.auth.getUser();const userId=authData?.user?.id||null;const {error}=await supabase.rpc("generate_constat_for_work_order",{p_work_order_id:os.dbId,p_user_id:userId});if(error){alert("Impossible de recalculer le constat :\n\n"+error.message);return;}const {data:refreshed,error:refreshError}=await supabase.rpc("get_constat_for_work_order",{p_work_order_id:os.dbId});if(refreshError){alert("Le recalcul est terminé mais le constat n'a pas pu être relu.");return;}setConstat(refreshed?.constat||null);setConstatLines(refreshed?.lines||[]);setConstatEditMode(false);alert("✅ Constat recalculé depuis les travaux.");}
+  async function regenerateConstatFromWorks(){if(!constat||constatLocked)return;if(!window.confirm("Recalculer le constat à partir des travaux réalisés ?\n\nLes modifications manuelles actuellement présentes dans le constat seront remplacées."))return;const {data:authData}=await supabase.auth.getUser();const userId=authData?.user?.id||null;const {error}=await supabase.rpc("regenerate_constat_for_work_order",{p_work_order_id:os.dbId,p_user_id:userId});if(error){alert("Impossible de recalculer le constat :\n\n"+error.message);return;}const {data:refreshed,error:refreshError}=await supabase.rpc("get_constat_for_work_order",{p_work_order_id:os.dbId});if(refreshError){alert("Le recalcul est terminé mais le constat n'a pas pu être relu.");return;}setConstat(refreshed?.constat||null);setConstatLines(refreshed?.lines||[]);setConstatEditMode(false);alert("✅ Constat recalculé depuis les travaux.");}
 
-  const tabs=[{id:"resume",label:"Résumé",icon:"📋"},{id:"travaux",label:"Travaux",icon:"🛠️"},{id:"planning",label:"Planning",icon:"📅"},{id:"photos",label:"Photos",icon:"📷"},{id:"documents",label:"Documents",icon:"📄"},{id:"constat",label:"Constat",icon:"💶"},{id:"historique",label:"Historique",icon:"📜"}];
+  const canManagePlanning = ["admin","bureau"].includes(profile?.role);
+  const canViewBilling = ["admin","bureau"].includes(profile?.role);
+  const isExternalReadOnly = profile?.role === "eau_de_toulouse";
+  const tabs=[{id:"resume",label:"Résumé",icon:"📋"},{id:"travaux",label:"Travaux",icon:"🛠️"},{id:"planning",label:"Planning",icon:"📅"},{id:"photos",label:"Photos",icon:"📷"},{id:"documents",label:"Documents",icon:"📄"},{id:"constat",label:"Constat",icon:"💶"},{id:"historique",label:"Historique",icon:"📜"}].filter((tab) => {
+    if (tab.id === "constat") return canViewBilling;
+    if (isExternalReadOnly) return ["resume","photos","documents","historique"].includes(tab.id);
+    return true;
+  });
   const totalSurface= os.rehabilitationZone==="Chaussée + trottoir"?((Number(realRoadSurface)||0)+(Number(realSidewalkSurface)||0)):os.rehabilitationZone==="Chaussée"?(Number(realRoadSurface)||0):os.rehabilitationZone==="Trottoir"?(Number(realSidewalkSurface)||0):os.rehabilitationZone==="Autre"?(Number(realOtherSurface)||0):(Number(realSurface)||0);
 
   return <div className="modal-bg"><div className="modal os-detail-modal">
@@ -1294,7 +1309,7 @@ async function markConstatPaid() {
       {activeTab==="resume"&&<div className="os-section"><h3>Informations générales</h3><div className="os-info-grid"><div><span>Ordre de service</span><strong>{os.id}</strong></div><div><span>Adresse</span><strong>{os.address||"—"}</strong></div><div><span>Matériau</span><strong>{os.work||"—"}</strong></div><div><span>Métier</span><strong>{os.trade||"—"}</strong></div><div><span>Secteur</span><strong>{os.sector||"—"}</strong></div><div><span>Quantité prévue</span><strong>{os.quantity||"—"}</strong></div><div><span>Équipe</span><strong>{os.team||"Non affectée"}</strong></div><div><span>Jour prévu</span><strong>{os.day||"Non planifié"}</strong></div></div><div className="os-status-box"><span>Échéance</span><strong>{os.deadline?new Date(os.deadline).toLocaleDateString("fr-FR"):"—"}</strong></div><div className="card" style={{ marginTop: 18, border: "1px solid #d9e0e7" }}>
     <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
       <div><strong>📝 Informations de l'ordre de service</strong><div style={{ color: "#667085", fontSize: 12, marginTop: 4 }}>Modifier l'adresse, le matériau, la surface et l'échéance sans changer le numéro OS.</div></div>
-      {["Nouveau", "À planifier", "Planifié", "Travaux en cours", "En erreur"].includes(os.status) && <button type="button" className="secondary" onClick={() => { setOsEditError(""); setOsEditMode((value) => !value); }} disabled={osEditLoading || osEditSaving}>{osEditMode ? "Fermer" : "✏️ Modifier l'OS"}</button>}
+      {canManagePlanning && ["Nouveau", "À planifier", "Planifié", "Travaux en cours", "En erreur"].includes(os.status) && <button type="button" className="secondary" onClick={() => { setOsEditError(""); setOsEditMode((value) => !value); }} disabled={osEditLoading || osEditSaving}>{osEditMode ? "Fermer" : "✏️ Modifier l'OS"}</button>}
     </div>
     {osEditLoading && <p style={{ fontSize: 13, color: "#667085" }}>Chargement des informations…</p>}
     {osEditError && <div style={{ color: "#b42318", marginTop: 10, fontSize: 13 }}>{osEditError}</div>}
