@@ -120,6 +120,19 @@ async function refresh() {
   }, 120);
 }
 
-const observer = new MutationObserver(refresh);
+function isSummaryNode(node) {
+  return node?.nodeType === 1 && node.classList?.contains("setom-daily-time-summary");
+}
+
+const observer = new MutationObserver((records) => {
+  const needsRefresh = records.some((record) => {
+    const target = record.target?.nodeType === 1 ? record.target : record.target?.parentElement;
+    if (target?.closest?.(".setom-daily-time-summary")) return false;
+    const changedNodes = [...record.addedNodes, ...record.removedNodes];
+    if (changedNodes.length && changedNodes.every(isSummaryNode)) return false;
+    return true;
+  });
+  if (needsRefresh) refresh();
+});
 observer.observe(document.body, { childList: true, subtree: true });
 refresh();
