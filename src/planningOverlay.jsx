@@ -15,8 +15,8 @@ const addDays = (date, n) => { const d = new Date(date); d.setDate(d.getDate() +
 const dayNames = ["Lundi", "Mardi", "Mercredi", "Jeudi", "Vendredi", "Samedi", "Dimanche"];
 const fullOsNumber = (order) => `OS-${new Date(order.creation_date).getFullYear()}-${String(order.os_number).padStart(5, "0")}`;
 
-function Planner({ onClose }) {
-  const [view, setView] = useState("mois");
+function Planner({ onClose, initialView = "mois" }) {
+  const [view, setView] = useState(initialView);
   const [cursor, setCursor] = useState(new Date());
   const [selectedDate, setSelectedDate] = useState(iso(new Date()));
   const [orders, setOrders] = useState([]);
@@ -110,6 +110,7 @@ function Planner({ onClose }) {
     if (index < 0 || target < 0 || target >= list.length) return;
     const current = list[index];
     const other = list[target];
+    if (!STATUS_PLANIFIABLE.includes(other.status)) return;
     setSavingId(order.id); setError("");
     try {
       const a = other.planned_order || index + 1;
@@ -268,8 +269,8 @@ function Planner({ onClose }) {
       <span>{order.address}{order.city ? `, ${order.city}` : ""}</span>
       <small>{order.material_detail || "Intervention"} · {order.planned_surface_m2 ? `${order.planned_surface_m2} m²` : "surface non renseignée"}</small>
       {STATUS_PLANIFIABLE.includes(order.status) ? <div className="setom-plan-order-actions">
-        <button disabled={savingId === order.id || index === 0} title="Monter dans l'itinéraire" onClick={() => reorderOrder(order, -1)}>↑</button>
-        <button disabled={savingId === order.id || index === dayOrders.length - 1} title="Descendre dans l'itinéraire" onClick={() => reorderOrder(order, 1)}>↓</button>
+        <button disabled={savingId === order.id || index === 0 || !STATUS_PLANIFIABLE.includes(dayOrders[index - 1]?.status)} title="Monter dans l'itinéraire" onClick={() => reorderOrder(order, -1)}>↑</button>
+        <button disabled={savingId === order.id || index === dayOrders.length - 1 || !STATUS_PLANIFIABLE.includes(dayOrders[index + 1]?.status)} title="Descendre dans l'itinéraire" onClick={() => reorderOrder(order, 1)}>↓</button>
         <button disabled={savingId === order.id} title="Jour précédent" onClick={() => moveOrder(order, -1)}>←</button>
         <button disabled={savingId === order.id} title="Jour suivant" onClick={() => moveOrder(order, 1)}>→</button>
         <select value={order.team_id || ""} onChange={(e) => changeOrderTeam(order, e.target.value || null)} disabled={savingId === order.id}>
@@ -320,11 +321,15 @@ function Planner({ onClose }) {
 let root = null;
 function openPlanner(event) {
   const button = event.target.closest("button");
-  if (!button || !button.textContent.includes("Planning")) return;
-  event.preventDefault(); event.stopPropagation();
+  const mainNavButton = button && button.closest(".nav");
+  if (!button || !mainNavButton) return;
+  const wantsMap = button.textContent.includes("Carte");
+  const wantsPlanning = button.textContent.includes("Planning");
+  if (!wantsMap && !wantsPlanning) return;
+  event.preventDefault(); event.stopPropagation(); event.stopImmediatePropagation();
   if (root) return;
   const host = document.createElement("div"); host.id = "setom-planner-host"; document.body.appendChild(host);
   root = createRoot(host);
-  root.render(<Planner onClose={() => { root?.unmount(); root = null; host.remove(); }} />);
+  root.render(<Planner initialView={wantsMap ? "carte" : "mois"} onClose={() => { root?.unmount(); root = null; host.remove(); }} />);
 }
 document.addEventListener("click", openPlanner, true);
