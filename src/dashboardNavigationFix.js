@@ -12,10 +12,13 @@
   };
 
   let activeFilter = null;
-  let observer = null;
 
   function getCardLabel(card) {
     return String(card?.querySelector(":scope > div:first-child")?.textContent || "").trim();
+  }
+
+  function isOsPage() {
+    return Array.from(document.querySelectorAll("h2")).some((heading) => String(heading.textContent || "").trim() === "Ordres de service");
   }
 
   function getOsCards() {
@@ -35,10 +38,8 @@
   }
 
   function applyOsFilter() {
-    if (!activeFilter) return;
-    const cards = getOsCards();
-    if (!cards.length) return;
-    cards.forEach((card) => {
+    if (!activeFilter || !isOsPage()) return;
+    getOsCards().forEach((card) => {
       card.style.display = isCardMatch(card, activeFilter) ? "" : "none";
     });
   }
@@ -64,9 +65,8 @@
     openOSFilter(filter);
   }, true);
 
-  // React recreates the OS cards when the page/filter changes. Reapply the dashboard filter
-  // after each render without touching the underlying React state or database.
-  observer = new MutationObserver(() => {
+  // React recreates the OS cards when the page changes. Reapply the selected dashboard view.
+  const observer = new MutationObserver(() => {
     if (activeFilter) window.requestAnimationFrame(applyOsFilter);
   });
   observer.observe(document.getElementById("root") || document.body, { childList: true, subtree: true });
