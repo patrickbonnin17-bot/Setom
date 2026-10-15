@@ -47,6 +47,10 @@ function App() {
   const [authError, setAuthError] = useState("");
   const [osList, setOsList] = useState([]);
   const [dbTeams, setDbTeams] = useState([]);
+  const [appSettings, setAppSettings] = useState(null);
+  const [settingsSaving, setSettingsSaving] = useState(false);
+  const [settingsMessage, setSettingsMessage] = useState("");
+  const [settingsError, setSettingsError] = useState("");
   const [newTeamName, setNewTeamName] = useState("");
   const [newTeamType, setNewTeamType] = useState("interne");
   const [newTeamCapacity, setNewTeamCapacity] = useState("");
@@ -92,6 +96,10 @@ function App() {
     async function loadOS() {
       const { data: rows, error } = await supabase.from("work_orders").select("*").order("creation_date", { ascending: false });
       if (error) { console.error("Erreur chargement OS :", error); return; }
+      const { data: settingsRow, error: settingsLoadError } = await supabase.from("app_settings").select("id, company_name, donor_name, validator_name, os_label, standard_delay_days, enrobee_reference_capacity_m2, contract_duration_years, prices_renegotiable").order("created_at", { ascending: true }).limit(1).maybeSingle();
+      if (settingsLoadError) console.error("Erreur chargement des paramètres :", settingsLoadError);
+      if (!cancelled && settingsRow) setAppSettings(settingsRow);
+      const osLabel = String(settingsRow?.os_label || "OS").trim() || "OS";
       const workOrderIds = (rows || []).map((row) => row.id);
       let interventions = [];
       if (workOrderIds.length) {
@@ -116,7 +124,7 @@ function App() {
         return {
           dbId: row.id,
           interventionId: intervention?.id || null,
-          id: "OS-" + new Date(row.creation_date).getFullYear() + "-" + String(row.os_number).padStart(5, "0"),
+          id: osLabel + "-" + new Date(row.creation_date).getFullYear() + "-" + String(row.os_number).padStart(5, "0"),
           address: String(row.address || "") + (row.city ? ", " + row.city : ""),
           work: row.material_detail || "Intervention", day, plannedDate,
           team: teamById.get(intervention?.team_id) || "Non affectée", teamId: intervention?.team_id || null,
@@ -142,6 +150,35 @@ function App() {
     if (error) setAuthError("E-mail ou mot de passe incorrect.");
   }
   async function handleLogout() { await supabase.auth.signOut(); }
+
+  async function saveAppSettings(event) {
+    event.preventDefault();
+    setSettingsError(""); setSettingsMessage("");
+    if (!appSettings?.id) { setSettingsError("Paramètres indisponibles. Rechargez l'application."); return; }
+    const companyName = String(appSettings.company_name || "").trim();
+    const donorName = String(appSettings.donor_name || "").trim();
+    const validatorName = String(appSettings.validator_name || "").trim();
+    const osLabel = String(appSettings.os_label || "").trim();
+    const delay = Number(appSettings.standard_delay_days);
+    const capacity = Number(appSettings.enrobee_reference_capacity_m2);
+    const duration = Number(appSettings.contract_duration_years);
+    if (!companyName || !donorName || !validatorName || !osLabel) { setSettingsError("Renseignez le nom de l'application, le donneur d'ordre, le validateur et le libellé OS."); return; }
+    if (!Number.isInteger(delay) || delay < 1 || delay > 365) { setSettingsError("Le délai avant échéance doit être un nombre entier entre 1 et 365 jours."); return; }
+    if (!Number.isFinite(capacity) || capacity <= 0) { setSettingsError("La capacité de référence doit être supérieure à zéro."); return; }
+    if (!Number.isInteger(duration) || duration < 1 || duration > 20) { setSettingsError("La durée du marché doit être comprise entre 1 et 20 ans."); return; }
+    setSettingsSaving(true);
+    try {
+      const payload = { company_name: companyName, donor_name: donorName, validator_name: validatorName, os_label: osLabel, standard_delay_days: delay, enrobee_reference_capacity_m2: capacity, contract_duration_years: duration, prices_renegotiable: !!appSettings.prices_renegotiable, updated_at: new Date().toISOString() };
+      const { data, error } = await supabase.from("app_settings").update(payload).eq("id", appSettings.id).select("id, company_name, donor_name, validator_name, os_label, standard_delay_days, enrobee_reference_capacity_m2, contract_duration_years, prices_renegotiable").single();
+      if (error) throw error;
+      setAppSettings(data);
+      setSettingsMessage("Paramètres enregistrés. Le délai mis à jour s'appliquera aux nouveaux OS ; les échéances existantes restent inchangées.");
+      window.dispatchEvent(new Event("setom:planning-updated"));
+    } catch (error) {
+      console.error("Erreur enregistrement paramètres :", error);
+      setSettingsError(error?.message || "Impossible d'enregistrer les paramètres. Vérifiez vos droits d'administration.");
+    } finally { setSettingsSaving(false); }
+  }
 
   async function handleCreateTeam(event) {
     event.preventDefault();
@@ -210,7 +247,7 @@ function App() {
       }
     }
     const formattedOS = {
-      id: `OS-${new Date(data.creation_date).getFullYear()}-${String(data.os_number).padStart(5, "0")}`, dbId: data.id,
+      id: `${String(appSettings?.os_label || "OS").trim()}-${new Date(data.creation_date).getFullYear()}-${String(data.os_number).padStart(5, "0")}`, dbId: data.id,
       address: `${data.address || ""}${data.city ? `, ${data.city}` : ""}`, work: data.material_detail || "Intervention", day: null,
       team: "Non affectée", trade: data.material_detail || "Intervention", sector: data.city || "", status: data.status || "À planifier",
       quantity: data.planned_surface_m2 ? `${data.planned_surface_m2} m²` : "", intervention: data.material_detail || "Intervention",
@@ -252,10 +289,10 @@ function App() {
   };
 
   return <div className="app">
-    <header className="header"><div><h1>SETOM</h1><small>Gestion des travaux routiers</small></div><div><small>Marché Eau de Toulouse</small></div></header>
+    <header className="header"><div><h1>{appSettings?.company_name || "SETOM"}</h1><small>Gestion des travaux routiers</small></div><div><small>Marché {appSettings?.donor_name || "Eau de Toulouse"}</small></div></header>
     <main className="container">
       <nav className="nav">
-        {[["dashboard","📊 Tableau de bord"],["os","📋 OS"],["map","🗺️ Carte"],["planning","📅 Planning"],["teams","👷 Équipes"],["reserves","⚠️ Réserves"]].map(([id,label]) => <button key={id} className={page === id ? "active" : ""} onClick={() => setPage(id)}>{label}</button>)}
+        {[["dashboard","📊 Tableau de bord"],["os","📋 OS"],["map","🗺️ Carte"],["planning","📅 Planning"],["teams","👷 Équipes"],["reserves","⚠️ Réserves"],["settings","⚙️ Paramètres"]].map(([id,label]) => <button key={id} className={page === id ? "active" : ""} onClick={() => setPage(id)}>{label}</button>)}
       </nav>
       {page === "dashboard" && <><h2>Tableau de bord</h2><div className="cards"><div className="card"><div>OS actifs</div><div className="number">{stats.total}</div></div><div className="card"><div>À planifier</div><div className="number">{stats.planning}</div></div><div className="card"><div>Travaux en cours</div><div className="number">{stats.travaux}</div></div><div className="card"><div>À facturer</div><div className="number">{stats.facturation}</div></div><div className="card"><div>Validation</div><div className="number">{stats.validation}</div></div><div className="card"><div>Réserves</div><div className="number">{stats.reserves}</div></div><div className="card"><div>OS en erreur</div><div className="number">{stats.errors}</div></div></div><h2>OS récents</h2><div className="os-list">{osList.slice(0,5).map((os) => <OSCard key={os.id} os={os} onOpen={() => setSelectedOS(os)} />)}</div></>}
       {page === "os" && <>
@@ -291,7 +328,22 @@ function App() {
         </form>
         {dbTeams.length === 0 ? <div className="card"><strong>Aucune équipe enregistrée</strong><p>Ajoutez vos équipes ici pour pouvoir les affecter aux OS dans le planning.</p></div> : <div className="cards">{dbTeams.map((team) => { const count = osList.filter((os) => os.teamId === team.id).length; return <div className="card" key={team.id} style={{ opacity: team.active ? 1 : .65 }}><div style={{ display: "flex", justifyContent: "space-between", alignItems: "start", gap: 12 }}><strong>👷 {team.name}</strong><span className="badge">{team.active ? "Active" : "Inactive"}</span></div><div>{team.team_type === "sous-traitant" ? "Sous-traitant" : "Équipe interne"}</div><div className="number">{count}</div><div>OS affecté{count === 1 ? "" : "s"}</div>{team.indicative_capacity && <div style={{ marginTop: 8, color: "#667085", fontSize: 13 }}>Capacité indicative : {team.indicative_capacity} m²/jour</div>}<button className="secondary" disabled={teamSaving} style={{ marginTop: 12 }} onClick={() => toggleTeamActive(team)}>{team.active ? "Désactiver" : "Réactiver"}</button></div>; })}</div>}
       </>}
-      {page === "reserves" && <><h2>Réserves et corrections</h2><div className="os-list">{osList.filter((os)=>os.status==="Réserve"||os.status==="Correction à réaliser").map((os)=><OSCard key={os.id} os={os} onOpen={()=>setSelectedOS(os)}/>)}{osList.filter((os)=>os.status==="Réserve"||os.status==="Correction à réaliser").length===0&&<div className="card">Aucune réserve en cours.</div>}</div></>}
+      {page === "reserves" && <><h2>Réserves et corrections</h2><div className="os-list">{osList.filter((os)=>os.status==="Réserve"||os.status==="Correction à réaliser").map((os)=><OSCard key={os.id} os={os} onOpen={()=>setSelectedOS(os)}/>)}{osList.filter((os)=>os.status==="Réserve"||os.status==="Correction à réaliser").length===0&&<div className="card">Aucune réserve en cours.</div>}</div></>}{page === "settings" && <><h2>Paramètres du marché</h2>
+        {!appSettings ? <div className="card">Chargement des paramètres…</div> : <form onSubmit={saveAppSettings} className="card" style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(230px,1fr))", gap: 14, alignItems: "start" }}>
+          <div><label htmlFor="setting-company">Nom de l'application / entreprise</label><input id="setting-company" value={appSettings.company_name || ""} onChange={(e) => setAppSettings((current) => ({ ...current, company_name: e.target.value }))} required style={{ width: "100%", boxSizing: "border-box" }}/></div>
+          <div><label htmlFor="setting-donor">Donneur d'ordre</label><input id="setting-donor" value={appSettings.donor_name || ""} onChange={(e) => setAppSettings((current) => ({ ...current, donor_name: e.target.value }))} required style={{ width: "100%", boxSizing: "border-box" }}/></div>
+          <div><label htmlFor="setting-validator">Validateur des travaux</label><input id="setting-validator" value={appSettings.validator_name || ""} onChange={(e) => setAppSettings((current) => ({ ...current, validator_name: e.target.value }))} required style={{ width: "100%", boxSizing: "border-box" }}/></div>
+          <div><label htmlFor="setting-os-label">Libellé des OS</label><input id="setting-os-label" value={appSettings.os_label || ""} onChange={(e) => setAppSettings((current) => ({ ...current, os_label: e.target.value }))} required style={{ width: "100%", boxSizing: "border-box" }}/><small>Ex. « OS » pour OS-2026-00001.</small></div>
+          <div><label htmlFor="setting-delay">Délai avant échéance (jours)</label><input id="setting-delay" type="number" min="1" max="365" step="1" value={appSettings.standard_delay_days ?? 25} onChange={(e) => setAppSettings((current) => ({ ...current, standard_delay_days: e.target.value }))} required style={{ width: "100%", boxSizing: "border-box" }}/><small>25 jours par défaut. Le réglage s'applique uniquement aux nouveaux OS.</small></div>
+          <div><label htmlFor="setting-capacity">Capacité de référence enrobé à chaux (m²/jour)</label><input id="setting-capacity" type="number" min="0.1" step="0.1" value={appSettings.enrobee_reference_capacity_m2 ?? 35} onChange={(e) => setAppSettings((current) => ({ ...current, enrobee_reference_capacity_m2: e.target.value }))} required style={{ width: "100%", boxSizing: "border-box" }}/></div>
+          <div><label htmlFor="setting-contract-duration">Durée du marché (années)</label><input id="setting-contract-duration" type="number" min="1" max="20" step="1" value={appSettings.contract_duration_years ?? 4} onChange={(e) => setAppSettings((current) => ({ ...current, contract_duration_years: e.target.value }))} required style={{ width: "100%", boxSizing: "border-box" }}/></div>
+          <label style={{ display: "flex", alignItems: "center", gap: 8, alignSelf: "center" }}><input type="checkbox" checked={!!appSettings.prices_renegotiable} onChange={(e) => setAppSettings((current) => ({ ...current, prices_renegotiable: e.target.checked }))}/> Prix renégociables lors du renouvellement</label>
+          <div style={{ gridColumn: "1 / -1", padding: 12, border: "1px solid #e4e7ec", background: "#f9fafb", borderRadius: 8, fontSize: 13, color: "#475467" }}>Ces paramètres pilotent les nouveaux OS et les libellés affichés. Les anciennes échéances ne sont pas recalculées et l'historique reste conservé.</div>
+          {settingsError && <div style={{ gridColumn: "1 / -1", color: "#b42318" }}>{settingsError}</div>}
+          {settingsMessage && <div style={{ gridColumn: "1 / -1", color: "#027a48" }}>{settingsMessage}</div>}
+          <div style={{ gridColumn: "1 / -1" }}><button className="primary" type="submit" disabled={settingsSaving}>{settingsSaving ? "Enregistrement…" : "💾 Enregistrer les paramètres"}</button></div>
+        </form>}
+      </>}
     </main>
     {selectedOS && <OSModal os={selectedOS} onClose={()=>setSelectedOS(null)} onUpdate={updateOS}/>} 
   </div>;
