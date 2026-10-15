@@ -105,13 +105,29 @@ function Planner({ onClose, initialView = "mois" }) {
     try {
       const loads = new Map();
       const dayOrders = new Map();
+      const materialForOrder = (order) => {
+        const name = String(order.material_detail || "").trim().toLocaleLowerCase("fr-FR");
+        return plannerMaterials.find((material) => String(material.name || "").trim().toLocaleLowerCase("fr-FR") === name)
+          || plannerMaterials.find((material) => String(material.category || "").trim().toLocaleLowerCase("fr-FR") === name)
+          || null;
+      };
+      const effectiveCapacity = (order, team) => {
+        const teamCapacity = Number(team?.indicative_capacity) > 0 ? Number(team.indicative_capacity) : defaultDailyCapacity;
+        const material = materialForOrder(order);
+        const materialCapacity = Number(material?.indicative_capacity_m2) > 0 ? Number(material.indicative_capacity_m2) : teamCapacity;
+        const difficulty = Number(material?.planning_difficulty) > 0 ? Number(material.planning_difficulty) : 1;
+        return Math.min(teamCapacity, materialCapacity) / difficulty;
+      };
       for (const order of orders) {
         if (!order.planned_date) continue;
         const nextOrder = Math.max(Number(dayOrders.get(order.planned_date) || 0), Number(order.planned_order || 0));
         dayOrders.set(order.planned_date, nextOrder);
         if (order.team_id) {
           const key = order.planned_date + "|" + order.team_id;
-          loads.set(key, Number(loads.get(key) || 0) + Math.max(0, Number(order.planned_surface_m2 || 0)));
+          const team = teams.find((item) => item.id === order.team_id);
+          const capacity = effectiveCapacity(order, team);
+          const effortShare = capacity > 0 ? Math.max(0, Number(order.planned_surface_m2 || 0)) / capacity : 1;
+          loads.set(key, Number(loads.get(key) || 0) + effortShare);
         }
       }
       const assignments = [];
@@ -129,26 +145,20 @@ function Planner({ onClose, initialView = "mois" }) {
             if (sectorTeams.length) teamPool = sectorTeams;
           }
           const surface = Math.max(0, Number(order.planned_surface_m2 || 0));
-          const materialName = String(order.material_detail || "").trim().toLocaleLowerCase("fr-FR");
-          const materialRow = plannerMaterials.find((material) => String(material.name || "").trim().toLocaleLowerCase("fr-FR") === materialName)
-            || plannerMaterials.find((material) => String(material.category || "").trim().toLocaleLowerCase("fr-FR") === materialName)
-            || null;
-          const materialDifficulty = Number(materialRow?.planning_difficulty) > 0 ? Number(materialRow.planning_difficulty) : 1;
           const choices = teamPool.map((team) => {
-            const teamCapacity = Number(team.indicative_capacity) > 0 ? Number(team.indicative_capacity) : defaultDailyCapacity;
-            const materialCapacity = Number(materialRow?.indicative_capacity_m2) > 0 ? Number(materialRow.indicative_capacity_m2) : teamCapacity;
-            const capacity = Math.min(teamCapacity, materialCapacity) / materialDifficulty;
+            const capacity = effectiveCapacity(order, team);
+            const effortShare = capacity > 0 ? surface / capacity : 1;
             const key = candidateDate + "|" + team.id;
             const used = Number(loads.get(key) || 0);
-            const fits = surface > capacity ? used === 0 : used + surface <= capacity;
-            return { team, capacity, used, key, fits, ratio: capacity > 0 ? used / capacity : 1 };
+            const fits = effortShare <= 1 && used + effortShare <= 1;
+            return { team, capacity, effortShare, used, key, fits, ratio: used };
           }).filter((choice) => choice.fits).sort((a, b) => a.ratio - b.ratio || a.used - b.used || a.team.name.localeCompare(b.team.name, "fr"));
           if (!choices.length) continue;
           const choice = choices[0];
           const position = Number(dayOrders.get(candidateDate) || 0) + 1;
           selected = { work_order_id: order.id, intervention_id: order.interventionId || null, planned_date: candidateDate, team_id: choice.team.id, planned_order: position };
           assignments.push(selected);
-          loads.set(choice.key, choice.used + surface);
+          loads.set(choice.key, choice.used + choice.effortShare);
           dayOrders.set(candidateDate, position);
         }
         if (!selected) throw new Error("Impossible de trouver une place dans les 120 prochains jours pour " + fullOsNumber(order) + ". Vérifiez la capacité des équipes.");
