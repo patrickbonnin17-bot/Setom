@@ -22,6 +22,13 @@ const statuses = [
 ];
 
 const initialOS = [];
+const ROLE_LABELS = { admin: "Administrateur", bureau: "Bureau / planification", equipe_terrain: "Équipe terrain", eau_de_toulouse: "Lecture externe" };
+const ACCESS_ROLES = [
+  { value: "admin", label: "Administrateur" },
+  { value: "bureau", label: "Bureau / planification" },
+  { value: "equipe_terrain", label: "Équipe terrain" },
+  { value: "eau_de_toulouse", label: "Lecture externe" }
+];
 
 function getDayColor(day) {
   const found = days.find((d) => d.name === day);
@@ -47,6 +54,23 @@ function App() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [authError, setAuthError] = useState("");
+  const [currentProfile, setCurrentProfile] = useState(null);
+  const [profileLoading, setProfileLoading] = useState(false);
+  const [profileError, setProfileError] = useState("");
+  const [passwordSetup, setPasswordSetup] = useState("");
+  const [passwordSetupConfirm, setPasswordSetupConfirm] = useState("");
+  const [passwordSetupError, setPasswordSetupError] = useState("");
+  const [passwordSetupSaving, setPasswordSetupSaving] = useState(false);
+  const [accessProfiles, setAccessProfiles] = useState([]);
+  const [accessLoading, setAccessLoading] = useState(false);
+  const [accessError, setAccessError] = useState("");
+  const [accessMessage, setAccessMessage] = useState("");
+  const [accessSavingIds, setAccessSavingIds] = useState([]);
+  const [inviteEmail, setInviteEmail] = useState("");
+  const [inviteDisplayName, setInviteDisplayName] = useState("");
+  const [inviteRole, setInviteRole] = useState("equipe_terrain");
+  const [inviteTeamId, setInviteTeamId] = useState("");
+  const [inviteSaving, setInviteSaving] = useState(false);
   const [osList, setOsList] = useState([]);
   const [dbTeams, setDbTeams] = useState([]);
   const [dbSectors, setDbSectors] = useState([]);
@@ -102,6 +126,50 @@ function App() {
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, newSession) => { setSession(newSession); setAuthLoading(false); });
     return () => { mounted = false; subscription.unsubscribe(); };
   }, []);
+
+  useEffect(() => {
+    const userId = session?.user?.id;
+    if (!userId) {
+      setCurrentProfile(null);
+      setProfileLoading(false);
+      setProfileError("");
+      return undefined;
+    }
+    let cancelled = false;
+    async function loadCurrentProfile() {
+      setProfileLoading(true);
+      setProfileError("");
+      const { data, error } = await supabase
+        .from("user_profiles")
+        .select("id, display_name, email, role, organization_actor, active, team_id, must_set_password")
+        .eq("id", userId)
+        .maybeSingle();
+      if (cancelled) return;
+      if (error || !data) {
+        setCurrentProfile(null);
+        setProfileError(error?.message || "Aucun profil SETOM n’est associé à ce compte.");
+        setProfileLoading(false);
+        return;
+      }
+      if (data.active !== true) {
+        setCurrentProfile(null);
+        setProfileError("Ce compte SETOM est désactivé. Contactez l’administrateur.");
+        setProfileLoading(false);
+        await supabase.auth.signOut();
+        return;
+      }
+      setCurrentProfile(data);
+      setProfileLoading(false);
+    }
+    loadCurrentProfile().catch((error) => {
+      if (!cancelled) {
+        setProfileError(error?.message || "Impossible de vérifier les accès de ce compte.");
+        setCurrentProfile(null);
+        setProfileLoading(false);
+      }
+    });
+    return () => { cancelled = true; };
+  }, [session?.user?.id]);
 
   useEffect(() => {
     const handlePlanningUpdate = () => setOsRefreshVersion((version) => version + 1);
@@ -187,6 +255,122 @@ function App() {
     if (error) setAuthError("E-mail ou mot de passe incorrect.");
   }
   async function handleLogout() { await supabase.auth.signOut(); }
+
+  async function finishPasswordSetup(event) {
+    event.preventDefault();
+    setPasswordSetupError("");
+    if (passwordSetup.length < 8) { setPasswordSetupError("Choisissez un mot de passe d’au moins 8 caractères."); return; }
+    if (passwordSetup !== passwordSetupConfirm) { setPasswordSetupError("Les deux mots de passe ne correspondent pas."); return; }
+    setPasswordSetupSaving(true);
+    try {
+      const { error: passwordError } = await supabase.auth.updateUser({ password: passwordSetup });
+      if (passwordError) throw passwordError;
+      const { error: completeError } = await supabase.rpc("complete_setom_invitation");
+      if (completeError) throw completeError;
+      setCurrentProfile((profile) => profile ? { ...profile, must_set_password: false } : profile);
+      setPasswordSetup("");
+      setPasswordSetupConfirm("");
+    } catch (error) {
+      setPasswordSetupError(error?.message || "Impossible d’enregistrer le mot de passe.");
+    } finally {
+      setPasswordSetupSaving(false);
+    }
+  }
+
+  useEffect(() => {
+    if (!session || page !== "access" || currentProfile?.role !== "admin") return;
+    let cancelled = false;
+    async function loadAccessProfiles() {
+      setAccessLoading(true);
+      setAccessError("");
+      const { data, error } = await supabase
+        .from("user_profiles")
+        .select("id, display_name, email, role, organization_actor, active, team_id, must_set_password")
+        .order("display_name", { ascending: true });
+      if (cancelled) return;
+      if (error) {
+        setAccessError(error.message || "Impossible de charger les comptes.");
+        setAccessProfiles([]);
+      } else {
+        setAccessProfiles(data || []);
+      }
+      setAccessLoading(false);
+    }
+    loadAccessProfiles().catch((error) => {
+      if (!cancelled) { setAccessError(error?.message || "Erreur de chargement des comptes."); setAccessLoading(false); }
+    });
+    return () => { cancelled = true; };
+  }, [session?.user?.id, page, currentProfile?.role]);
+
+  function changeAccessProfile(userId, field, value) {
+    setAccessProfiles((profiles) => profiles.map((profile) => profile.id === userId ? { ...profile, [field]: value } : profile));
+    setAccessError("");
+    setAccessMessage("");
+  }
+
+  async function saveAccessProfile(profile) {
+    setAccessError("");
+    setAccessMessage("");
+    if (profile.role === "equipe_terrain" && !profile.team_id) {
+      setAccessError("Choisissez une équipe pour le compte « " + (profile.display_name || profile.email) + " ».");
+      return;
+    }
+    setAccessSavingIds((ids) => [...ids, profile.id]);
+    try {
+      const { data, error } = await supabase.functions.invoke("manage-setom-user", {
+        body: {
+          action: "update",
+          user_id: profile.id,
+          display_name: profile.display_name,
+          role: profile.role,
+          team_id: profile.role === "equipe_terrain" ? profile.team_id : null,
+          active: profile.active
+        }
+      });
+      if (error) throw error;
+      if (data?.error) throw new Error(data.error);
+      if (!data?.user) throw new Error("Le serveur n’a pas confirmé la mise à jour.");
+      setAccessProfiles((profiles) => profiles.map((item) => item.id === profile.id ? data.user : item));
+      setAccessMessage("Accès mis à jour pour " + (data.user.display_name || data.user.email) + ".");
+    } catch (error) {
+      setAccessError(error?.message || "Impossible d’enregistrer ces accès.");
+    } finally {
+      setAccessSavingIds((ids) => ids.filter((id) => id !== profile.id));
+    }
+  }
+
+  async function inviteAccessUser(event) {
+    event.preventDefault();
+    setAccessError("");
+    setAccessMessage("");
+    if (inviteRole === "equipe_terrain" && !inviteTeamId) {
+      setAccessError("Choisissez l’équipe de ce nouvel intervenant.");
+      return;
+    }
+    setInviteSaving(true);
+    try {
+      const { data, error } = await supabase.functions.invoke("manage-setom-user", {
+        body: {
+          action: "invite",
+          email: inviteEmail.trim(),
+          display_name: inviteDisplayName.trim(),
+          role: inviteRole,
+          team_id: inviteRole === "equipe_terrain" ? inviteTeamId : null
+        }
+      });
+      if (error) throw error;
+      if (data?.error) throw new Error(data.error);
+      if (!data?.user) throw new Error("Le serveur n’a pas confirmé l’invitation.");
+      setAccessProfiles((profiles) => [...profiles.filter((item) => item.id !== data.user.id), data.user].sort((a,b) => String(a.display_name||a.email).localeCompare(String(b.display_name||b.email), "fr")));
+      setInviteEmail("");
+      setInviteDisplayName("");
+      setAccessMessage(data.message || "Invitation envoyée.");
+    } catch (error) {
+      setAccessError(error?.message || "Impossible d’envoyer l’invitation.");
+    } finally {
+      setInviteSaving(false);
+    }
+  }
 
   useEffect(() => {
     if (!session || page !== "bpu") return;
@@ -483,6 +667,8 @@ function App() {
 
   if (authLoading) return <div style={{ padding: "40px", textAlign: "center" }}><h1>SETOM</h1><p>Chargement...</p></div>;
   if (!session) return <div style={{ padding: "40px", maxWidth: "400px", margin: "auto" }}><h1>SETOM</h1><p>Connexion à votre espace de gestion</p><form onSubmit={handleLogin}><input type="email" placeholder="Adresse e-mail" value={email} onChange={(e) => setEmail(e.target.value)} required style={{ width: "100%", padding: "10px", marginBottom: "10px", boxSizing: "border-box" }} /><input type="password" placeholder="Mot de passe" value={password} onChange={(e) => setPassword(e.target.value)} required style={{ width: "100%", padding: "10px", marginBottom: "10px", boxSizing: "border-box" }} />{authError && <p style={{ color: "red" }}>{authError}</p>}<button type="submit">Se connecter</button></form></div>;
+  if (profileLoading || !currentProfile) return <div style={{ padding: 40, maxWidth: 520, margin: "auto", textAlign: "center" }}><h1>SETOM</h1><p>{profileError ? "Accès indisponible" : "Vérification des droits…"}</p>{profileError && <p style={{ color: "#b42318" }}>{profileError}</p>}<button className="secondary" type="button" onClick={handleLogout}>Se déconnecter</button></div>;
+  if (currentProfile.must_set_password) return <div style={{ padding: 24, maxWidth: 480, margin: "40px auto" }}><h1>SETOM</h1><h2>Activer votre compte</h2><p>Pour terminer l’activation de votre compte, choisissez un mot de passe personnel.</p><form onSubmit={finishPasswordSetup} className="card" style={{ display: "grid", gap: 12 }}><label>Nouveau mot de passe<input type="password" value={passwordSetup} onChange={(e) => setPasswordSetup(e.target.value)} minLength={8} autoComplete="new-password" required style={{ width: "100%", boxSizing: "border-box" }}/></label><label>Confirmer le mot de passe<input type="password" value={passwordSetupConfirm} onChange={(e) => setPasswordSetupConfirm(e.target.value)} minLength={8} autoComplete="new-password" required style={{ width: "100%", boxSizing: "border-box" }}/></label>{passwordSetupError && <p style={{ color: "#b42318" }}>{passwordSetupError}</p>}<button className="primary" type="submit" disabled={passwordSetupSaving}>{passwordSetupSaving ? "Enregistrement…" : "Activer mon compte"}</button></form></div>;
 
   const filteredOS = osList.filter((os) => {
     const text = `${os.id} ${os.address} ${os.work} ${os.sector}`.toLowerCase();
@@ -508,10 +694,17 @@ function App() {
   };
 
   return <div className="app">
-    <header className="header"><div><h1>{appSettings?.company_name || "SETOM"}</h1><small>Gestion des travaux routiers</small></div><div><small>Marché {appSettings?.donor_name || "Eau de Toulouse"}</small></div></header>
+    <header className="header"><div><h1>{appSettings?.company_name || "SETOM"}</h1><small>Gestion des travaux routiers</small></div><div style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}><small>{currentProfile.display_name || currentProfile.email} · {ROLE_LABELS[currentProfile.role] || "Accès limité"}</small><button type="button" className="secondary" onClick={handleLogout}>Se déconnecter</button></div></header>
     <main className="container">
       <nav className="nav">
-        {[["dashboard","📊 Tableau de bord"],["os","📋 OS"],["map","🗺️ Carte"],["planning","📅 Planning"],["teams","👷 Équipes"],["reserves","⚠️ Réserves"],["bpu","💶 Bordereau de prix"],["materials","🧱 Matériaux"],["settings","⚙️ Paramètres"]].map(([id,label]) => <button key={id} className={page === id ? "active" : ""} onClick={() => setPage(id)}>{label}</button>)}
+        {[["dashboard","📊 Tableau de bord"],["os","📋 OS"],["map","🗺️ Carte"],["planning","📅 Planning"],["teams","👷 Équipes"],["reserves","⚠️ Réserves"],["bpu","💶 Bordereau de prix"],["materials","🧱 Matériaux"],["settings","⚙️ Paramètres"],["access","🔐 Accès"]].filter(([id]) => {
+          const role = currentProfile?.role;
+          if (role === "admin") return true;
+          if (role === "bureau") return ["dashboard","os","map","planning","reserves"].includes(id);
+          if (role === "equipe_terrain") return ["dashboard","os","planning"].includes(id);
+          if (role === "eau_de_toulouse") return ["dashboard","os","reserves"].includes(id);
+          return false;
+        }).map(([id,label]) => <button key={id} className={page === id ? "active" : ""} onClick={() => setPage(id)}>{label}</button>)}
       </nav>
       {page === "dashboard" && <><h2>Tableau de bord</h2><div className="cards"><div className="card"><div>OS actifs</div><div className="number">{stats.total}</div></div><div className="card"><div>À planifier</div><div className="number">{stats.planning}</div></div><div className="card"><div>Travaux en cours</div><div className="number">{stats.travaux}</div></div><div className="card"><div>À facturer</div><div className="number">{stats.facturation}</div></div><div className="card"><div>Validation</div><div className="number">{stats.validation}</div></div><div className="card"><div>Réserves</div><div className="number">{stats.reserves}</div></div><div className="card"><div>OS en erreur</div><div className="number">{stats.errors}</div></div></div><h2>OS récents</h2><div className="os-list">{osList.slice(0,5).map((os) => <OSCard key={os.id} os={os} onOpen={() => setSelectedOS(os)} />)}</div></>}
       {page === "os" && <>
@@ -534,7 +727,7 @@ function App() {
           <div className="attachments-section"><label>📎 Photos et documents</label><div className="attachments-buttons"><label className="attachment-button">📷 Prendre une photo<input type="file" accept="image/*" capture="environment" multiple onChange={(e) => {const files=Array.from(e.target.files||[]).filter((file)=>file.type.startsWith("image/"));setNewOSFiles((current)=>[...current,...files]);e.target.value="";}} /></label><label className="attachment-button">🖼️ Choisir une image dans Photos ou Fichiers<input type="file" accept="image/*" multiple onChange={(e) => {const files=Array.from(e.target.files||[]).filter((file)=>file.type.startsWith("image/"));setNewOSFiles((current)=>[...current,...files]);e.target.value="";}} /></label><label className="attachment-button">📄 Ajouter un document<input type="file" accept=".pdf,.doc,.docx,.xls,.xlsx" multiple onChange={(e)=>{const files=Array.from(e.target.files||[]);setNewOSFiles((current)=>[...current,...files]);e.target.value="";}} /></label></div>{newOSFiles.length>0&&<div className="attachments-list">{newOSFiles.map((file,index)=><div className="attachment-item" key={file.name+"-"+index}>{file.type.startsWith("image/")&&<LocalImagePreview file={file}/>}<span>{file.type.startsWith("image/")?"🖼️":"📄"} {file.name}</span><button type="button" aria-label={"Retirer "+file.name} onClick={()=>setNewOSFiles((current)=>current.filter((_,i)=>i!==index))}>×</button></div>)}</div>}</div>
           {newOSError && <p style={{color:"red",marginTop:10}}>{newOSError}</p>}<div className="modal-actions"><button type="button" className="secondary" onClick={()=>setShowNewOS(false)}>Annuler</button><button type="submit" className="primary" disabled={newOSSaving}>{newOSSaving?"Enregistrement...":"Créer l'OS"}</button></div>
         </form></div></div>}
-        <h2>Ordres de service</h2><div className="toolbar"><button className="primary" onClick={()=>{setNewOSError("");setShowNewOS(true);}}>+ Nouveau OS</button><input placeholder="🔎 Rechercher OS, adresse..." value={search} onChange={(e)=>setSearch(e.target.value)}/><select value={statusFilter} onChange={(e)=>setStatusFilter(e.target.value)}><option>Tous</option>{statuses.map((status)=><option key={status}>{status}</option>)}</select><select value={teamFilter} onChange={(e)=>setTeamFilter(e.target.value)}><option>Toutes</option>{teams.map((team)=><option key={team}>{team}</option>)}</select><select value={sectorFilter} onChange={(e)=>setSectorFilter(e.target.value)}><option value="Tous">Tous les secteurs</option>{dbSectors.map((sector)=><option key={sector.id} value={sector.name}>{sector.name}</option>)}<option value="Non classé">Non classés</option></select></div><StatusLegend /><div className="os-list">{filteredOS.map((os)=><OSCard key={os.id} os={os} onOpen={()=>setSelectedOS(os)}/>)}</div>
+        <h2>Ordres de service</h2><div className="toolbar">{["admin","bureau"].includes(currentProfile?.role) && <button className="primary" onClick={()=>{setNewOSError("");setShowNewOS(true);}}>+ Nouveau OS</button>}<input placeholder="🔎 Rechercher OS, adresse..." value={search} onChange={(e)=>setSearch(e.target.value)}/><select value={statusFilter} onChange={(e)=>setStatusFilter(e.target.value)}><option>Tous</option>{statuses.map((status)=><option key={status}>{status}</option>)}</select><select value={teamFilter} onChange={(e)=>setTeamFilter(e.target.value)}><option>Toutes</option>{teams.map((team)=><option key={team}>{team}</option>)}</select><select value={sectorFilter} onChange={(e)=>setSectorFilter(e.target.value)}><option value="Tous">Tous les secteurs</option>{dbSectors.map((sector)=><option key={sector.id} value={sector.name}>{sector.name}</option>)}<option value="Non classé">Non classés</option></select></div><StatusLegend /><div className="os-list">{filteredOS.map((os)=><OSCard key={os.id} os={os} onOpen={()=>setSelectedOS(os)}/>)}</div>
       </>}
       {page === "map" && <><h2>Carte des interventions</h2><StatusLegend compact /><div className="toolbar"><button className="secondary">Tous</button><button className="secondary">OS non planifiés</button><button className="secondary">Réserves</button><button className="secondary">À facturer</button></div><div className="map"><div className="map-road"></div>{osList.map((os,index)=>{const positions=[[20,25],[48,18],[72,35],[30,60],[65,68],[82,20]];const [left,top]=positions[index%positions.length];return <button key={os.id} className="marker" title={os.id} onClick={()=>setSelectedOS(os)} style={{left:`${left}%`,top:`${top}%`,background:getOSStatusColors(os.status).accent}}><span>•</span></button>;})}</div></>}
       {page === "planning" && <><h2>Planning hebdomadaire</h2><StatusLegend compact /><div className="planning"><div className="week">{days.slice(0,5).map((day)=><div className="day" key={day.name}><div className="day-header" style={{background:day.color}}>{day.name}</div>{osList.filter((os)=>os.day===day.name).map((os)=><div className="planning-os" key={os.id} style={{ borderLeft: "4px solid " + getOSStatusColors(os.status).accent, background: getOSStatusColors(os.status).background }} onClick={()=>setSelectedOS(os)}><strong>{os.id}</strong><br/>{os.address}<br/><small>{os.team}</small><div className="setom-status-chip" style={getOSStatusBadgeStyle(os.status)}>{os.status}</div></div>)}</div>)}</div></div><h3>OS non planifiés</h3><div className="os-list">{osList.filter((os)=>!os.day).map((os)=><OSCard key={os.id} os={os} onOpen={()=>setSelectedOS(os)}/>)}</div></>}
@@ -584,7 +777,33 @@ function App() {
             <button className="primary" type="button" disabled={materialSaveIds.includes(material.id)} onClick={() => saveMaterialCatalogItem(material)} style={{ marginTop: 12, width: "100%" }}>{materialSaveIds.includes(material.id) ? "Enregistrement…" : "💾 Enregistrer ce matériau"}</button>
           </div>)}
         </div>
-      </>}{page === "settings" && <><h2>Paramètres du marché</h2>
+      </>}{page === "access" && currentProfile?.role === "admin" && <>
+        <h2>Gestion des accès</h2>
+        <p style={{ color: "#667085", marginTop: -4 }}>Crée un compte, choisis son profil et, pour une équipe terrain, rattache-le à son équipe. Les comptes désactivés ne peuvent plus accéder aux données SETOM.</p>
+        <div className="card" style={{ marginBottom: 18 }}>
+          <h3 style={{ marginTop: 0 }}>Inviter un intervenant</h3>
+          <form onSubmit={inviteAccessUser} style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(210px,1fr))", gap: 12, alignItems: "end" }}>
+            <div><label>Nom affiché</label><input value={inviteDisplayName} onChange={(e) => setInviteDisplayName(e.target.value)} placeholder="Nom et prénom" required style={{ width: "100%", boxSizing: "border-box" }}/></div>
+            <div><label>Adresse e-mail</label><input type="email" value={inviteEmail} onChange={(e) => setInviteEmail(e.target.value)} placeholder="nom@entreprise.fr" required style={{ width: "100%", boxSizing: "border-box" }}/></div>
+            <div><label>Profil d’accès</label><select value={inviteRole} onChange={(e) => { setInviteRole(e.target.value); if (e.target.value !== "equipe_terrain") setInviteTeamId(""); }} style={{ width: "100%", boxSizing: "border-box" }}>{ACCESS_ROLES.map((role) => <option key={role.value} value={role.value}>{role.label}</option>)}</select></div>
+            {inviteRole === "equipe_terrain" && <div><label>Équipe affectée</label><select value={inviteTeamId} onChange={(e) => setInviteTeamId(e.target.value)} required style={{ width: "100%", boxSizing: "border-box" }}><option value="">Choisir une équipe…</option>{dbTeams.filter((team) => team.active !== false).map((team) => <option key={team.id} value={team.id}>{team.name}</option>)}</select></div>}
+            <div><button className="primary" type="submit" disabled={inviteSaving}>{inviteSaving ? "Envoi de l’invitation…" : "✉️ Envoyer l’invitation"}</button></div>
+          </form>
+          <p style={{ fontSize: 12, color: "#667085", marginBottom: 0 }}>L’intervenant reçoit un e-mail, puis définit son propre mot de passe. Ne partage pas de mot de passe commun.</p>
+        </div>
+        {accessError && <div className="card" style={{ borderLeft: "4px solid #b42318", color: "#b42318", marginBottom: 12 }}>{accessError}</div>}
+        {accessMessage && <div className="card" style={{ borderLeft: "4px solid #027a48", color: "#027a48", marginBottom: 12 }}>{accessMessage}</div>}
+        {accessLoading ? <div className="card">Chargement des comptes…</div> : <div style={{ display: "grid", gap: 12 }}>
+          {accessProfiles.map((profile) => <div className="card" key={profile.id} style={{ display: "grid", gridTemplateColumns: "minmax(180px,1.3fr) repeat(auto-fit,minmax(180px,1fr))", gap: 12, alignItems: "end", opacity: profile.active ? 1 : 0.7 }}>
+            <div><strong>{profile.display_name || "Intervenant"}</strong><div style={{ fontSize: 13, color: "#667085", overflowWrap: "anywhere" }}>{profile.email || "E-mail non renseigné"}</div>{profile.must_set_password && <small style={{ color: "#b54708" }}>Activation en attente</small>}</div>
+            <div><label>Profil</label><select value={profile.role || "equipe_terrain"} onChange={(e) => changeAccessProfile(profile.id, "role", e.target.value)} style={{ width: "100%", boxSizing: "border-box" }}>{ACCESS_ROLES.map((role) => <option key={role.value} value={role.value}>{role.label}</option>)}</select></div>
+            {profile.role === "equipe_terrain" && <div><label>Équipe affectée</label><select value={profile.team_id || ""} onChange={(e) => changeAccessProfile(profile.id, "team_id", e.target.value)} style={{ width: "100%", boxSizing: "border-box" }}><option value="">Choisir une équipe…</option>{dbTeams.filter((team) => team.active !== false).map((team) => <option key={team.id} value={team.id}>{team.name}</option>)}</select></div>}
+            <div><label style={{ display: "flex", alignItems: "center", gap: 8 }}><input type="checkbox" checked={profile.active === true} onChange={(e) => changeAccessProfile(profile.id, "active", e.target.checked)}/>Compte actif</label><button type="button" className="primary" disabled={accessSavingIds.includes(profile.id)} onClick={() => saveAccessProfile(profile)} style={{ marginTop: 8 }}>{accessSavingIds.includes(profile.id) ? "Enregistrement…" : "Enregistrer les accès"}</button></div>
+          </div>)}
+          {accessProfiles.length === 0 && <div className="card">Aucun compte trouvé.</div>}
+        </div>}
+      </>}
+      {page === "settings" && <><h2>Paramètres du marché</h2>
         {!appSettings ? <div className="card">Chargement des paramètres…</div> : <form onSubmit={saveAppSettings} className="card" style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(230px,1fr))", gap: 14, alignItems: "start" }}>
           <div><label htmlFor="setting-company">Nom de l'application / entreprise</label><input id="setting-company" value={appSettings.company_name || ""} onChange={(e) => setAppSettings((current) => ({ ...current, company_name: e.target.value }))} required style={{ width: "100%", boxSizing: "border-box" }}/></div>
           <div><label htmlFor="setting-donor">Donneur d'ordre</label><input id="setting-donor" value={appSettings.donor_name || ""} onChange={(e) => setAppSettings((current) => ({ ...current, donor_name: e.target.value }))} required style={{ width: "100%", boxSizing: "border-box" }}/></div>
@@ -601,7 +820,7 @@ function App() {
         </form>}
       </>}
     </main>
-    {selectedOS && <OSModal os={selectedOS} onClose={()=>setSelectedOS(null)} onUpdate={updateOS}/>} 
+    {selectedOS && <OSModal os={selectedOS} onClose={()=>setSelectedOS(null)} onUpdate={updateOS} profile={currentProfile}/>} 
   </div>;
 }
 
