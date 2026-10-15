@@ -354,14 +354,46 @@ function OSModal({ os, onClose, onUpdate }) {
 
   async function validateConstat(){
     if(!constat||constatLocked||constatEditMode||constatSaving)return;
-    if(!["Brouillon","À vérifier","À valider"].includes(constat.status||"Brouillon")){alert("Le statut actuel du constat ne permet pas cette validation : "+(constat.status||"inconnu")+".");return;}
-    const {data:authData,error:authError}=await supabase.auth.getUser();const user=authData?.user;if(authError||!user){alert("Connexion requise pour valider le constat.");return;}
+    if(!["Brouillon","À vérifier","À valider"].includes(constat.status||"Brouillon")){
+      alert("Le statut actuel du constat ne permet pas cette validation : "+(constat.status||"inconnu")+".");
+      return;
+    }
+    if(!os?.dbId){alert("Impossible d'identifier l'OS associé au constat.");return;}
+    const {data:authData,error:authError}=await supabase.auth.getUser();
+    const user=authData?.user;
+    if(authError||!user){alert("Connexion requise pour valider le constat.");return;}
     if(!window.confirm("Valider ce constat de facturation ? L'OS passera automatiquement à « Travaux effectués »."))return;
     setConstatSaving(true);
     try {
-      const {data:validatedConstat,error:validationError}=await supabase.from("constats").update({status:"Validé",validated_at:new Date().toISOString(),validated_by:user.id}).eq("id",constat.id).eq("status",constat.status||"Brouillon").select("*").single();if(validationError)throw validationError;setConstat(validatedConstat);
-      const {data:refreshedOS,error:refreshError}=await supabase.from("work_orders").select("status").eq("id",os.dbId).single();if(refreshError)console.error("Constat validé mais statut OS impossible à relire :",refreshError);const finalStatus=refreshedOS?.status||"Constat validé";onUpdate(os.id,{status:finalStatus});alert(finalStatus==="Travaux effectués"?"✅ Constat validé. L'OS est automatiquement passé à « Travaux effectués ».":"Constat validé. Vérifiez le statut de l'OS : "+finalStatus+".");
-    }catch(error){console.error("Erreur validation du constat :",error);alert("Impossible de valider le constat :\n\n"+(error?.message||"Erreur inconnue")+(error?.details?"\n\nDétails : "+error.details:"")+(error?.hint?"\n\nAide : "+error.hint:""));}finally{setConstatSaving(false);}
+      const {data:result,error:validationError}=await supabase.rpc("validate_constat_for_work_order",{
+        p_work_order_id:os.dbId,
+        p_constat_id:constat.id,
+        p_user_id:user.id
+      });
+      if(validationError)throw validationError;
+      if(result?.constat_status!=="Validé")throw new Error("La base de données n'a pas confirmé la validation du constat.");
+
+      const {data:refreshedPayload,error:constatReadError}=await supabase.rpc("get_constat_for_work_order",{p_work_order_id:os.dbId});
+      if(!constatReadError&&refreshedPayload?.constat){
+        setConstat(refreshedPayload.constat);
+        setConstatLines(refreshedPayload.lines||[]);
+      }else{
+        if(constatReadError)console.error("Constat validé mais relecture impossible :",constatReadError);
+        setConstat({...constat,status:"Validé",validated_at:new Date().toISOString(),validated_by:user.id});
+      }
+
+      let finalStatus=result?.work_order_status||null;
+      if(!finalStatus){
+        const {data:refreshedOS,error:refreshError}=await supabase.from("work_orders").select("status").eq("id",os.dbId).single();
+        if(refreshError)console.error("Constat validé mais statut OS impossible à relire :",refreshError);
+        finalStatus=refreshedOS?.status||"Constat validé";
+      }
+      onUpdate(os.id,{status:finalStatus});
+      alert(finalStatus==="Travaux effectués"?"✅ Constat validé. L'OS est automatiquement passé à « Travaux effectués ».":"Constat validé. Le statut actuel de l'OS est : "+finalStatus+".");
+    }catch(error){
+      console.error("Erreur validation du constat :",error);
+      alert("Impossible de valider le constat :\\n\\n"+(error?.message||"Erreur inconnue")+(error?.details?"\\n\\nDétails : "+error.details:"")+(error?.hint?"\\n\\nAide : "+error.hint:""));
+    }finally{setConstatSaving(false);}
   }
 
   async function regenerateConstatFromWorks(){if(!constat||constatLocked)return;if(!window.confirm("Recalculer le constat à partir des travaux réalisés ?\n\nLes modifications manuelles actuellement présentes dans le constat seront remplacées."))return;const {data:authData}=await supabase.auth.getUser();const userId=authData?.user?.id||null;const {error}=await supabase.rpc("generate_constat_for_work_order",{p_work_order_id:os.dbId,p_user_id:userId});if(error){alert("Impossible de recalculer le constat :\n\n"+error.message);return;}const {data:refreshed,error:refreshError}=await supabase.rpc("get_constat_for_work_order",{p_work_order_id:os.dbId});if(refreshError){alert("Le recalcul est terminé mais le constat n'a pas pu être relu.");return;}setConstat(refreshed?.constat||null);setConstatLines(refreshed?.lines||[]);setConstatEditMode(false);alert("✅ Constat recalculé depuis les travaux.");}
