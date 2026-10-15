@@ -1,26 +1,79 @@
 // Classeur: clicking the OS label opens the existing OS detail modal.
-// Kept outside the workflow layer so it does not alter OS data or statuses.
+// The binder stays open underneath the modal so the team can return to it
+// without losing the current day/week context.
 (function installClasseurNavigation() {
+  let plannerHost = null;
+  let plannerOriginalZIndex = "";
+  let modalOriginalZIndex = null;
+  let modalWasOpened = false;
+  let observer = null;
+
   function getOsNumberFromRow(row) {
-    // In both the daily and weekly binder, the OS label is the strong element.
     const label = row?.querySelector("strong");
-    const text = String(label?.textContent || "").trim();
-    return text;
+    return String(label?.textContent || "").trim();
+  }
+
+  function prepareBinderBehindModal() {
+    plannerHost = document.querySelector("#setom-planner-host");
+    if (!plannerHost) return;
+
+    plannerOriginalZIndex = plannerHost.style.zIndex || "";
+    // The planner is normally above the whole application. Lower it temporarily
+    // so the existing OS detail modal can appear above it without closing the binder.
+    plannerHost.style.zIndex = "900";
+
+    if (observer) observer.disconnect();
+    observer = new MutationObserver(() => {
+      const modal = document.querySelector(".os-detail-modal");
+      if (modal) {
+        modalWasOpened = true;
+        if (modalOriginalZIndex === null) modalOriginalZIndex = modal.style.zIndex || "";
+        modal.style.zIndex = "2147483001";
+        return;
+      }
+
+      if (modalWasOpened) restoreBinderLayer();
+    });
+
+    observer.observe(document.body, { childList: true, subtree: true });
+
+    // Handle the case where the modal already exists when the event arrives.
+    const existingModal = document.querySelector(".os-detail-modal");
+    if (existingModal) {
+      modalWasOpened = true;
+      modalOriginalZIndex = existingModal.style.zIndex || "";
+      existingModal.style.zIndex = "2147483001";
+    }
+  }
+
+  function restoreBinderLayer() {
+    if (observer) {
+      observer.disconnect();
+      observer = null;
+    }
+
+    if (plannerHost && plannerHost.isConnected) {
+      plannerHost.style.zIndex = plannerOriginalZIndex;
+    }
+
+    plannerHost = null;
+    plannerOriginalZIndex = "";
+    modalOriginalZIndex = null;
+    modalWasOpened = false;
   }
 
   function openOsFromBinder(osNumber) {
     if (!osNumber) return;
 
-    // Close the planning overlay first, then let the dashboard navigation helper
-    // open the normal OS page/modal. No data or workflow status is changed here.
-    const closeButton = document.querySelector(".setom-planner-header>button");
-    if (closeButton) closeButton.click();
+    // Do NOT close the binder. Lower only its stacking layer while the normal
+    // application opens the OS detail modal above it.
+    prepareBinderBehindModal();
 
     window.setTimeout(() => {
       window.dispatchEvent(new CustomEvent("setom:open-os-from-classeur", {
         detail: { osNumber }
       }));
-    }, 150);
+    }, 100);
   }
 
   document.addEventListener("click", (event) => {
@@ -28,8 +81,8 @@
     const row = target?.closest?.(".setom-binder-card, .setom-week-binder-row");
     if (!row) return;
 
-    // Only the OS label is an opening target. Other controls in the binder
-    // (buttons/selects) keep their normal behavior.
+    // Only the OS label is an opening target. Other binder controls keep
+    // their normal behavior.
     const label = target.closest?.("strong");
     if (!label || !row.contains(label)) return;
 
