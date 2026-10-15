@@ -1,1 +1,1 @@
-normalize status workflow
+finalize status workflow
