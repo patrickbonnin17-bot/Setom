@@ -48,6 +48,10 @@ function App() {
   const [osList, setOsList] = useState([]);
   const [dbTeams, setDbTeams] = useState([]);
   const [dbSectors, setDbSectors] = useState([]);
+  const [dbMaterials, setDbMaterials] = useState([]);
+  const [materialSaveIds, setMaterialSaveIds] = useState([]);
+  const [materialsError, setMaterialsError] = useState("");
+  const [materialsMessage, setMaterialsMessage] = useState("");
   const [appSettings, setAppSettings] = useState(null);
   const [settingsSaving, setSettingsSaving] = useState(false);
   const [settingsMessage, setSettingsMessage] = useState("");
@@ -131,6 +135,10 @@ function App() {
       if (sectorResult.error) console.error("Erreur chargement secteurs :", sectorResult.error);
       if (!cancelled) setDbSectors(sectors);
       const sectorById = new Map(sectors.map((sector) => [sector.id, sector.name]));
+      const materialResult = await supabase.from("materials").select("id, name, category, active, planning_difficulty, indicative_capacity_m2, sort_order").order("sort_order", { ascending: true });
+      const materials = materialResult.error ? [] : (materialResult.data || []);
+      if (materialResult.error) console.error("Erreur chargement matériaux :", materialResult.error);
+      if (!cancelled) setDbMaterials(materials.map((material) => ({ ...material, planning_difficulty: String(material.planning_difficulty ?? "1"), indicative_capacity_m2: material.indicative_capacity_m2 == null ? "" : String(material.indicative_capacity_m2), sort_order: String(material.sort_order ?? "0") })));
       const teamResult = await supabase.from("teams").select("id, name, team_type, usual_sector_id, indicative_capacity, active").order("name", { ascending: true });
       const teams = teamResult.error ? [] : (teamResult.data || []);
       if (teamResult.error) console.error("Erreur chargement équipes :", teamResult.error);
@@ -358,6 +366,29 @@ function App() {
     } finally { setSettingsSaving(false); }
   }
 
+  async function saveMaterialCatalogItem(material) {
+    setMaterialsError(""); setMaterialsMessage("");
+    if (!String(material.name || "").trim() || !String(material.category || "").trim()) { setMaterialsError("Chaque matériau doit avoir un nom et une catégorie."); return; }
+    const difficulty = Number(String(material.planning_difficulty || "1").replace(",", "."));
+    const capacity = String(material.indicative_capacity_m2 ?? "").trim() === "" ? null : Number(String(material.indicative_capacity_m2).replace(",", "."));
+    const order = Number(material.sort_order);
+    if (!Number.isFinite(difficulty) || difficulty <= 0) { setMaterialsError("La difficulté de planification doit être supérieure à zéro."); return; }
+    if (capacity !== null && (!Number.isFinite(capacity) || capacity <= 0)) { setMaterialsError("La capacité indicative doit être supérieure à zéro ou vide."); return; }
+    if (!Number.isInteger(order) || order < 0) { setMaterialsError("L'ordre d'affichage doit être un entier positif ou nul."); return; }
+    setMaterialSaveIds((current) => current.includes(material.id) ? current : [...current, material.id]);
+    try {
+      const payload = { name: String(material.name).trim(), category: String(material.category).trim(), planning_difficulty: difficulty, indicative_capacity_m2: capacity, sort_order: order, active: !!material.active };
+      const { data, error } = await supabase.from("materials").update(payload).eq("id", material.id).select("id, name, category, active, planning_difficulty, indicative_capacity_m2, sort_order").single();
+      if (error) throw error;
+      setDbMaterials((current) => current.map((item) => item.id === material.id ? { ...data, planning_difficulty: String(data.planning_difficulty ?? "1"), indicative_capacity_m2: data.indicative_capacity_m2 == null ? "" : String(data.indicative_capacity_m2), sort_order: String(data.sort_order ?? "0") } : item));
+      setMaterialsMessage("✅ Matériau « " + data.name + " » enregistré.");
+      window.dispatchEvent(new Event("setom:planning-updated"));
+    } catch (error) {
+      console.error("Erreur enregistrement matériau :", error);
+      setMaterialsError(error?.message || "Impossible d'enregistrer ce matériau. La modification nécessite le rôle administrateur.");
+    } finally { setMaterialSaveIds((current) => current.filter((id) => id !== material.id)); }
+  }
+
   async function handleCreateTeam(event) {
     event.preventDefault();
     setTeamError("");
@@ -471,7 +502,7 @@ function App() {
     <header className="header"><div><h1>{appSettings?.company_name || "SETOM"}</h1><small>Gestion des travaux routiers</small></div><div><small>Marché {appSettings?.donor_name || "Eau de Toulouse"}</small></div></header>
     <main className="container">
       <nav className="nav">
-        {[["dashboard","📊 Tableau de bord"],["os","📋 OS"],["map","🗺️ Carte"],["planning","📅 Planning"],["teams","👷 Équipes"],["reserves","⚠️ Réserves"],["bpu","💶 Bordereau de prix"],["settings","⚙️ Paramètres"]].map(([id,label]) => <button key={id} className={page === id ? "active" : ""} onClick={() => setPage(id)}>{label}</button>)}
+        {[["dashboard","📊 Tableau de bord"],["os","📋 OS"],["map","🗺️ Carte"],["planning","📅 Planning"],["teams","👷 Équipes"],["reserves","⚠️ Réserves"],["bpu","💶 Bordereau de prix"],["materials","🧱 Matériaux"],["settings","⚙️ Paramètres"]].map(([id,label]) => <button key={id} className={page === id ? "active" : ""} onClick={() => setPage(id)}>{label}</button>)}
       </nav>
       {page === "dashboard" && <><h2>Tableau de bord</h2><div className="cards"><div className="card"><div>OS actifs</div><div className="number">{stats.total}</div></div><div className="card"><div>À planifier</div><div className="number">{stats.planning}</div></div><div className="card"><div>Travaux en cours</div><div className="number">{stats.travaux}</div></div><div className="card"><div>À facturer</div><div className="number">{stats.facturation}</div></div><div className="card"><div>Validation</div><div className="number">{stats.validation}</div></div><div className="card"><div>Réserves</div><div className="number">{stats.reserves}</div></div><div className="card"><div>OS en erreur</div><div className="number">{stats.errors}</div></div></div><h2>OS récents</h2><div className="os-list">{osList.slice(0,5).map((os) => <OSCard key={os.id} os={os} onOpen={() => setSelectedOS(os)} />)}</div></>}
       {page === "os" && <>
@@ -480,9 +511,9 @@ function App() {
           <label>Code postal</label><input type="text" value={newOSPostalCode} onChange={(e) => setNewOSPostalCode(e.target.value)} placeholder="Ex. 82000" />
           <label>Ville</label><input type="text" value={newOSCity} onChange={(e) => setNewOSCity(e.target.value)} placeholder="Ex. Montauban" />
           <label>Secteur *</label><select value={newOSSectorId} onChange={(e) => setNewOSSectorId(e.target.value)} required><option value="">Choisir un secteur…</option>{dbSectors.map((sector) => <option key={sector.id} value={sector.id}>{sector.name}</option>)}</select>
-          <div className="material-section"><label>Matériau *</label><div className="material-cards">{[{value:"Béton",icon:"🧱"},{value:"Enrobé",icon:"🛣️"},{value:"GE calcaire",icon:"⛰️"},{value:"Asphalte",icon:"⬛"}].map((material) => <button key={material.value} type="button" className={`material-card ${newOSMaterial === material.value ? "selected" : ""}`} onClick={() => {setNewOSMaterial(material.value);setNewOSMaterialDetail("");}}><span className="material-icon">{material.icon}</span><span>{material.value}</span></button>)}</div></div>
-          {newOSMaterial === "Béton" && <div className="material-subtypes"><label>Type de béton</label><div className="material-subtype-grid">{["Béton balayé","Béton taloché","Sous-dallage","Béton désactivé","Béton coloré"].map((type) => <button key={type} type="button" className={`material-subtype-button ${newOSMaterialDetail === type ? "selected" : ""}`} onClick={() => setNewOSMaterialDetail(type)}>{type}</button>)}</div></div>}
-          {newOSMaterial === "Enrobé" && <div className="material-subtypes"><label>Type d'enrobé</label><div className="material-subtype-grid">{["Enrobé noir","Enrobé rouge","Enrobé miel","Enrobé autre","Enrobé grenaillé"].map((type) => <button key={type} type="button" className={`material-subtype-button ${newOSMaterialDetail === type ? "selected" : ""}`} onClick={() => setNewOSMaterialDetail(type)}>{type}</button>)}</div></div>}
+          <div className="material-section"><label>Matériau *</label><div className="material-cards">{[...new Set(dbMaterials.filter((item) => item.active).map((item) => item.category))].map((category) => ({ value: category, icon: category.toLocaleLowerCase("fr-FR").includes("béton") ? "🧱" : category.toLocaleLowerCase("fr-FR").includes("enrob") ? "🛣️" : category.toLocaleLowerCase("fr-FR").includes("asphalte") ? "⬛" : "⛰️" })).map((material) => <button key={material.value} type="button" className={`material-card ${newOSMaterial === material.value ? "selected" : ""}`} onClick={() => {setNewOSMaterial(material.value);setNewOSMaterialDetail("");}}><span className="material-icon">{material.icon}</span><span>{material.value}</span></button>)}</div></div>
+          {dbMaterials.filter((item) => item.active && item.category === newOSMaterial).length > 1 && <div className="material-subtypes"><label>Variantes de {newOSMaterial.toLocaleLowerCase("fr-FR")}</label><div className="material-subtype-grid">{dbMaterials.filter((item) => item.active && item.category === newOSMaterial).map((item) => <button key={item.id} type="button" className={`material-subtype-button ${newOSMaterialDetail === item.name ? "selected" : ""}`} onClick={() => setNewOSMaterialDetail(item.name)}>{item.name}</button>)}</div></div>}
+          
           <label>Détail du matériau</label><input type="text" value={newOSMaterialDetail} onChange={(e) => setNewOSMaterialDetail(e.target.value)} placeholder="Ex. Enrobé 0/10 noir" />
           <div className="rehabilitation-section"><label>Zone de réfection *</label><div className="rehabilitation-cards">{["Chaussée","Trottoir","Chaussée + trottoir","Autre"].map((zone) => <button key={zone} type="button" className={`rehabilitation-card ${newOSRehabilitationZone === zone ? "selected" : ""}`} onClick={() => {setNewOSRehabilitationZone(zone);if(zone!=="Autre")setNewOSRehabilitationOtherDetail("");if(zone==="Chaussée")setNewOSSidewalkSurface("");if(zone==="Trottoir")setNewOSRoadSurface("");}}>{zone}</button>)}</div>
             {newOSRehabilitationZone === "Chaussée" && <div className="rehabilitation-surface-field"><label>Surface chaussée prévue (m²)</label><input type="number" step="0.01" min="0" value={newOSRoadSurface} onChange={(e) => setNewOSRoadSurface(e.target.value)} placeholder="Ex. 12.5" /></div>}
@@ -526,6 +557,24 @@ function App() {
             <div style={{ gridColumn: "1 / -1", display: "flex", flexWrap: "wrap", gap: 10, alignItems: "center" }}><button className="primary" type="submit" disabled={bpuSaving || bpuLoading}>{bpuSaving ? "Création de la version…" : "💾 Créer une nouvelle version et appliquer ces prix"}</button><button className="secondary" type="button" disabled={bpuSaving || bpuLoading} onClick={() => { const current = bpuVersions.find((version) => version.is_current) || bpuVersions[0]; if (!current) return; setBpuLines((lines) => [...lines].sort((a,b) => String(a.designation).localeCompare(String(b.designation),"fr"))); setBpuError(""); setBpuMessage("Ordre des lignes remis par désignation. Les changements de tarifs sont toujours en brouillon."); }}>Trier par désignation</button></div>
           </form>
         </>}
+      </>}{page === "materials" && <><h2>Catalogue des matériaux</h2>
+        <p style={{ color: "#667085", marginTop: -6 }}>Le catalogue pilote les choix du formulaire de nouvel OS. La capacité indicative et le coefficient de difficulté servent de paramètres de planification ; laissez la capacité vide si elle n'est pas définie.</p>
+        {materialsError && <div className="card" style={{ color: "#b42318", marginBottom: 12 }}>{materialsError}</div>}
+        {materialsMessage && <div className="card" style={{ color: "#027a48", marginBottom: 12 }}>{materialsMessage}</div>}
+        <div className="cards" style={{ marginBottom: 12 }}><div className="card"><strong>{dbMaterials.length}</strong><div>Matériaux enregistrés</div></div><div className="card"><strong>{dbMaterials.filter((item) => item.active).length}</strong><div>Actifs dans les nouveaux OS</div></div></div>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(300px,1fr))", gap: 12 }}>
+          {dbMaterials.map((material) => <div className="card" key={material.id} style={{ border: "1px solid #e4e7ec", opacity: material.active ? 1 : .65 }}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8, marginBottom: 10 }}><strong>{material.name}</strong><label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12 }}><input type="checkbox" checked={!!material.active} onChange={(e) => setDbMaterials((current) => current.map((item) => item.id === material.id ? { ...item, active: e.target.checked } : item))} /> Actif</label></div>
+            <label style={{ display: "block", fontSize: 12 }}>Nom</label><input value={material.name} onChange={(e) => setDbMaterials((current) => current.map((item) => item.id === material.id ? { ...item, name: e.target.value } : item))} style={{ width: "100%", boxSizing: "border-box", marginBottom: 8 }} />
+            <label style={{ display: "block", fontSize: 12 }}>Catégorie</label><input value={material.category} onChange={(e) => setDbMaterials((current) => current.map((item) => item.id === material.id ? { ...item, category: e.target.value } : item))} style={{ width: "100%", boxSizing: "border-box", marginBottom: 8 }} />
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 90px", gap: 8 }}>
+              <div><label style={{ display: "block", fontSize: 12 }}>Capacité (m²/j)</label><input type="number" min="0.1" step="0.1" value={material.indicative_capacity_m2} onChange={(e) => setDbMaterials((current) => current.map((item) => item.id === material.id ? { ...item, indicative_capacity_m2: e.target.value } : item))} placeholder="Réf. globale" style={{ width: "100%", boxSizing: "border-box" }}/></div>
+              <div><label style={{ display: "block", fontSize: 12 }}>Difficulté (coef.)</label><input type="number" min="0.1" step="0.1" value={material.planning_difficulty} onChange={(e) => setDbMaterials((current) => current.map((item) => item.id === material.id ? { ...item, planning_difficulty: e.target.value } : item))} style={{ width: "100%", boxSizing: "border-box" }}/></div>
+              <div><label style={{ display: "block", fontSize: 12 }}>Ordre</label><input type="number" min="0" step="1" value={material.sort_order} onChange={(e) => setDbMaterials((current) => current.map((item) => item.id === material.id ? { ...item, sort_order: e.target.value } : item))} style={{ width: "100%", boxSizing: "border-box" }}/></div>
+            </div>
+            <button className="primary" type="button" disabled={materialSaveIds.includes(material.id)} onClick={() => saveMaterialCatalogItem(material)} style={{ marginTop: 12, width: "100%" }}>{materialSaveIds.includes(material.id) ? "Enregistrement…" : "💾 Enregistrer ce matériau"}</button>
+          </div>)}
+        </div>
       </>}{page === "settings" && <><h2>Paramètres du marché</h2>
         {!appSettings ? <div className="card">Chargement des paramètres…</div> : <form onSubmit={saveAppSettings} className="card" style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(230px,1fr))", gap: 14, alignItems: "start" }}>
           <div><label htmlFor="setting-company">Nom de l'application / entreprise</label><input id="setting-company" value={appSettings.company_name || ""} onChange={(e) => setAppSettings((current) => ({ ...current, company_name: e.target.value }))} required style={{ width: "100%", boxSizing: "border-box" }}/></div>
