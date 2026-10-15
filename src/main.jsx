@@ -16,9 +16,7 @@ const days = [
 ];
 
 const statuses = [
-  "Nouveau", "À planifier", "Planifié", "En travaux", "Travaux en cours", "Travaux réalisés",
-  "Constat à vérifier", "Travaux effectués", "Constat de facturation", "En attente de validation",
-  "Validé", "Validé avec réserve", "Réserve", "Correction à réaliser", "Payé", "Archivé", "En erreur", "Doublon", "Annulé",
+  "Nouveau OS", "Planifié", "Travaux réalisés", "À vérifier", "Validé", "Réserve", "Payé", "Archivé", "En erreur", "Doublon", "Annulé",
 ];
 
 const initialOS = [];
@@ -691,17 +689,17 @@ function App() {
     setOsList((current) => current.map((os) => os.id === id ? { ...os, ...changes } : os));
     setSelectedOS((current) => current && current.id === id ? { ...current, ...changes } : current);
   }
-  const activeStatuses = new Set(["Nouveau", "À planifier", "Planifié", "En travaux", "Travaux en cours", "En erreur", "Travaux réalisés", "Constat à vérifier", "Constat validé", "Travaux effectués", "Constat de facturation", "En attente de validation", "Validé", "Validé avec réserve", "Réserve", "Correction à réaliser", "Payé"]);
+  const activeStatuses = new Set(["Nouveau OS", "Planifié", "Travaux réalisés", "À vérifier", "Validé", "Réserve", "Payé"]);
   const currentWeekday = new Date().toLocaleDateString("fr-FR", { weekday: "long" });
   const currentDayName = currentWeekday.charAt(0).toUpperCase() + currentWeekday.slice(1);
   const stats = {
     total: osList.filter((o) => activeStatuses.has(o.status)).length,
-    planning: osList.filter((o) => o.status === "À planifier").length,
+    planning: osList.filter((o) => o.status === "Nouveau OS").length,
     today: osList.filter((o) => o.day === currentDayName).length,
-    travaux: osList.filter((o) => o.status === "En travaux" || o.status === "Travaux en cours" || o.status === "Travaux réalisés").length,
-    facturation: osList.filter((o) => (o.status === "Travaux effectués" || o.status === "Constat de facturation") && !(o.constatStatus === "Validé avec réserve" && !o.reserveResolvedAt)).length,
-    validation: osList.filter((o) => o.status === "En attente de validation" || o.status === "Constat à vérifier" || o.status === "Constat validé").length,
-    reserves: osList.filter((o) => o.status === "Réserve" || o.status === "Correction à réaliser" || (o.constatStatus === "Validé avec réserve" && !o.reserveResolvedAt)).length,
+    travaux: osList.filter((o) => o.status === "Travaux réalisés").length,
+    facturation: osList.filter((o) => o.status === "Validé" && !(o.constatStatus === "Validé avec réserve" && !o.reserveResolvedAt)).length,
+    validation: osList.filter((o) => o.status === "À vérifier").length,
+    reserves: osList.filter((o) => o.status === "Réserve" || (o.constatStatus === "Validé avec réserve" && !o.reserveResolvedAt)).length,
     errors: osList.filter((o) => o.status === "En erreur").length,
   };
 
@@ -905,7 +903,7 @@ function OSModal({ os, onClose, onUpdate, profile }) {
       const { data: payload, error: readError } = await supabase.rpc("get_constat_for_work_order", { p_work_order_id: os.dbId });
       if (readError) { console.error("Erreur lecture constat :", readError); if(!cancelled){setConstat(null);setConstatLines([]);setConstatLoading(false);} return; }
       let constatData = payload?.constat || null, linesData = payload?.lines || [];
-      if (!constatData && os.status === "Travaux effectués" && ["admin","bureau"].includes(profile?.role)) {
+      if (!constatData && os.status === "Validé" && ["admin","bureau"].includes(profile?.role)) {
         const { data: authData } = await supabase.auth.getUser(); const userId = authData?.user?.id || null;
         const { error: rpcError } = await supabase.rpc("regenerate_constat_for_work_order", { p_work_order_id: os.dbId, p_user_id: userId });
         if (!rpcError) { const { data: refreshed, error: refreshError } = await supabase.rpc("get_constat_for_work_order", { p_work_order_id: os.dbId }); if(!refreshError){constatData=refreshed?.constat||null;linesData=refreshed?.lines||[];} } else console.error("Erreur génération constat automatique :", rpcError);
@@ -1267,13 +1265,13 @@ function OSModal({ os, onClose, onUpdate, profile }) {
 
   async function save() {
     if(!["admin","bureau","equipe_terrain"].includes(profile?.role)){alert("Votre profil ne permet pas de transmettre les travaux réalisés. Demandez à l’administrateur de vérifier votre rôle.");return;}
-    if(["À planifier","Nouveau"].includes(os?.status)){alert("Cet OS n'est pas encore planifié. Enregistrez d'abord une date dans l'onglet Planning.");setActiveTab("planning");return;}
-    if(["Constat à vérifier","Constat validé","Travaux effectués","Payé","Archivé"].includes(os?.status)){setActiveTab(["admin","bureau"].includes(profile?.role)?"constat":"resume");alert("Les travaux ont déjà été transmis pour cet OS. Vérifiez le constat depuis le profil bureau.");return;}
-    if(!["Planifié","En travaux","Travaux en cours","Travaux réalisés"].includes(os?.status)){alert("Le statut actuel de cet OS ne permet pas de transmettre les travaux : "+(os?.status||"non renseigné")+". Vérifiez sa planification et son statut.");return;}
+    if(os?.status === "Nouveau OS"){alert("Cet OS n'est pas encore planifié. Enregistrez d'abord une date dans l'onglet Planning.");setActiveTab("planning");return;}
+    if(["À vérifier","Validé","Payé","Archivé"].includes(os?.status)){setActiveTab(["admin","bureau"].includes(profile?.role)?"constat":"resume");alert("Les travaux ont déjà été transmis pour cet OS. Vérifiez le constat depuis le profil bureau.");return;}
+    if(os?.status !== "Planifié" && os?.status !== "Travaux réalisés"){alert("Le statut actuel de cet OS ne permet pas de transmettre les travaux : "+(os?.status||"non renseigné")+". Vérifiez sa planification et son statut.");return;}
     try {
       const {data:authData,error:userError}=await supabase.auth.getUser();const user=authData?.user;if(userError||!user)throw new Error("Utilisateur non connecté.");
       let {data:intervention,error:interventionError}=await supabase.from("interventions").select("id, work_order_id, type, status, planned_surface_m2, actual_surface_m2").eq("work_order_id",os.dbId).maybeSingle();if(interventionError)throw new Error("Impossible de retrouver l'intervention : "+interventionError.message);
-      if(!intervention){const {data:newIntervention,error:createInterventionError}=await supabase.from("interventions").insert({work_order_id:os.dbId,type:os.intervention||os.work||"Intervention",status:"Travaux en cours",planned_surface_m2:os.quantity&&parseFloat(os.quantity)?parseFloat(os.quantity):null,planned_date:os.plannedDate||null,actual_surface_m2:null}).select("*").single();if(createInterventionError)throw new Error("Impossible de créer l'intervention : "+createInterventionError.message);intervention=newIntervention;}
+      if(!intervention){const {data:newIntervention,error:createInterventionError}=await supabase.from("interventions").insert({work_order_id:os.dbId,type:os.intervention||os.work||"Intervention",status:"Planifié",planned_surface_m2:os.quantity&&parseFloat(os.quantity)?parseFloat(os.quantity):null,planned_date:os.plannedDate||null,actual_surface_m2:null}).select("*").single();if(createInterventionError)throw new Error("Impossible de créer l'intervention : "+createInterventionError.message);intervention=newIntervention;}
       const roadActual=realRoadSurface!==""&&!isNaN(Number(realRoadSurface))?Number(realRoadSurface):0,sidewalkActual=realSidewalkSurface!==""&&!isNaN(Number(realSidewalkSurface))?Number(realSidewalkSurface):0,otherActual=realOtherSurface!==""&&!isNaN(Number(realOtherSurface))?Number(realOtherSurface):0,genericActual=realSurface!==""&&!isNaN(Number(realSurface))?Number(realSurface):0;
       const totalActualSurface=os.rehabilitationZone==="Chaussée + trottoir"?roadActual+sidewalkActual:os.rehabilitationZone==="Chaussée"?roadActual:os.rehabilitationZone==="Trottoir"?sidewalkActual:os.rehabilitationZone==="Autre"?otherActual:genericActual;
       const plannedSurface=Number(os.quantity?.replace(" m²","").replace(",","."))||0,automaticDemolition=Math.max(0,totalActualSurface-plannedSurface),realizations=[];
@@ -1289,15 +1287,15 @@ function OSModal({ os, onClose, onUpdate, profile }) {
       const {error:deleteRealizationsError}=await supabase.from("work_realizations").delete().eq("intervention_id",intervention.id);if(deleteRealizationsError)throw new Error("Erreur lors du remplacement des travaux réalisés : "+deleteRealizationsError.message);
       if(realizations.length>0){const {error:realizationError}=await supabase.from("work_realizations").insert(realizations);if(realizationError)throw new Error("Erreur lors de l'enregistrement des travaux réalisés : "+realizationError.message);}
       const {error:workOrderError}=await supabase.from("work_orders").update({actual_road_surface_m2:os.rehabilitationZone==="Chaussée"||os.rehabilitationZone==="Chaussée + trottoir"?(roadActual||null):null,actual_sidewalk_surface_m2:os.rehabilitationZone==="Trottoir"||os.rehabilitationZone==="Chaussée + trottoir"?(sidewalkActual||null):null,actual_other_surface_m2:os.rehabilitationZone==="Autre"?(otherActual||null):null,updated_by:user.id}).eq("id",os.dbId);if(workOrderError)throw new Error("Impossible d'enregistrer les surfaces de l'OS : "+workOrderError.message);
-      const {error:prepareInterventionError}=await supabase.from("interventions").update({status:"Travaux en cours",actual_surface_m2:totalActualSurface>0?totalActualSurface:null}).eq("id",intervention.id);if(prepareInterventionError)throw new Error("Impossible de préparer la transmission des travaux : "+prepareInterventionError.message);
-      const {error:updateInterventionError}=await supabase.from("interventions").update({status:"Travaux effectués",actual_date:new Date().toISOString().slice(0,10),actual_surface_m2:totalActualSurface>0?totalActualSurface:null}).eq("id",intervention.id);if(updateInterventionError)throw new Error("Impossible de transmettre les travaux : "+updateInterventionError.message);
+      const {error:prepareInterventionError}=await supabase.from("interventions").update({status:"Travaux réalisés",actual_surface_m2:totalActualSurface>0?totalActualSurface:null}).eq("id",intervention.id);if(prepareInterventionError)throw new Error("Impossible de préparer la transmission des travaux : "+prepareInterventionError.message);
+      const {error:updateInterventionError}=await supabase.from("interventions").update({status:"Travaux réalisés",actual_date:new Date().toISOString().slice(0,10),actual_surface_m2:totalActualSurface>0?totalActualSurface:null}).eq("id",intervention.id);if(updateInterventionError)throw new Error("Impossible de transmettre les travaux : "+updateInterventionError.message);
       // Synchroniser explicitement le statut de l'OS avec l'intervention.
       // Cela évite qu'une transmission réussie reste affichée comme "Planifié"
       // ou "Travaux en cours" lorsque le trigger de synchronisation n'est pas disponible.
       const {data:currentOrder,error:currentOrderError}=await supabase.from("work_orders").select("status").eq("id",os.dbId).single();
       if(currentOrderError)throw new Error("Impossible de vérifier le statut de l'OS : "+currentOrderError.message);
       if(currentOrder?.status === "Planifié"){
-        const {error:moveToInProgressError}=await supabase.from("work_orders").update({status:"Travaux en cours",updated_by:user.id}).eq("id",os.dbId);
+        const {error:moveToInProgressError}=await supabase.from("work_orders").update({status:"Travaux réalisés",updated_by:user.id}).eq("id",os.dbId);
         if(moveToInProgressError)throw new Error("Impossible de passer l'OS en travaux : "+moveToInProgressError.message);
       }
       const {error:moveToRealizedError}=await supabase.from("work_orders").update({status:"Travaux réalisés",updated_by:user.id}).eq("id",os.dbId);
