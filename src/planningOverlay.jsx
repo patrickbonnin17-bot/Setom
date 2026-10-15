@@ -26,6 +26,8 @@ function Planner({ onClose, initialView = "mois" }) {
   const [loading, setLoading] = useState(true);
   const [savingId, setSavingId] = useState(null);
   const [error, setError] = useState("");
+  const [defaultDailyCapacity, setDefaultDailyCapacity] = useState(35);
+  const [autoPlanSaving, setAutoPlanSaving] = useState(false);
   const [mapStatus, setMapStatus] = useState("La carte charge les adresses des OS.");
   const [geoPoints, setGeoPoints] = useState({});
   const [geocodingComplete, setGeocodingComplete] = useState(false);
@@ -39,9 +41,11 @@ function Planner({ onClose, initialView = "mois" }) {
     setLoading(true); setError("");
     const { data: rows, error: woError } = await supabase.from("work_orders").select("id, os_number, creation_date, address, postal_code, city, sector_id, latitude, longitude, material_detail, planned_surface_m2, status, deadline_date, is_night").order("os_number", { ascending: true });
     if (woError) { setError(woError.message); setLoading(false); return; }
-    const { data: settingsRow, error: settingsError } = await supabase.from("app_settings").select("os_label").order("created_at", { ascending: true }).limit(1).maybeSingle();
+    const { data: settingsRow, error: settingsError } = await supabase.from("app_settings").select("os_label, enrobee_reference_capacity_m2").order("created_at", { ascending: true }).limit(1).maybeSingle();
     if (settingsError) console.error("Erreur lecture du libellé OS pour le planning :", settingsError);
     const osLabel = String(settingsRow?.os_label || "OS").trim() || "OS";
+    const defaultCapacity = Number(settingsRow?.enrobee_reference_capacity_m2);
+    setDefaultDailyCapacity(Number.isFinite(defaultCapacity) && defaultCapacity > 0 ? defaultCapacity : 35);
     const sectorResult = await supabase.from("sectors").select("id, name, active, sort_order").order("sort_order", { ascending: true });
     const sectorRows = sectorResult.error ? [] : (sectorResult.data || []).filter((sector) => sector.active !== false);
     if (sectorResult.error) console.error("Erreur chargement secteurs du planning :", sectorResult.error);
@@ -53,7 +57,7 @@ function Planner({ onClose, initialView = "mois" }) {
       const result = await supabase.from("interventions").select("id, work_order_id, team_id, planned_date, planned_order, status").in("work_order_id", ids);
       if (!result.error) interventions = result.data || [];
     }
-    const allTeams = await supabase.from("teams").select("id, name, active").order("name");
+    const allTeams = await supabase.from("teams").select("id, name, active, usual_sector_id, indicative_capacity").order("name");
     const teamRows = allTeams.error ? [] : (allTeams.data || []).filter((team) => team.active !== false);
     const byWO = new Map();
     for (const item of interventions) {
@@ -77,6 +81,78 @@ function Planner({ onClose, initialView = "mois" }) {
     map.forEach((list) => list.sort((a, b) => (a.planned_order || 0) - (b.planned_order || 0) || a.os_number - b.os_number));
     return map;
   }, [orders]);
+
+  async function autoPlanUnplanned() {
+    const queue = orders
+      .filter((order) => STATUS_PLANIFIABLE.includes(order.status) && !order.planned_date)
+      .sort((a, b) => String(a.deadline_date || "9999-12-31").localeCompare(String(b.deadline_date || "9999-12-31")) || String(a.sector_name || "").localeCompare(String(b.sector_name || ""), "fr") || a.os_number - b.os_number);
+    if (!queue.length) { setError("Aucun OS à planifier automatiquement."); return; }
+    if (!teams.length) { setError("Aucune équipe active. Créez d'abord les équipes et, si besoin, leurs secteurs habituels dans l'onglet Équipes."); return; }
+    const startingLabel = new Date(selectedDate + "T12:00:00").toLocaleDateString("fr-FR");
+    if (!window.confirm("Planifier automatiquement " + queue.length + " OS à partir du " + startingLabel + " ? Les OS déjà planifiés ne seront pas déplacés. Les journées sont réparties du lundi au vendredi selon les secteurs et les capacités des équipes.")) return;
+    const { data: authData, error: authError } = await supabase.auth.getUser();
+    const user = authData?.user;
+    if (authError || !user) { setError("Connexion requise pour planifier automatiquement."); return; }
+    setAutoPlanSaving(true);
+    setError("");
+    try {
+      const loads = new Map();
+      const dayOrders = new Map();
+      for (const order of orders) {
+        if (!order.planned_date) continue;
+        const nextOrder = Math.max(Number(dayOrders.get(order.planned_date) || 0), Number(order.planned_order || 0));
+        dayOrders.set(order.planned_date, nextOrder);
+        if (order.team_id) {
+          const key = order.planned_date + "|" + order.team_id;
+          loads.set(key, Number(loads.get(key) || 0) + Math.max(0, Number(order.planned_surface_m2 || 0)));
+        }
+      }
+      const assignments = [];
+      const activeTeams = teams.filter((team) => team.active !== false);
+      const start = new Date(selectedDate + "T12:00:00");
+      for (const order of queue) {
+        let selected = null;
+        for (let offset = 0; offset < 120 && !selected; offset += 1) {
+          const candidateDate = iso(addDays(start, offset));
+          const weekday = new Date(candidateDate + "T12:00:00").getDay();
+          if (weekday === 0 || weekday === 6) continue;
+          let teamPool = activeTeams;
+          if (order.sector_id) {
+            const sectorTeams = activeTeams.filter((team) => !team.usual_sector_id || team.usual_sector_id === order.sector_id);
+            if (sectorTeams.length) teamPool = sectorTeams;
+          }
+          const surface = Math.max(0, Number(order.planned_surface_m2 || 0));
+          const choices = teamPool.map((team) => {
+            const capacity = Number(team.indicative_capacity) > 0 ? Number(team.indicative_capacity) : defaultDailyCapacity;
+            const key = candidateDate + "|" + team.id;
+            const used = Number(loads.get(key) || 0);
+            const fits = surface > capacity ? used === 0 : used + surface <= capacity;
+            return { team, capacity, used, key, fits, ratio: capacity > 0 ? used / capacity : 1 };
+          }).filter((choice) => choice.fits).sort((a, b) => a.ratio - b.ratio || a.used - b.used || a.team.name.localeCompare(b.team.name, "fr"));
+          if (!choices.length) continue;
+          const choice = choices[0];
+          const position = Number(dayOrders.get(candidateDate) || 0) + 1;
+          selected = { work_order_id: order.id, intervention_id: order.interventionId || null, planned_date: candidateDate, team_id: choice.team.id, planned_order: position };
+          assignments.push(selected);
+          loads.set(choice.key, choice.used + surface);
+          dayOrders.set(candidateDate, position);
+        }
+        if (!selected) throw new Error("Impossible de trouver une place dans les 120 prochains jours pour " + fullOsNumber(order) + ". Vérifiez la capacité des équipes.");
+      }
+      const { data: result, error: applyError } = await supabase.rpc("apply_setom_planning_batch", {
+        p_assignments: assignments,
+        p_user_id: user.id
+      });
+      if (applyError) throw applyError;
+      if (Number(result?.planned_count) !== assignments.length) throw new Error("La base n'a pas confirmé la planification de tous les OS.");
+      window.dispatchEvent(new Event("setom:planning-updated"));
+      await load();
+      alert("✅ " + assignments.length + " OS planifiés. Les échéances, les secteurs et les capacités des équipes ont été pris en compte. Vérifiez la carte et le classeur avant l'envoi aux équipes.");
+    } catch (autoError) {
+      console.error("Erreur de planification automatique :", autoError);
+      setError(autoError?.message || "Impossible d'appliquer la planification automatique.");
+    } finally { setAutoPlanSaving(false); }
+  }
 
   async function planOrder(order, date, teamId = order.team_id) {
     if (!STATUS_PLANIFIABLE.includes(order.status)) { setError("Cet OS a déjà quitté la file de planification. Sa date reste visible dans le classeur."); return; }
@@ -313,7 +389,7 @@ function Planner({ onClose, initialView = "mois" }) {
       {error && <div className="setom-plan-error">⚠️ {error}</div>}
       <div className="setom-plan-toolbar">
         <div className="setom-plan-tabs">{[["mois","Mois"],["semaine","Semaine"],["jour","Jour"],["carte","Carte / itinéraire"],["classeur","Classeur"],["classeur-semaine","Classeur semaine"]].map(([id,label]) => <button key={id} className={view === id ? "active" : ""} onClick={() => setView(id)}>{label}</button>)}</div>
-        <div className="setom-plan-nav"><button onClick={() => navigateDate(-1)}>‹</button><strong>{view === "mois" ? monthLabel(cursor) : new Date(selectedDate + "T12:00:00").toLocaleDateString("fr-FR", { weekday: "long", day: "numeric", month: "long", year: "numeric" })}</strong><button onClick={() => navigateDate(1)}>›</button><button onClick={() => { const now = new Date(); setCursor(now); setSelectedDate(iso(now)); }}>Aujourd'hui</button></div>
+        <div className="setom-plan-nav"><button onClick={() => navigateDate(-1)}>‹</button><strong>{view === "mois" ? monthLabel(cursor) : new Date(selectedDate + "T12:00:00").toLocaleDateString("fr-FR", { weekday: "long", day: "numeric", month: "long", year: "numeric" })}</strong><button onClick={() => navigateDate(1)}>›</button><button onClick={() => { const now = new Date(); setCursor(now); setSelectedDate(iso(now)); }}>Aujourd'hui</button><button disabled={autoPlanSaving || loading} onClick={autoPlanUnplanned}>{autoPlanSaving ? "Planification…" : "✨ Planifier automatiquement"}</button></div>
       </div>
       {loading ? <div className="setom-plan-loading">Chargement du planning…</div> : <>
         {view === "carte" && <div className="setom-map-layout">
@@ -340,7 +416,7 @@ function Planner({ onClose, initialView = "mois" }) {
         {view === "classeur" && <div className="setom-binder"><div className="setom-binder-head"><div><strong>Classeur journalier</strong><span>{new Date(selectedDate + "T12:00:00").toLocaleDateString("fr-FR", { weekday: "long", day: "numeric", month: "long", year: "numeric" })}</span></div><button onClick={() => window.print()}>🖨️ Imprimer</button></div>{selectedOrders.map((o, i) => <div className="setom-binder-card" key={o.id}><div className="setom-binder-number" style={{ background: DAY_COLORS[(new Date(selectedDate + "T12:00:00").getDay() + 6) % 7] }}>{i + 1}</div><div><strong>{fullOsNumber(o)}</strong><span>{o.address}{o.city ? `, ${o.city}` : ""}</span><span>{o.material_detail || "Intervention"} · {o.planned_surface_m2 ? `${o.planned_surface_m2} m²` : "—"}</span><span>Équipe : {o.team_name}</span></div><div className="setom-binder-actions">{STATUS_PLANIFIABLE.includes(o.status) ? <><button onClick={() => reorderOrder(o, -1)}>↑</button><button onClick={() => reorderOrder(o, 1)}>↓</button></> : <span>{o.status}</span>}</div></div>)}{selectedOrders.length === 0 && <p>Aucun OS planifié ce jour.</p>}</div>}
         {view === "classeur-semaine" && <div className="setom-week-binder">{weekCells.map((date, i) => { const key = iso(date); const items = byDate.get(key) || []; return <section className="setom-week-binder-day" key={key}><header style={{ borderLeftColor: DAY_COLORS[i] }}><strong>{dayNames[i]}</strong><span>{date.toLocaleDateString("fr-FR", { day: "2-digit", month: "2-digit", year: "numeric" })} · {items.length} OS</span></header>{items.map((o, index) => <div className="setom-week-binder-row" key={o.id}><b>{index + 1}</b><strong>{fullOsNumber(o)}</strong><span>{o.address}{o.city ? `, ${o.city}` : ""}</span><span>{o.material_detail || "Intervention"}</span><span>{o.team_name}</span></div>)}{items.length === 0 && <div className="setom-week-binder-empty">Aucun OS planifié</div>}</section>; })}<button className="primary setom-print-week" onClick={() => window.print()}>🖨️ Imprimer le classeur hebdomadaire</button></div>}
       </>}
-      <footer className="setom-plan-footer"><strong>OS non planifiés : {orders.filter((o) => STATUS_PLANIFIABLE.includes(o.status) && !o.planned_date).length}</strong><span>Date, équipe et ordre d'intervention sont enregistrés dans SETOM.</span></footer>
+      <footer className="setom-plan-footer"><strong>OS non planifiés : {orders.filter((o) => STATUS_PLANIFIABLE.includes(o.status) && !o.planned_date).length}</strong><span>Date, équipe, secteur et capacité sont pris en compte. La planification automatique ne déplace pas les OS déjà planifiés.</span></footer>
     </div>
   </div>;
 }
