@@ -8,7 +8,7 @@ import { getOSStatusColors, getOSStatusBadgeStyle } from "./statusColors";
 import StatusLegend from "./StatusLegend";
 
 const DAY_COLORS = ["#1976d2", "#2e8b57", "#f39c12", "#8e44ad", "#d32f2f", "#16a6a6", "#e83e8c"];
-const STATUS_PLANIFIABLE = ["À planifier", "Planifié"];
+const STATUS_PLANIFIABLE = ["Nouveau OS", "À planifier", "Planifié"];
 const pad = (n) => String(n).padStart(2, "0");
 const iso = (date) => `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`;
 const monthLabel = (date) => date.toLocaleDateString("fr-FR", { month: "long", year: "numeric" });
@@ -34,6 +34,7 @@ function Planner({ onClose, initialView = "mois" }) {
   const [error, setError] = useState("");
   const [defaultDailyCapacity, setDefaultDailyCapacity] = useState(35);
   const [autoPlanSaving, setAutoPlanSaving] = useState(false);
+  const [planningPreview, setPlanningPreview] = useState(null);
   const [mapStatus, setMapStatus] = useState("La carte charge les adresses des OS.");
   const [geoPoints, setGeoPoints] = useState({});
   const [geocodingComplete, setGeocodingComplete] = useState(false);
@@ -70,7 +71,7 @@ function Planner({ onClose, initialView = "mois" }) {
 
   async function load() {
     setLoading(true); setError("");
-    const { data: rows, error: woError } = await supabase.from("work_orders").select("id, os_number, creation_date, address, postal_code, city, sector_id, latitude, longitude, material_detail, planned_surface_m2, status, deadline_date, is_night").order("os_number", { ascending: true });
+    const { data: rows, error: woError } = await supabase.from("work_orders").select("id, os_number, creation_date, address, postal_code, city, sector_id, latitude, longitude, material_detail, planned_surface_m2, status, deadline_date, is_night, problem_suspended, suspension_reason, suspension_comment, suspension_started_at, suspension_restarted_at").order("os_number", { ascending: true });
     if (woError) { setError(woError.message); setLoading(false); return; }
     const { data: settingsRow, error: settingsError } = await supabase.from("app_settings").select("os_label, enrobee_reference_capacity_m2").order("created_at", { ascending: true }).limit(1).maybeSingle();
     if (settingsError) console.error("Erreur lecture du libellé OS pour le planning :", settingsError);
@@ -103,7 +104,7 @@ function Planner({ onClose, initialView = "mois" }) {
     setRouteTeamId((current) => teamRows.some((team) => team.id === current) ? current : (teamRows[0]?.id || ""));
     setOrders((rows || []).map((r) => {
       const i = byWO.get(r.id);
-      return { ...r, osLabel, sector_name: sectorById.get(r.sector_id) || "Non classé", interventionId: i?.id || null, intervention_status: i?.status || null, planned_date: i?.planned_date || null, planned_order: Number(i?.planned_order || 0), team_id: i?.team_id || null, team_name: byTeam.get(i?.team_id) || "Non affectée" };
+      return { ...r, osLabel, sector_name: sectorById.get(r.sector_id) || "Non classé", interventionId: i?.id || null, intervention_status: i?.status || null, planned_date: i?.planned_date || null, planned_order: Number(i?.planned_order || 0), team_id: i?.team_id || null, team_name: byTeam.get(i?.team_id) || "Non affectée", problem_suspended: !!r.problem_suspended, suspension_reason: r.suspension_reason || "", suspension_comment: r.suspension_comment || "", suspension_started_at: r.suspension_started_at || null, suspension_restarted_at: r.suspension_restarted_at || null };
     }));
     setLoading(false);
   }
@@ -112,21 +113,22 @@ function Planner({ onClose, initialView = "mois" }) {
 
   const byDate = useMemo(() => {
     const map = new Map();
-    orders.forEach((o) => { if (o.planned_date) { if (!map.has(o.planned_date)) map.set(o.planned_date, []); map.get(o.planned_date).push(o); } });
+    orders.forEach((o) => { if (o.planned_date && !o.problem_suspended && !["En attente", "En erreur"].includes(o.status)) { if (!map.has(o.planned_date)) map.set(o.planned_date, []); map.get(o.planned_date).push(o); } });
     map.forEach((list) => list.sort((a, b) => (a.planned_order || 0) - (b.planned_order || 0) || a.os_number - b.os_number));
     return map;
   }, [orders]);
 
   async function autoPlanUnplanned() {
     if (!["admin","bureau"].includes(profile?.role)) { setError("Votre profil ne permet pas de planifier les interventions."); return; }
-    const inconsistent = orders.filter((order) => STATUS_PLANIFIABLE.includes(order.status) && !order.planned_date && order.intervention_status && !["À planifier", "Planifié"].includes(order.intervention_status));
+    const isOverduePlanned = (order) => order.status === "Planifié" && !!order.planned_date && order.planned_date < selectedDate;
+    const isBlocked = (order) => !!order.problem_suspended || ["En attente", "En erreur"].includes(order.status);
+    const inconsistent = orders.filter((order) => !isBlocked(order) && STATUS_PLANIFIABLE.includes(order.status) && !order.planned_date && order.intervention_status && !["À planifier", "Nouveau OS", "Planifié"].includes(order.intervention_status));
     const queue = orders
-      .filter((order) => STATUS_PLANIFIABLE.includes(order.status) && !order.planned_date && (!order.intervention_status || ["À planifier", "Planifié"].includes(order.intervention_status)))
-      .sort((a, b) => String(a.deadline_date || "9999-12-31").localeCompare(String(b.deadline_date || "9999-12-31")) || String(a.sector_name || "").localeCompare(String(b.sector_name || ""), "fr") || a.os_number - b.os_number);
-    if (!queue.length) { setError(inconsistent.length ? inconsistent.length + " OS ont un statut d'intervention incohérent avec leur statut OS. Ils ont été laissés intacts : ouvrez-les et vérifiez leur historique avant de les replanifier." : "Aucun OS à planifier automatiquement."); return; }
+      .filter((order) => !isBlocked(order) && STATUS_PLANIFIABLE.includes(order.status) && (!order.planned_date || isOverduePlanned(order)) && (!order.intervention_status || ["À planifier", "Nouveau OS", "Planifié"].includes(order.intervention_status)))
+      .sort((a, b) => Number(isOverduePlanned(b)) - Number(isOverduePlanned(a)) || String(a.deadline_date || "9999-12-31").localeCompare(String(b.deadline_date || "9999-12-31")) || String(a.sector_name || "").localeCompare(String(b.sector_name || ""), "fr") || a.os_number - b.os_number);
+    if (!queue.length) { setError(inconsistent.length ? inconsistent.length + " OS ont un statut d'intervention incohérent avec leur statut OS. Ils ont été laissés intacts : ouvrez-les et vérifiez leur historique avant de les replanifier." : "Aucun OS à planifier. Les OS en attente ou en erreur sont volontairement exclus."); return; }
+    if (queue.length > 200) { setError("La proposition contient " + queue.length + " OS. Le traitement automatique est limité à 200 OS par validation : réduisez la sélection ou planifiez par secteur."); return; }
     if (!teams.length) { setError("Aucune équipe active. Créez d'abord les équipes et, si besoin, leurs secteurs habituels dans l'onglet Équipes."); return; }
-    const startingLabel = new Date(selectedDate + "T12:00:00").toLocaleDateString("fr-FR");
-    if (!window.confirm("Planifier automatiquement " + queue.length + " OS à partir du " + startingLabel + " ? Les OS déjà planifiés ne seront pas déplacés. Les journées sont réparties du lundi au vendredi selon les secteurs et les capacités des équipes." + (inconsistent.length ? "\\n\\n" + inconsistent.length + " OS ayant un historique d'intervention incohérent seront ignorés pour préserver leurs données." : ""))) return;
     const { data: authData, error: authError } = await supabase.auth.getUser();
     const user = authData?.user;
     if (authError || !user) { setError("Connexion requise pour planifier automatiquement."); return; }
@@ -197,25 +199,68 @@ function Planner({ onClose, initialView = "mois" }) {
         const order = queue.find((item) => item.id === assignment.work_order_id);
         return order?.deadline_date && assignment.planned_date > order.deadline_date;
       });
-      if (lateAssignments.length) {
-        const preview = lateAssignments.slice(0, 5).map((assignment) => {
-          const order = queue.find((item) => item.id === assignment.work_order_id);
-          return fullOsNumber(order) + " → " + new Date(assignment.planned_date + "T12:00:00").toLocaleDateString("fr-FR") + " (échéance " + new Date(order.deadline_date + "T12:00:00").toLocaleDateString("fr-FR") + ")";
-        }).join("\n");
-        if (!window.confirm(lateAssignments.length + " OS seraient planifiés après leur échéance contractuelle.\n\n" + preview + (lateAssignments.length > 5 ? "\\n…" : "") + "\n\nContinuer quand même ?")) return;
-      }
-      const { data: result, error: applyError } = await supabase.rpc("apply_setom_planning_batch", {
-        p_assignments: assignments,
-        p_user_id: user.id
+      setPlanningPreview({
+        assignments,
+        queue,
+        inconsistentCount: inconsistent.length,
+        generatedFrom: selectedDate
       });
-      if (applyError) throw applyError;
-      if (Number(result?.planned_count) !== assignments.length) throw new Error("La base n'a pas confirmé la planification de tous les OS.");
-      window.dispatchEvent(new Event("setom:planning-updated"));
-      await load();
-      alert("✅ " + assignments.length + " OS planifiés. Les échéances, les secteurs et les capacités des équipes ont été pris en compte." + (inconsistent.length ? "\\n\\n" + inconsistent.length + " OS à statut incohérent ont été laissés intacts." : "") + "\\n\\nVérifiez la carte et le classeur avant l'envoi aux équipes.");
     } catch (autoError) {
       console.error("Erreur de planification automatique :", autoError);
       setError(autoError?.message || "Impossible d'appliquer la planification automatique.");
+    } finally { setAutoPlanSaving(false); }
+  }
+
+  function updatePreviewAssignment(workOrderId, field, value) {
+    setPlanningPreview((current) => current ? {
+      ...current,
+      assignments: current.assignments.map((assignment) =>
+        assignment.work_order_id === workOrderId ? { ...assignment, [field]: value } : assignment
+      )
+    } : current);
+  }
+
+  async function validatePlanningPreview() {
+    if (!planningPreview?.assignments?.length) return;
+    if (!isOffice) { setError("Votre profil ne permet pas de valider le planning."); return; }
+    const weekendAssignments = planningPreview.assignments.filter((assignment) => {
+      const day = new Date(assignment.planned_date + "T12:00:00").getDay();
+      return day === 0 || day === 6;
+    });
+    if (weekendAssignments.length) { setError("Le planning contient une ou plusieurs dates de week-end. Corrigez-les avant validation."); return; }
+    setAutoPlanSaving(true); setError("");
+    try {
+      const { data: authData, error: authError } = await supabase.auth.getUser();
+      const user = authData?.user;
+      if (authError || !user) throw new Error("Connexion requise pour valider le planning.");
+      const assignedIds = new Set(planningPreview.assignments.map((assignment) => assignment.work_order_id));
+      const nextPositionByDate = new Map();
+      for (const order of orders) {
+        if (!order.planned_date || assignedIds.has(order.id) || order.problem_suspended || ["En attente", "En erreur"].includes(order.status)) continue;
+        nextPositionByDate.set(order.planned_date, Math.max(Number(nextPositionByDate.get(order.planned_date) || 0), Number(order.planned_order || 0)));
+      }
+      const normalizedAssignments = [...planningPreview.assignments]
+        .sort((a, b) => a.planned_date.localeCompare(b.planned_date) || Number(a.planned_order || 0) - Number(b.planned_order || 0))
+        .map((assignment) => {
+          const position = Number(nextPositionByDate.get(assignment.planned_date) || 0) + 1;
+          nextPositionByDate.set(assignment.planned_date, position);
+          return { ...assignment, planned_order: position };
+        });
+      const { data: result, error: applyError } = await supabase.rpc("apply_setom_planning_batch", {
+        p_assignments: normalizedAssignments,
+        p_user_id: user.id
+      });
+      if (applyError) throw applyError;
+      if (Number(result?.planned_count) !== normalizedAssignments.length) throw new Error("La base n'a pas confirmé la planification de tous les OS.");
+      const count = normalizedAssignments.length;
+      const inconsistentCount = planningPreview.inconsistentCount;
+      setPlanningPreview(null);
+      window.dispatchEvent(new Event("setom:planning-updated"));
+      await load();
+      alert("✅ " + count + " OS planifiés après validation." + (inconsistentCount ? "\\n\\n" + inconsistentCount + " OS incohérents ont été laissés intacts." : "") + "\\n\\nLes OS en attente ou en erreur restent exclus.");
+    } catch (applyError) {
+      console.error("Erreur de validation du planning automatique :", applyError);
+      setError(applyError?.message || "Impossible de valider la proposition de planning.");
     } finally { setAutoPlanSaving(false); }
   }
 
@@ -239,7 +284,7 @@ function Planner({ onClose, initialView = "mois" }) {
         const { error: updateError } = await supabase.from("interventions").update({ planned_date: date || null, status: date ? "Planifié" : "À planifier", team_id: teamId || null, planned_order: nextPosition }).eq("id", interventionId);
         if (updateError) throw updateError;
       }
-      const newStatus = date ? "Planifié" : "À planifier";
+      const newStatus = date ? "Planifié" : "Nouveau OS";
       const { error: statusError } = await supabase.from("work_orders").update({ status: newStatus, updated_by: authData.user.id }).eq("id", order.id);
       if (statusError) throw statusError;
       window.dispatchEvent(new Event("setom:planning-updated"));
@@ -289,8 +334,8 @@ function Planner({ onClose, initialView = "mois" }) {
   const plannerViewTabs = isOffice
     ? [["mois","Mois"],["semaine","Semaine"],["jour","Jour"],["carte","Carte / itinéraire"],["classeur","Classeur"],["classeur-semaine","Classeur semaine"]]
     : [["classeur","Classeur"],["classeur-semaine","Classeur semaine"]];
-  const mapOrders = useMemo(() => orders.filter((o) => STATUS_PLANIFIABLE.includes(o.status) && (sectorFilter === "Tous" || o.sector_name === sectorFilter)), [orders, sectorFilter]);
-  const geoTargets = useMemo(() => orders.filter((o) => STATUS_PLANIFIABLE.includes(o.status) || !!o.planned_date), [orders]);
+  const mapOrders = useMemo(() => orders.filter((o) => !o.problem_suspended && !["En attente", "En erreur"].includes(o.status) && STATUS_PLANIFIABLE.includes(o.status) && (sectorFilter === "Tous" || o.sector_name === sectorFilter)), [orders, sectorFilter]);
+  const geoTargets = useMemo(() => orders.filter((o) => !o.problem_suspended && !["En attente", "En erreur"].includes(o.status) && (STATUS_PLANIFIABLE.includes(o.status) || !!o.planned_date)), [orders]);
 
   useEffect(() => {
     if (view !== "carte" || !mapElementRef.current) return;
@@ -470,6 +515,17 @@ function Planner({ onClose, initialView = "mois" }) {
         <div className="setom-plan-nav"><button onClick={() => navigateDate(-1)}>‹</button><strong>{view === "mois" ? monthLabel(cursor) : new Date(selectedDate + "T12:00:00").toLocaleDateString("fr-FR", { weekday: "long", day: "numeric", month: "long", year: "numeric" })}</strong><button onClick={() => navigateDate(1)}>›</button><button onClick={() => { const now = new Date(); setCursor(now); setSelectedDate(iso(now)); }}>Aujourd'hui</button>{isOffice && <button disabled={autoPlanSaving || loading} onClick={autoPlanUnplanned}>{autoPlanSaving ? "Planification…" : "✨ Planifier automatiquement"}</button>}</div>
       </div>
       <StatusLegend compact />
+      {planningPreview && <div className="setom-plan-preview-backdrop"><section className="setom-plan-preview" role="dialog" aria-modal="true" aria-label="Proposition de planning automatique">
+        <header><div><h3>✨ Proposition de planning</h3><p>{planningPreview.assignments.length} OS proposés à partir du {new Date(planningPreview.generatedFrom + "T12:00:00").toLocaleDateString("fr-FR")}. Rien n'est enregistré avant validation.</p></div><button type="button" onClick={() => setPlanningPreview(null)} aria-label="Fermer l'aperçu">×</button></header>
+        {(() => { const late = planningPreview.assignments.filter((assignment) => { const order = planningPreview.queue.find((item) => item.id === assignment.work_order_id); return order?.deadline_date && assignment.planned_date > order.deadline_date; }); return late.length > 0 ? <div className="setom-plan-preview-warning">⚠️ {late.length} OS sont proposés après leur échéance. Vérifie les dates avant de valider.</div> : null; })()}
+        {planningPreview.inconsistentCount > 0 && <p className="setom-plan-preview-note">{planningPreview.inconsistentCount} OS incohérents ont été laissés hors de cette proposition.</p>}
+        <div className="setom-plan-preview-list">{planningPreview.assignments.map((assignment) => { const order = planningPreview.queue.find((item) => item.id === assignment.work_order_id); if (!order) return null; const overdue = !!order.planned_date && order.planned_date < planningPreview.generatedFrom; return <article key={assignment.work_order_id}>
+          <div className="setom-plan-preview-os"><strong>{fullOsNumber(order)}</strong><span>{order.address}{order.city ? ", " + order.city : ""}</span><small>{overdue ? "↻ OS planifié non réalisé — priorité" : "Nouveau OS"}{order.deadline_date ? " · Échéance " + new Date(order.deadline_date + "T12:00:00").toLocaleDateString("fr-FR") : ""}</small></div>
+          <label>Date<input type="date" value={assignment.planned_date} min={planningPreview.generatedFrom} onChange={(event) => updatePreviewAssignment(assignment.work_order_id, "planned_date", event.target.value)} /></label>
+          <label>Équipe<select value={assignment.team_id || ""} onChange={(event) => updatePreviewAssignment(assignment.work_order_id, "team_id", event.target.value)}><option value="">Choisir une équipe…</option>{teams.map((team) => <option key={team.id} value={team.id}>{team.name}</option>)}</select></label>
+        </article>; })}</div>
+        <footer><button type="button" className="secondary" onClick={() => setPlanningPreview(null)} disabled={autoPlanSaving}>Annuler</button><button type="button" className="primary" onClick={validatePlanningPreview} disabled={autoPlanSaving}>{autoPlanSaving ? "Validation…" : "✅ Valider le planning"}</button></footer>
+      </section></div>}
       {loading ? <div className="setom-plan-loading">Chargement du planning…</div> : <>
         {view === "carte" && <div className="setom-map-layout">
           <div className="setom-map-main">
@@ -495,7 +551,7 @@ function Planner({ onClose, initialView = "mois" }) {
         {view === "classeur" && <div className="setom-binder"><div className="setom-binder-head"><div><strong>Classeur journalier</strong><span>{new Date(selectedDate + "T12:00:00").toLocaleDateString("fr-FR", { weekday: "long", day: "numeric", month: "long", year: "numeric" })}</span></div><button onClick={() => window.print()}>🖨️ Imprimer</button></div>{selectedOrders.map((o, i) => <div className="setom-binder-card" key={o.id}><div className="setom-binder-number" style={{ background: DAY_COLORS[(new Date(selectedDate + "T12:00:00").getDay() + 6) % 7] }}>{i + 1}</div><div><strong>{fullOsNumber(o)}</strong><span>{o.address}{o.city ? `, ${o.city}` : ""}</span><span>{o.material_detail || "Intervention"} · {o.planned_surface_m2 ? `${o.planned_surface_m2} m²` : "—"}</span><span>Équipe : {o.team_name}</span><span className="setom-status-chip" style={getOSStatusBadgeStyle(o.status)}>{o.status}</span></div><div className="setom-binder-actions">{isOffice && STATUS_PLANIFIABLE.includes(o.status) ? <><button onClick={() => reorderOrder(o, -1)}>↑</button><button onClick={() => reorderOrder(o, 1)}>↓</button></> : <span>{o.status}</span>}</div></div>)}{selectedOrders.length === 0 && <p>Aucun OS planifié ce jour.</p>}</div>}
         {view === "classeur-semaine" && <div className="setom-week-binder">{weekCells.map((date, i) => { const key = iso(date); const items = byDate.get(key) || []; return <section className="setom-week-binder-day" key={key}><header style={{ borderLeftColor: DAY_COLORS[i] }}><strong>{dayNames[i]}</strong><span>{date.toLocaleDateString("fr-FR", { day: "2-digit", month: "2-digit", year: "numeric" })} · {items.length} OS</span></header>{items.map((o, index) => <div className="setom-week-binder-row" key={o.id}><b>{index + 1}</b><strong>{fullOsNumber(o)}</strong><span>{o.address}{o.city ? `, ${o.city}` : ""}</span><span>{o.material_detail || "Intervention"}</span><span>{o.team_name}</span><span className="setom-status-chip" style={getOSStatusBadgeStyle(o.status)}>{o.status}</span></div>)}{items.length === 0 && <div className="setom-week-binder-empty">Aucun OS planifié</div>}</section>; })}<button className="primary setom-print-week" onClick={() => window.print()}>🖨️ Imprimer le classeur hebdomadaire</button></div>}
       </>}
-      <footer className="setom-plan-footer">{isOffice ? <><strong>OS non planifiés : {orders.filter((o) => STATUS_PLANIFIABLE.includes(o.status) && !o.planned_date).length}</strong><span>Date, équipe, secteur et capacité sont pris en compte. La planification automatique ne déplace pas les OS déjà planifiés.</span></> : <><strong>Interventions prévues : {orders.filter((o) => !!o.planned_date).length}</strong><span>Ce classeur affiche uniquement les interventions accessibles à votre compte.</span></>}</footer>
+      <footer className="setom-plan-footer">{isOffice ? <><strong>OS à programmer : {orders.filter((o) => !o.problem_suspended && STATUS_PLANIFIABLE.includes(o.status) && (!o.planned_date || (o.status === "Planifié" && o.planned_date < selectedDate))).length}</strong><span>Les OS planifiés non réalisés en retard sont prioritaires. Les OS « En attente » ou « En erreur » sont exclus.</span></> : <><strong>Interventions prévues : {orders.filter((o) => !!o.planned_date).length}</strong><span>Ce classeur affiche uniquement les interventions accessibles à votre compte.</span></>}</footer>
     </div>
   </div>;
 }
