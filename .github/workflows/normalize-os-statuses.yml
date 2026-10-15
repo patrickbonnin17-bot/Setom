@@ -1,0 +1,82 @@
+name: Normalize SETOM OS statuses
+
+on:
+  push:
+    branches: [setom-v2-stable]
+    paths:
+      - 'tmp/status-workflow-trigger.txt'
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    if: ${{ !startsWith(github.event.head_commit.message, '[auto]') }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: setom-v2-stable
+      - name: Patch frontend status vocabulary
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          p = Path('src/main.jsx')
+          s = p.read_text()
+          replacements = [
+            ('const statuses = [\n  "Nouveau", "À planifier", "Planifié", "En travaux", "Travaux en cours", "Travaux réalisés",\n  "Constat à vérifier", "Travaux effectués", "Constat de facturation", "En attente de validation",\n  "Validé", "Validé avec réserve", "Réserve", "Correction à réaliser", "Payé", "Archivé", "En erreur", "Doublon", "Annulé",\n];',
+             'const statuses = [\n  "Nouveau OS", "Planifié", "Travaux réalisés", "À vérifier", "Validé", "Réserve", "Payé", "Archivé", "En erreur", "Doublon", "Annulé",\n];'),
+            ('const activeStatuses = new Set(["Nouveau", "À planifier", "Planifié", "En travaux", "Travaux en cours", "En erreur", "Travaux réalisés", "Constat à vérifier", "Constat validé", "Travaux effectués", "Constat de facturation", "En attente de validation", "Validé", "Validé avec réserve", "Réserve", "Correction à réaliser", "Payé"]);',
+             'const activeStatuses = new Set(["Nouveau OS", "Planifié", "Travaux réalisés", "À vérifier", "Validé", "Réserve", "Payé"]);'),
+            ('planning: osList.filter((o) => o.status === "À planifier").length,',
+             'planning: osList.filter((o) => o.status === "Nouveau OS").length,'),
+            ('travaux: osList.filter((o) => o.status === "En travaux" || o.status === "Travaux en cours" || o.status === "Travaux réalisés").length,',
+             'travaux: osList.filter((o) => o.status === "Travaux réalisés").length,'),
+            ('facturation: osList.filter((o) => (o.status === "Travaux effectués" || o.status === "Constat de facturation") && !(o.constatStatus === "Validé avec réserve" && !o.reserveResolvedAt)).length,',
+             'facturation: osList.filter((o) => o.status === "Validé" && !(o.constatStatus === "Validé avec réserve" && !o.reserveResolvedAt)).length,'),
+            ('validation: osList.filter((o) => o.status === "En attente de validation" || o.status === "Constat à vérifier" || o.status === "Constat validé").length,',
+             'validation: osList.filter((o) => o.status === "À vérifier").length,'),
+            ('reserves: osList.filter((o) => o.status === "Réserve" || o.status === "Correction à réaliser" || (o.constatStatus === "Validé avec réserve" && !o.reserveResolvedAt)).length,',
+             'reserves: osList.filter((o) => o.status === "Réserve" || (o.constatStatus === "Validé avec réserve" && !o.reserveResolvedAt)).length,'),
+            ('if(["À planifier","Nouveau"].includes(os?.status)){alert("Cet OS n\'est pas encore planifié. Enregistrez d\'abord une date dans l\'onglet Planning.");setActiveTab("planning");return;}',
+             'if(os?.status === "Nouveau OS"){alert("Cet OS n\'est pas encore planifié. Enregistrez d\'abord une date dans l\'onglet Planning.");setActiveTab("planning");return;}'),
+            ('if(["Constat à vérifier","Constat validé","Travaux effectués","Payé","Archivé"].includes(os?.status)){setActiveTab(["admin","bureau"].includes(profile?.role)?"constat":"resume");alert("Les travaux ont déjà été transmis pour cet OS. Vérifiez le constat depuis le profil bureau.");return;}',
+             'if(["À vérifier","Validé","Payé","Archivé"].includes(os?.status)){setActiveTab(["admin","bureau"].includes(profile?.role)?"constat":"resume");alert("Les travaux ont déjà été transmis pour cet OS. Vérifiez le constat depuis le profil bureau.");return;}'),
+            ('if(!["Planifié","En travaux","Travaux en cours","Travaux réalisés"].includes(os?.status)){',
+             'if(os?.status !== "Planifié" && os?.status !== "Travaux réalisés"){'),
+            ('status:"Travaux en cours",planned_surface_m2:',
+             'status:"Planifié",planned_surface_m2:'),
+            ('status:"Travaux en cours",actual_surface_m2:',
+             'status:"Travaux réalisés",actual_surface_m2:'),
+            ('status:"Travaux effectués",actual_date:',
+             'status:"Travaux réalisés",actual_date:'),
+            ('status:"Travaux en cours"', 'status:"Travaux réalisés"'),
+            ('status:"Travaux effectués"', 'status:"Travaux réalisés"'),
+            ('["À planifier","Planifié","Travaux en cours","Travaux réalisés"]', '["Nouveau OS","Planifié","Travaux réalisés"]'),
+            ('["À planifier","Planifié"]', '["Nouveau OS","Planifié"]'),
+            ('os.status === "Travaux effectués"', 'os.status === "Validé"'),
+            ('os.status === "Constat à vérifier"', 'os.status === "À vérifier"'),
+          ]
+          for old, new in replacements:
+              if old in s:
+                  s = s.replace(old, new)
+          p.write_text(s)
+
+          p = Path('src/statusColors.js')
+          s = p.read_text()
+          start = s.index('export const OS_STATUS_LEGEND = [')
+          end = s.index('];', start) + 2
+          legend = '''export const OS_STATUS_LEGEND = [\n  { label: "Nouveaux OS", statuses: ["Nouveau OS"], accent: "#EAB308", background: "#FEF9C3", text: "#854D0E", border: "#FDE047" },\n  { label: "Planifié", statuses: ["Planifié"], accent: "#F97316", background: "#FFEDD5", text: "#9A3412", border: "#FDBA74" },\n  { label: "Travaux réalisés", statuses: ["Travaux réalisés"], accent: "#2563EB", background: "#DBEAFE", text: "#1D4ED8", border: "#93C5FD" },\n  { label: "À vérifier", statuses: ["À vérifier"], accent: "#7C3AED", background: "#EDE9FE", text: "#5B21B6", border: "#C4B5FD" },\n  { label: "Validé", statuses: ["Validé"], accent: "#16A34A", background: "#DCFCE7", text: "#166534", border: "#86EFAC" },\n  { label: "Réserve", statuses: ["Réserve"], accent: "#DC2626", background: "#FEE2E2", text: "#991B1B", border: "#FCA5A5" },\n  { label: "Payé", statuses: ["Payé"], accent: "#15803D", background: "#BBF7D0", text: "#14532D", border: "#4ADE80" },\n  { label: "Archivé", statuses: ["Archivé"], accent: "#64748B", background: "#F1F5F9", text: "#334155", border: "#CBD5E1" },\n  { label: "En erreur", statuses: ["En erreur"], accent: "#B91C1C", background: "#FEE2E2", text: "#7F1D1D", border: "#FCA5A5" },\n  { label: "Annulé / doublon", statuses: ["Doublon", "Annulé"], accent: "#6B7280", background: "#F3F4F6", text: "#374151", border: "#D1D5DB" }\n]'''
+          s = s[:start] + legend + s[end:]
+          p.write_text(s)
+          PY
+      - name: Build
+        run: npm install && npm run build
+      - name: Commit normalized status workflow
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add src/main.jsx src/statusColors.js
+          git diff --cached --quiet && exit 0
+          git commit -m "[auto] simplify OS status workflow"
+          git push origin setom-v2-stable
