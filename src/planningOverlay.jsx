@@ -13,7 +13,7 @@ const monthLabel = (date) => date.toLocaleDateString("fr-FR", { month: "long", y
 const startOfWeek = (date) => { const d = new Date(date); const day = (d.getDay() + 6) % 7; d.setDate(d.getDate() - day); d.setHours(12, 0, 0, 0); return d; };
 const addDays = (date, n) => { const d = new Date(date); d.setDate(d.getDate() + n); return d; };
 const dayNames = ["Lundi", "Mardi", "Mercredi", "Jeudi", "Vendredi", "Samedi", "Dimanche"];
-const fullOsNumber = (order) => `OS-${new Date(order.creation_date).getFullYear()}-${String(order.os_number).padStart(5, "0")}`;
+const fullOsNumber = (order) => `${String(order.osLabel || "OS").trim()}-${new Date(order.creation_date).getFullYear()}-${String(order.os_number).padStart(5, "0")}`;
 
 function Planner({ onClose, initialView = "mois" }) {
   const [view, setView] = useState(initialView);
@@ -37,6 +37,9 @@ function Planner({ onClose, initialView = "mois" }) {
     setLoading(true); setError("");
     const { data: rows, error: woError } = await supabase.from("work_orders").select("id, os_number, creation_date, address, postal_code, city, latitude, longitude, material_detail, planned_surface_m2, status, deadline_date, is_night").order("os_number", { ascending: true });
     if (woError) { setError(woError.message); setLoading(false); return; }
+    const { data: settingsRow, error: settingsError } = await supabase.from("app_settings").select("os_label").order("created_at", { ascending: true }).limit(1).maybeSingle();
+    if (settingsError) console.error("Erreur lecture du libellé OS pour le planning :", settingsError);
+    const osLabel = String(settingsRow?.os_label || "OS").trim() || "OS";
     const ids = (rows || []).map((r) => r.id);
     let interventions = [];
     if (ids.length) {
@@ -54,7 +57,7 @@ function Planner({ onClose, initialView = "mois" }) {
     setTeams(teamRows);
     setOrders((rows || []).map((r) => {
       const i = byWO.get(r.id);
-      return { ...r, interventionId: i?.id || null, planned_date: i?.planned_date || null, planned_order: Number(i?.planned_order || 0), team_id: i?.team_id || null, team_name: byTeam.get(i?.team_id) || "Non affectée" };
+      return { ...r, osLabel, interventionId: i?.id || null, planned_date: i?.planned_date || null, planned_order: Number(i?.planned_order || 0), team_id: i?.team_id || null, team_name: byTeam.get(i?.team_id) || "Non affectée" };
     }));
     setLoading(false);
   }
