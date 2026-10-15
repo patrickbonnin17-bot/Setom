@@ -555,8 +555,22 @@ button {
   color: #1565c0;
 }
 
+.attachment-button {
+  position: relative;
+  overflow: hidden;
+  touch-action: manipulation;
+}
+
 .attachment-button input {
-  display: none;
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  opacity: 0;
+  display: block;
+  cursor: pointer;
+  z-index: 2;
 }
 
 .attachments-list {
