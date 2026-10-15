@@ -32,6 +32,7 @@ function Planner({ onClose, initialView = "mois" }) {
   const [geoPoints, setGeoPoints] = useState({});
   const [geocodingComplete, setGeocodingComplete] = useState(false);
   const [routeSummary, setRouteSummary] = useState("Sélectionnez une journée pour afficher son itinéraire.");
+  const [routeTeamId, setRouteTeamId] = useState("");
   const mapElementRef = useRef(null);
   const mapInstanceRef = useRef(null);
   const markerLayerRef = useRef(null);
@@ -66,6 +67,7 @@ function Planner({ onClose, initialView = "mois" }) {
     }
     const byTeam = new Map(teamRows.map((x) => [x.id, x.name]));
     setTeams(teamRows);
+    setRouteTeamId((current) => teamRows.some((team) => team.id === current) ? current : (teamRows[0]?.id || ""));
     setOrders((rows || []).map((r) => {
       const i = byWO.get(r.id);
       return { ...r, osLabel, sector_name: sectorById.get(r.sector_id) || "Non classé", interventionId: i?.id || null, planned_date: i?.planned_date || null, planned_order: Number(i?.planned_order || 0), team_id: i?.team_id || null, team_name: byTeam.get(i?.team_id) || "Non affectée" };
@@ -138,6 +140,17 @@ function Planner({ onClose, initialView = "mois" }) {
           dayOrders.set(candidateDate, position);
         }
         if (!selected) throw new Error("Impossible de trouver une place dans les 120 prochains jours pour " + fullOsNumber(order) + ". Vérifiez la capacité des équipes.");
+      }
+      const lateAssignments = assignments.filter((assignment) => {
+        const order = queue.find((item) => item.id === assignment.work_order_id);
+        return order?.deadline_date && assignment.planned_date > order.deadline_date;
+      });
+      if (lateAssignments.length) {
+        const preview = lateAssignments.slice(0, 5).map((assignment) => {
+          const order = queue.find((item) => item.id === assignment.work_order_id);
+          return fullOsNumber(order) + " → " + new Date(assignment.planned_date + "T12:00:00").toLocaleDateString("fr-FR") + " (échéance " + new Date(order.deadline_date + "T12:00:00").toLocaleDateString("fr-FR") + ")";
+        }).join("\\n");
+        if (!window.confirm(lateAssignments.length + " OS seraient planifiés après leur échéance contractuelle.\n\n" + preview + (lateAssignments.length > 5 ? "\\n…" : "") + "\n\nContinuer quand même ?")) return;
       }
       const { data: result, error: applyError } = await supabase.rpc("apply_setom_planning_batch", {
         p_assignments: assignments,
@@ -329,8 +342,9 @@ function Planner({ onClose, initialView = "mois" }) {
     let cancelled = false;
     if (routeLayerRef.current) { map.removeLayer(routeLayerRef.current); routeLayerRef.current = null; }
     if (!geocodingComplete) { setRouteSummary("Localisation des adresses avant calcul de l’itinéraire…"); return; }
-    const stops = (byDate.get(selectedDate) || []).filter((order) => STATUS_PLANIFIABLE.includes(order.status) && geoPoints[order.id] && (sectorFilter === "Tous" || order.sector_name === sectorFilter));
-    if (stops.length === 0) { setRouteSummary("Aucun OS géolocalisé sur cette journée."); return; }
+    if (!routeTeamId) { setRouteSummary("Aucune équipe active. Créez une équipe avant de calculer un itinéraire."); return; }
+    const stops = (byDate.get(selectedDate) || []).filter((order) => STATUS_PLANIFIABLE.includes(order.status) && order.team_id === routeTeamId && geoPoints[order.id] && (sectorFilter === "Tous" || order.sector_name === sectorFilter));
+    if (stops.length === 0) { setRouteSummary("Aucun OS planifié et géolocalisé pour cette équipe et ce secteur sur cette journée."); return; }
     if (stops.length === 1) { setRouteSummary("1 arrêt planifié. Ajoutez un autre OS à la journée pour calculer un itinéraire."); map.setView([geoPoints[stops[0].id].lat, geoPoints[stops[0].id].lon], 14); return; }
     setRouteSummary("Calcul de l’itinéraire de " + stops.length + " arrêts…");
     async function calculateRoute() {
@@ -354,7 +368,7 @@ function Planner({ onClose, initialView = "mois" }) {
     }
     calculateRoute();
     return () => { cancelled = true; };
-  }, [view, selectedDate, byDate, geoPoints, geocodingComplete, sectorFilter]);
+  }, [view, selectedDate, byDate, geoPoints, geocodingComplete, sectorFilter, routeTeamId]);
 
   function navigateDate(delta) {
     if (view === "mois") { setCursor(new Date(cursor.getFullYear(), cursor.getMonth() + delta, 1, 12)); return; }
@@ -394,7 +408,7 @@ function Planner({ onClose, initialView = "mois" }) {
       {loading ? <div className="setom-plan-loading">Chargement du planning…</div> : <>
         {view === "carte" && <div className="setom-map-layout">
           <div className="setom-map-main">
-            <div className="setom-map-route-summary"><div><strong>Itinéraire du {new Date(selectedDate + "T12:00:00").toLocaleDateString("fr-FR", { weekday: "long", day: "numeric", month: "long" })}</strong><span>{routeSummary}</span></div><span className="setom-map-legend"><i className="unplanned"></i> À planifier <i className="planned"></i> Planifié</span></div>
+            <div className="setom-map-route-summary"><div><strong>Itinéraire par équipe — {new Date(selectedDate + "T12:00:00").toLocaleDateString("fr-FR", { weekday: "long", day: "numeric", month: "long" })}</strong><label style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 6, fontSize: 12, color: "#475569" }}>Équipe<select value={routeTeamId} onChange={(e) => setRouteTeamId(e.target.value)} style={{ maxWidth: 240 }}><option value="">Choisir une équipe…</option>{teams.map((team) => <option key={team.id} value={team.id}>{team.name}</option>)}</select></label><span>{routeSummary}</span></div><span className="setom-map-legend"><i className="unplanned"></i> À planifier <i className="planned"></i> Planifié</span></div>
             <div ref={mapElementRef} className="setom-map-canvas" aria-label="Carte interactive des OS planifiables"></div>
             <small className="setom-map-attribution">{mapStatus} · Fond cartographique © OpenStreetMap contributors · Géocodage IGN Géoplateforme · calcul routier OSRM (service public de démonstration).</small>
           </div>
