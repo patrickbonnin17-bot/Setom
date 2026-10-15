@@ -5,7 +5,6 @@ on:
     branches:
       - setom-v2-stable
     paths:
-      - "scripts/patch_travaux_transmission.py"
       - "scripts/patch_mobile_travaux.py"
       - ".github/workflows/stabilize-setom-v2.yml"
 
@@ -18,9 +17,6 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
-
-      - name: Apply transmission patch
-        run: python3 scripts/patch_travaux_transmission.py
 
       - name: Apply mobile travaux patch
         run: python3 scripts/patch_mobile_travaux.py
