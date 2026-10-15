@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { createRoot } from "react-dom/client";
 import { supabase } from "./supabase";
+import "./planningOverlay.css";
 
 const DAY_COLORS = ["#1976d2", "#2e8b57", "#f39c12", "#8e44ad", "#d32f2f", "#16a6a6", "#e83e8c"];
 const STATUS_PLANIFIABLE = ["À planifier", "Planifié"];
@@ -31,14 +32,8 @@ function Planner({ onClose }) {
       const result = await supabase.from("interventions").select("id, work_order_id, team_id, planned_date, planned_order, status").in("work_order_id", ids);
       if (!result.error) interventions = result.data || [];
     }
-    const teamIds = [...new Set(interventions.map((x) => x.team_id).filter(Boolean))];
-    let teamRows = [];
-    if (teamIds.length) {
-      const result = await supabase.from("teams").select("id, name").in("id", teamIds);
-      if (!result.error) teamRows = result.data || [];
-    }
     const allTeams = await supabase.from("teams").select("id, name").order("name");
-    if (!allTeams.error) teamRows = allTeams.data || teamRows;
+    const teamRows = allTeams.error ? [] : (allTeams.data || []);
     const byWO = new Map(interventions.map((x) => [x.work_order_id, x]));
     const byTeam = new Map(teamRows.map((x) => [x.id, x.name]));
     setTeams(teamRows);
@@ -119,7 +114,7 @@ function Planner({ onClose }) {
         <div className="setom-plan-nav"><button onClick={() => setCursor(new Date(cursor.getFullYear(), cursor.getMonth() - 1, 1, 12))}>‹</button><strong>{view === "mois" ? monthLabel(cursor) : new Date(selectedDate + "T12:00:00").toLocaleDateString("fr-FR", { weekday: "long", day: "numeric", month: "long", year: "numeric" })}</strong><button onClick={() => setCursor(new Date(cursor.getFullYear(), cursor.getMonth() + 1, 1, 12))}>›</button><button onClick={() => { const now = new Date(); setCursor(now); setSelectedDate(iso(now)); }}>Aujourd'hui</button></div>
       </div>
       {loading ? <div className="setom-plan-loading">Chargement du planning…</div> : <>
-        {view === "mois" && <div className="setom-month-grid">{monthCells.map((date, i) => { const key = iso(date); const items = byDate.get(key) || []; const inMonth = date.getMonth() === cursor.getMonth(); return <button key={key} className={`setom-month-cell ${inMonth ? "" : "muted"} ${key === selectedDate ? "selected" : ""}`} onClick={() => { setSelectedDate(key); setCursor(new Date(date.getFullYear(), date.getMonth(), 1, 12)); }}><div className="setom-month-day"><span>{date.getDate()}</span>{items.length > 0 && <b>{items.length}</b>}</div>{items.slice(0, 3).map((o) => <div className="setom-mini-order" key={o.id}>{String(o.os_number).padStart(5, "0")} · {o.address}</div>)}{items.length > 3 && <small>+ {items.length - 3} autre(s)</small>}</button>; })}</div>}
+        {view === "mois" && <div className="setom-month-grid">{monthCells.map((date) => { const key = iso(date); const items = byDate.get(key) || []; const inMonth = date.getMonth() === cursor.getMonth(); return <button key={key} className={`setom-month-cell ${inMonth ? "" : "muted"} ${key === selectedDate ? "selected" : ""}`} onClick={() => { setSelectedDate(key); setCursor(new Date(date.getFullYear(), date.getMonth(), 1, 12)); }}><div className="setom-month-day"><span>{date.getDate()}</span>{items.length > 0 && <b>{items.length}</b>}</div>{items.slice(0, 3).map((o) => <div className="setom-mini-order" key={o.id}>{String(o.os_number).padStart(5, "0")} · {o.address}</div>)}{items.length > 3 && <small>+ {items.length - 3} autre(s)</small>}</button>; })}</div>}
         {view === "semaine" && <div className="setom-week-grid">{weekCells.map((date, i) => { const key = iso(date); return <div className="setom-week-col" key={key}><div className="setom-week-head" style={{ borderTopColor: DAY_COLORS[i] }}><strong>{dayNames[i]}</strong><span>{date.getDate()}/{date.getMonth() + 1}</span></div><div className="setom-week-body">{(byDate.get(key) || []).map(renderOrder)}{(byDate.get(key) || []).length === 0 && <button className="setom-drop-empty" onClick={() => { setSelectedDate(key); setView("jour"); }}>+ Ajouter un OS</button>}</div></div>; })}</div>}
         {view === "jour" && <div className="setom-day-view"><div className="setom-day-title"><strong>{new Date(selectedDate + "T12:00:00").toLocaleDateString("fr-FR", { weekday: "long", day: "numeric", month: "long", year: "numeric" })}</strong><span>{selectedOrders.length} OS planifié(s)</span></div>{selectedOrders.map((o) => renderOrder(o))}<div className="setom-add-row"><select defaultValue="" onChange={(e) => { const o = orders.find((x) => String(x.id) === e.target.value); if (o) planOrder(o, selectedDate, o.team_id); e.target.value = ""; }}><option value="">+ Ajouter un OS à cette journée…</option>{orders.filter((o) => !o.planned_date).map((o) => <option key={o.id} value={o.id}>OS-{String(o.os_number).padStart(5, "0")} · {o.address}</option>)}</select></div></div>}
         {view === "classeur" && <div className="setom-binder"><div className="setom-binder-head"><div><strong>Classeur journalier</strong><span>{new Date(selectedDate + "T12:00:00").toLocaleDateString("fr-FR", { weekday: "long", day: "numeric", month: "long", year: "numeric" })}</span></div><button onClick={() => window.print()}>🖨️ Imprimer</button></div>{selectedOrders.map((o, i) => <div className="setom-binder-card" key={o.id}><div className="setom-binder-number">{i + 1}</div><div><strong>OS-{new Date(o.creation_date).getFullYear()}-{String(o.os_number).padStart(5, "0")}</strong><span>{o.address}{o.city ? `, ${o.city}` : ""}</span><span>{o.material_detail || "Intervention"} · {o.planned_surface_m2 ? `${o.planned_surface_m2} m²` : "—"}</span><span>Équipe : {o.team_name}</span></div><div className="setom-binder-actions"><button onClick={() => moveOrder(o, -1)}>↑</button><button onClick={() => moveOrder(o, 1)}>↓</button></div></div>)}{selectedOrders.length === 0 && <p>Aucun OS planifié ce jour.</p>}</div>}
