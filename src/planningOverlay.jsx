@@ -149,7 +149,7 @@ function Planner({ onClose, initialView = "mois" }) {
         const preview = lateAssignments.slice(0, 5).map((assignment) => {
           const order = queue.find((item) => item.id === assignment.work_order_id);
           return fullOsNumber(order) + " → " + new Date(assignment.planned_date + "T12:00:00").toLocaleDateString("fr-FR") + " (échéance " + new Date(order.deadline_date + "T12:00:00").toLocaleDateString("fr-FR") + ")";
-        }).join("\\n");
+        }).join("\n");
         if (!window.confirm(lateAssignments.length + " OS seraient planifiés après leur échéance contractuelle.\n\n" + preview + (lateAssignments.length > 5 ? "\\n…" : "") + "\n\nContinuer quand même ?")) return;
       }
       const { data: result, error: applyError } = await supabase.rpc("apply_setom_planning_batch", {
