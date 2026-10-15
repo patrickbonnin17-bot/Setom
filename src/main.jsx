@@ -46,6 +46,12 @@ function App() {
   const [password, setPassword] = useState("");
   const [authError, setAuthError] = useState("");
   const [osList, setOsList] = useState([]);
+  const [dbTeams, setDbTeams] = useState([]);
+  const [newTeamName, setNewTeamName] = useState("");
+  const [newTeamType, setNewTeamType] = useState("interne");
+  const [newTeamCapacity, setNewTeamCapacity] = useState("");
+  const [teamSaving, setTeamSaving] = useState(false);
+  const [teamError, setTeamError] = useState("");
   const [osRefreshVersion, setOsRefreshVersion] = useState(0);
   const [selectedOS, setSelectedOS] = useState(null);
   const [search, setSearch] = useState("");
@@ -92,12 +98,10 @@ function App() {
         const result = await supabase.from("interventions").select("id, work_order_id, team_id, planned_date, planned_order, status").in("work_order_id", workOrderIds);
         if (!result.error) interventions = result.data || []; else console.error("Erreur chargement interventions :", result.error);
       }
-      const teamIds = [...new Set(interventions.map((item) => item.team_id).filter(Boolean))];
-      let teams = [];
-      if (teamIds.length) {
-        const result = await supabase.from("teams").select("id, name").in("id", teamIds);
-        if (!result.error) teams = result.data || []; else console.error("Erreur chargement équipes :", result.error);
-      }
+      const teamResult = await supabase.from("teams").select("id, name, team_type, usual_sector_id, indicative_capacity, active").order("name", { ascending: true });
+      const teams = teamResult.error ? [] : (teamResult.data || []);
+      if (teamResult.error) console.error("Erreur chargement équipes :", teamResult.error);
+      if (!cancelled) setDbTeams(teams);
       const teamById = new Map(teams.map((team) => [team.id, team.name]));
       const interventionByOS = new Map();
       for (const item of interventions) {
@@ -138,6 +142,40 @@ function App() {
     if (error) setAuthError("E-mail ou mot de passe incorrect.");
   }
   async function handleLogout() { await supabase.auth.signOut(); }
+
+  async function handleCreateTeam(event) {
+    event.preventDefault();
+    setTeamError("");
+    const name = newTeamName.trim();
+    const capacity = newTeamCapacity.trim() === "" ? null : Number(newTeamCapacity.replace(",", "."));
+    if (!name) { setTeamError("Le nom de l'équipe est obligatoire."); return; }
+    if (capacity !== null && (!Number.isFinite(capacity) || capacity <= 0)) { setTeamError("La capacité doit être un nombre positif (m²/jour)."); return; }
+    setTeamSaving(true);
+    try {
+      const { data, error } = await supabase.from("teams").insert({ name, team_type: newTeamType, indicative_capacity: capacity, active: true }).select("id, name, team_type, usual_sector_id, indicative_capacity, active").single();
+      if (error) throw error;
+      setDbTeams((current) => [...current, data].sort((a, b) => a.name.localeCompare(b.name, "fr")));
+      setNewTeamName(""); setNewTeamType("interne"); setNewTeamCapacity("");
+      window.dispatchEvent(new Event("setom:planning-updated"));
+    } catch (error) {
+      console.error("Erreur création équipe :", error);
+      setTeamError(error?.message || "Impossible de créer l'équipe. Vérifiez vos droits d'administration.");
+    } finally { setTeamSaving(false); }
+  }
+
+  async function toggleTeamActive(team) {
+    setTeamError(""); setTeamSaving(true);
+    try {
+      const nextActive = !team.active;
+      const { error } = await supabase.from("teams").update({ active: nextActive }).eq("id", team.id);
+      if (error) throw error;
+      setDbTeams((current) => current.map((item) => item.id === team.id ? { ...item, active: nextActive } : item));
+      window.dispatchEvent(new Event("setom:planning-updated"));
+    } catch (error) {
+      console.error("Erreur modification équipe :", error);
+      setTeamError(error?.message || "Impossible de modifier l'équipe.");
+    } finally { setTeamSaving(false); }
+  }
 
   async function handleCreateOS(event) {
     event.preventDefault(); setNewOSError(""); setNewOSSaving(true);
@@ -194,7 +232,7 @@ function App() {
     const text = `${os.id} ${os.address} ${os.work} ${os.sector}`.toLowerCase();
     return text.includes(search.toLowerCase()) && (statusFilter === "Tous" || os.status === statusFilter) && (teamFilter === "Toutes" || os.team === teamFilter);
   });
-  const teams = [...new Set(osList.map((os) => os.team))];
+  const teams = [...new Set([...osList.map((os) => os.team), ...dbTeams.map((team) => team.name)])].filter(Boolean);
   function updateOS(id, changes) {
     setOsList((current) => current.map((os) => os.id === id ? { ...os, ...changes } : os));
     setSelectedOS((current) => current && current.id === id ? { ...current, ...changes } : current);
@@ -243,7 +281,16 @@ function App() {
       </>}
       {page === "map" && <><h2>Carte des interventions</h2><div className="toolbar"><button className="secondary">Tous</button><button className="secondary">OS non planifiés</button><button className="secondary">Réserves</button><button className="secondary">À facturer</button></div><div className="map"><div className="map-road"></div>{osList.map((os,index)=>{const positions=[[20,25],[48,18],[72,35],[30,60],[65,68],[82,20]];const [left,top]=positions[index%positions.length];return <button key={os.id} className="marker" title={os.id} onClick={()=>setSelectedOS(os)} style={{left:`${left}%`,top:`${top}%`,background:os.day?getDayColor(os.day):"#777"}}><span>•</span></button>;})}</div><div className="legend">{days.map((day)=><div className="legend-item" key={day.name}><span className="dot" style={{background:day.color}}></span>{day.name}</div>)}<div className="legend-item"><span className="dot" style={{background:"#777"}}></span>Non planifié</div></div></>}
       {page === "planning" && <><h2>Planning hebdomadaire</h2><div className="planning"><div className="week">{days.slice(0,5).map((day)=><div className="day" key={day.name}><div className="day-header" style={{background:day.color}}>{day.name}</div>{osList.filter((os)=>os.day===day.name).map((os)=><div className="planning-os" key={os.id} onClick={()=>setSelectedOS(os)}><strong>{os.id}</strong><br/>{os.address}<br/><small>{os.team}</small></div>)}</div>)}</div></div><h3>OS non planifiés</h3><div className="os-list">{osList.filter((os)=>!os.day).map((os)=><OSCard key={os.id} os={os} onOpen={()=>setSelectedOS(os)}/>)}</div></>}
-      {page === "teams" && <><h2>Équipes</h2><div className="cards">{teams.map((team)=>{const count=osList.filter((os)=>os.team===team).length;return <div className="card" key={team}><strong>👷 {team}</strong><div className="number">{count}</div><div>interventions affectées</div></div>;})}</div></>}
+      {page === "teams" && <><h2>Gestion des équipes</h2>
+        <form onSubmit={handleCreateTeam} className="card" style={{ marginBottom: 18, display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(180px,1fr))", gap: 12, alignItems: "end" }}>
+          <div><label htmlFor="new-team-name">Nom de l'équipe *</label><input id="new-team-name" value={newTeamName} onChange={(e) => setNewTeamName(e.target.value)} placeholder="Ex. Équipe 1" required style={{ width: "100%", boxSizing: "border-box" }}/></div>
+          <div><label htmlFor="new-team-type">Type</label><select id="new-team-type" value={newTeamType} onChange={(e) => setNewTeamType(e.target.value)} style={{ width: "100%" }}><option value="interne">Équipe interne</option><option value="sous-traitant">Sous-traitant</option></select></div>
+          <div><label htmlFor="new-team-capacity">Capacité indicative (m²/jour)</label><input id="new-team-capacity" type="number" min="0.1" step="0.1" value={newTeamCapacity} onChange={(e) => setNewTeamCapacity(e.target.value)} placeholder="Facultatif" style={{ width: "100%", boxSizing: "border-box" }}/></div>
+          <button className="primary" type="submit" disabled={teamSaving}>{teamSaving ? "Enregistrement…" : "＋ Ajouter l'équipe"}</button>
+          {teamError && <div style={{ gridColumn: "1 / -1", color: "#b42318", fontSize: 13 }}>{teamError}</div>}
+        </form>
+        {dbTeams.length === 0 ? <div className="card"><strong>Aucune équipe enregistrée</strong><p>Ajoutez vos équipes ici pour pouvoir les affecter aux OS dans le planning.</p></div> : <div className="cards">{dbTeams.map((team) => { const count = osList.filter((os) => os.teamId === team.id).length; return <div className="card" key={team.id} style={{ opacity: team.active ? 1 : .65 }}><div style={{ display: "flex", justifyContent: "space-between", alignItems: "start", gap: 12 }}><strong>👷 {team.name}</strong><span className="badge">{team.active ? "Active" : "Inactive"}</span></div><div>{team.team_type === "sous-traitant" ? "Sous-traitant" : "Équipe interne"}</div><div className="number">{count}</div><div>OS affecté{count === 1 ? "" : "s"}</div>{team.indicative_capacity && <div style={{ marginTop: 8, color: "#667085", fontSize: 13 }}>Capacité indicative : {team.indicative_capacity} m²/jour</div>}<button className="secondary" disabled={teamSaving} style={{ marginTop: 12 }} onClick={() => toggleTeamActive(team)}>{team.active ? "Désactiver" : "Réactiver"}</button></div>; })}</div>}
+      </>}
       {page === "reserves" && <><h2>Réserves et corrections</h2><div className="os-list">{osList.filter((os)=>os.status==="Réserve"||os.status==="Correction à réaliser").map((os)=><OSCard key={os.id} os={os} onOpen={()=>setSelectedOS(os)}/>)}{osList.filter((os)=>os.status==="Réserve"||os.status==="Correction à réaliser").length===0&&<div className="card">Aucune réserve en cours.</div>}</div></>}
     </main>
     {selectedOS && <OSModal os={selectedOS} onClose={()=>setSelectedOS(null)} onUpdate={updateOS}/>} 
