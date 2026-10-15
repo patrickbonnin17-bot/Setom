@@ -214,6 +214,7 @@ function Planner({ onClose, initialView = "mois" }) {
   function updatePreviewAssignment(workOrderId, field, value) {
     setPlanningPreview((current) => current ? {
       ...current,
+      error: "",
       assignments: current.assignments.map((assignment) =>
         assignment.work_order_id === workOrderId ? { ...assignment, [field]: value } : assignment
       )
@@ -223,11 +224,15 @@ function Planner({ onClose, initialView = "mois" }) {
   async function validatePlanningPreview() {
     if (!planningPreview?.assignments?.length) return;
     if (!isOffice) { setError("Votre profil ne permet pas de valider le planning."); return; }
+    const missingTeam = planningPreview.assignments.some((assignment) => !assignment.team_id || !teams.some((team) => team.id === assignment.team_id));
+    if (missingTeam) { alert("Affecte une équipe à chaque OS de la proposition avant de valider."); return; }
+    const invalidDate = planningPreview.assignments.some((assignment) => !/^\\d{4}-\\d{2}-\\d{2}$/.test(assignment.planned_date || ""));
+    if (invalidDate) { alert("Choisis une date valide pour chaque OS avant de valider."); return; }
     const weekendAssignments = planningPreview.assignments.filter((assignment) => {
       const day = new Date(assignment.planned_date + "T12:00:00").getDay();
       return day === 0 || day === 6;
     });
-    if (weekendAssignments.length) { setError("Le planning contient une ou plusieurs dates de week-end. Corrigez-les avant validation."); return; }
+    if (weekendAssignments.length) { alert("Le planning contient une ou plusieurs dates de week-end. Corrige-les avant validation."); return; }
     setAutoPlanSaving(true); setError("");
     try {
       const { data: authData, error: authError } = await supabase.auth.getUser();
@@ -260,7 +265,8 @@ function Planner({ onClose, initialView = "mois" }) {
       alert("✅ " + count + " OS planifiés après validation." + (inconsistentCount ? "\\n\\n" + inconsistentCount + " OS incohérents ont été laissés intacts." : "") + "\\n\\nLes OS en attente ou en erreur restent exclus.");
     } catch (applyError) {
       console.error("Erreur de validation du planning automatique :", applyError);
-      setError(applyError?.message || "Impossible de valider la proposition de planning.");
+      setError("");
+      setPlanningPreview((current) => current ? { ...current, error: applyError?.message || "Impossible de valider la proposition de planning." } : current);
     } finally { setAutoPlanSaving(false); }
   }
 
@@ -517,6 +523,7 @@ function Planner({ onClose, initialView = "mois" }) {
       <StatusLegend compact />
       {planningPreview && <div className="setom-plan-preview-backdrop"><section className="setom-plan-preview" role="dialog" aria-modal="true" aria-label="Proposition de planning automatique">
         <header><div><h3>✨ Proposition de planning</h3><p>{planningPreview.assignments.length} OS proposés à partir du {new Date(planningPreview.generatedFrom + "T12:00:00").toLocaleDateString("fr-FR")}. Rien n'est enregistré avant validation.</p></div><button type="button" onClick={() => setPlanningPreview(null)} aria-label="Fermer l'aperçu">×</button></header>
+        {planningPreview.error && <div className="setom-plan-preview-error">⚠️ {planningPreview.error}</div>}
         {(() => { const late = planningPreview.assignments.filter((assignment) => { const order = planningPreview.queue.find((item) => item.id === assignment.work_order_id); return order?.deadline_date && assignment.planned_date > order.deadline_date; }); return late.length > 0 ? <div className="setom-plan-preview-warning">⚠️ {late.length} OS sont proposés après leur échéance. Vérifie les dates avant de valider.</div> : null; })()}
         {planningPreview.inconsistentCount > 0 && <p className="setom-plan-preview-note">{planningPreview.inconsistentCount} OS incohérents ont été laissés hors de cette proposition.</p>}
         <div className="setom-plan-preview-list">{planningPreview.assignments.map((assignment) => { const order = planningPreview.queue.find((item) => item.id === assignment.work_order_id); if (!order) return null; const overdue = !!order.planned_date && order.planned_date < planningPreview.generatedFrom; return <article key={assignment.work_order_id}>
