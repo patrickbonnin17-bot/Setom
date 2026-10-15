@@ -1538,8 +1538,8 @@ async function markConstatPaid() {
   </div><div className="os-issue-panel" style={{ marginTop: 18, padding: 16, border: "1px solid #d9e0e7", borderRadius: 12, background: "#fbfcfe" }}>
   <h3 style={{ marginTop: 0 }}>⚠️ Aléas, erreurs et travail de nuit</h3>
   <p style={{ color: "#667085", fontSize: 13 }}>Signalez une contrainte avant la transmission des travaux. La date et l'équipe prévues sont conservées pendant la suspension.</p>
-  {os.status === "En erreur" && <div style={{ padding: 10, borderRadius: 8, background: "#fff1f2", color: "#9f1239", marginBottom: 12 }}>
-    <strong>OS suspendu / en erreur</strong>
+  {["En attente", "En erreur"].includes(os.status) && <div style={{ padding: 10, borderRadius: 8, background: os.status === "En attente" ? "#f1f5f9" : "#fff1f2", color: os.status === "En attente" ? "#334155" : "#9f1239", border: "1px solid " + (os.status === "En attente" ? "#cbd5e1" : "#fecdd3"), marginBottom: 12 }}>
+    <strong>{os.status === "En attente" ? "⏸️ OS mis en attente" : "⚠️ OS suspendu / en erreur"}</strong>
     {os.suspensionStartedAt && <div style={{ fontSize: 12, marginTop: 4 }}>Depuis le {new Date(os.suspensionStartedAt).toLocaleDateString("fr-FR")}</div>}
     {os.suspensionRestartedAt && <div style={{ fontSize: 12, marginTop: 4 }}>Repris le {new Date(os.suspensionRestartedAt).toLocaleDateString("fr-FR")}</div>}
   </div>}
