@@ -43,8 +43,8 @@ function Planner({ onClose, initialView = "mois" }) {
       const result = await supabase.from("interventions").select("id, work_order_id, team_id, planned_date, planned_order, status").in("work_order_id", ids);
       if (!result.error) interventions = result.data || [];
     }
-    const allTeams = await supabase.from("teams").select("id, name").order("name");
-    const teamRows = allTeams.error ? [] : (allTeams.data || []);
+    const allTeams = await supabase.from("teams").select("id, name, active").order("name");
+    const teamRows = allTeams.error ? [] : (allTeams.data || []).filter((team) => team.active !== false);
     const byWO = new Map();
     for (const item of interventions) {
       const previous = byWO.get(item.work_order_id);
@@ -291,7 +291,7 @@ function Planner({ onClose, initialView = "mois" }) {
         <button disabled={savingId === order.id} title="Jour précédent" onClick={() => moveOrder(order, -1)}>←</button>
         <button disabled={savingId === order.id} title="Jour suivant" onClick={() => moveOrder(order, 1)}>→</button>
         <select value={order.team_id || ""} onChange={(e) => changeOrderTeam(order, e.target.value || null)} disabled={savingId === order.id}>
-          <option value="">Équipe</option>{teams.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}
+          <option value="">Équipe</option>{order.team_id && !teams.some((t) => t.id === order.team_id) && <option value={order.team_id} disabled>Inactive — {order.team_name || "Équipe"}</option>}{teams.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}
         </select>
       </div> : <small className="setom-order-status-readonly">Statut conservé : {order.status}</small>}
     </div>;
@@ -317,7 +317,7 @@ function Planner({ onClose, initialView = "mois" }) {
               <strong>{fullOsNumber(o)}</strong><span>{o.address}{o.city ? `, ${o.city}` : ""}</span>
               <small>{o.material_detail || "Intervention"} · {o.planned_surface_m2 ? `${o.planned_surface_m2} m²` : "surface non renseignée"}{o.is_night ? " · Nuit" : ""}</small>
               <label>Date de passage<input type="date" value={o.planned_date || selectedDate} disabled={savingId === o.id} onChange={(e) => planOrder(o, e.target.value || null, o.team_id)} /></label>
-              <label>Équipe<select value={o.team_id || ""} onChange={(e) => changeOrderTeam(o, e.target.value || null)} disabled={savingId === o.id}><option value="">Non affectée</option>{teams.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}</select></label>
+              <label>Équipe<select value={o.team_id || ""} onChange={(e) => changeOrderTeam(o, e.target.value || null)} disabled={savingId === o.id}><option value="">Non affectée</option>{o.team_id && !teams.some((t) => t.id === o.team_id) && <option value={o.team_id} disabled>Inactive — {o.team_name || "Équipe"}</option>}{teams.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}</select></label>
               <button disabled={savingId === o.id || o.planned_date === selectedDate} onClick={() => planOrder(o, selectedDate, o.team_id)}>{o.planned_date ? "Déplacer vers cette journée" : "Ajouter à cette journée"}</button>
               {o.planned_date && <button className="setom-map-remove" disabled={savingId === o.id} onClick={() => planOrder(o, null, o.team_id)}>Retirer du planning</button>}
             </article>)}
