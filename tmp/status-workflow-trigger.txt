@@ -1,1 +1,1 @@
-finalize status workflow v2
+remove legacy labels v3
