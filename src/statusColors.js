@@ -1,6 +1,7 @@
 export const OS_STATUS_LEGEND = [
   { label: "Nouveaux OS", statuses: ["Nouveau OS"], accent: "#EAB308", background: "#FEF9C3", text: "#854D0E", border: "#FDE047" },
   { label: "Planifié", statuses: ["Planifié"], accent: "#F97316", background: "#FFEDD5", text: "#9A3412", border: "#FDBA74" },
+  { label: "En attente", statuses: ["En attente"], accent: "#64748B", background: "#F1F5F9", text: "#334155", border: "#CBD5E1" },
   { label: "Travaux réalisés", statuses: ["Travaux réalisés"], accent: "#2563EB", background: "#DBEAFE", text: "#1D4ED8", border: "#93C5FD" },
   { label: "À vérifier", statuses: ["À vérifier"], accent: "#7C3AED", background: "#EDE9FE", text: "#5B21B6", border: "#C4B5FD" },
   { label: "Validé", statuses: ["Validé"], accent: "#16A34A", background: "#DCFCE7", text: "#166534", border: "#86EFAC" },
