@@ -1,3 +1,4 @@
+# Applies the mobile Travaux/photo controls directly to src before stabilization.
 from pathlib import Path
 
 path = Path("src/main.jsx")
