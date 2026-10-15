@@ -52,6 +52,15 @@ function App() {
   const [settingsSaving, setSettingsSaving] = useState(false);
   const [settingsMessage, setSettingsMessage] = useState("");
   const [settingsError, setSettingsError] = useState("");
+  const [bpuVersions, setBpuVersions] = useState([]);
+  const [bpuLines, setBpuLines] = useState([]);
+  const [bpuLoading, setBpuLoading] = useState(false);
+  const [bpuSaving, setBpuSaving] = useState(false);
+  const [bpuError, setBpuError] = useState("");
+  const [bpuMessage, setBpuMessage] = useState("");
+  const [bpuVersionName, setBpuVersionName] = useState("");
+  const [bpuValidFrom, setBpuValidFrom] = useState(new Date().toISOString().slice(0, 10));
+  const [bpuNotes, setBpuNotes] = useState("");
   const [newTeamName, setNewTeamName] = useState("");
   const [newTeamType, setNewTeamType] = useState("interne");
   const [newTeamCapacity, setNewTeamCapacity] = useState("");
@@ -168,6 +177,157 @@ function App() {
     if (error) setAuthError("E-mail ou mot de passe incorrect.");
   }
   async function handleLogout() { await supabase.auth.signOut(); }
+
+  useEffect(() => {
+    if (!session || page !== "bpu") return;
+    let cancelled = false;
+    async function loadBPU() {
+      setBpuLoading(true); setBpuError(""); setBpuMessage("");
+      try {
+        const { data: versions, error: versionsError } = await supabase
+          .from("bpu_versions")
+          .select("id, version_name, valid_from, valid_to, is_current, imported_at, notes")
+          .order("valid_from", { ascending: false });
+        if (versionsError) throw versionsError;
+        const versionRows = versions || [];
+        const current = versionRows.find((version) => version.is_current) || versionRows[0] || null;
+        if (cancelled) return;
+        setBpuVersions(versionRows);
+        if (current) {
+          if (!bpuVersionName.trim()) setBpuVersionName(current.version_name + " - révision");
+          const defaultDate = current.valid_from ? new Date(current.valid_from + "T12:00:00") : new Date();
+          defaultDate.setDate(defaultDate.getDate() + 1);
+          setBpuValidFrom((previous) => previous > (current.valid_from || "") ? previous : defaultDate.toISOString().slice(0, 10));
+          const { data: lines, error: linesError } = await supabase
+            .from("bpu_lines")
+            .select("id, version_id, code, designation, unit, unit_price, trade, material, active, price_le_8_m2, price_8_15_m2, price_gt_15_m2")
+            .eq("version_id", current.id)
+            .order("designation", { ascending: true });
+          if (linesError) throw linesError;
+          if (!cancelled) setBpuLines((lines || []).map((line) => ({
+            ...line,
+            code: line.code || "",
+            designation: line.designation || "",
+            unit: line.unit || "",
+            unit_price: line.unit_price == null ? "0" : String(line.unit_price),
+            trade: line.trade || "",
+            material: line.material || "",
+            price_le_8_m2: line.price_le_8_m2 == null ? "" : String(line.price_le_8_m2),
+            price_8_15_m2: line.price_8_15_m2 == null ? "" : String(line.price_8_15_m2),
+            price_gt_15_m2: line.price_gt_15_m2 == null ? "" : String(line.price_gt_15_m2),
+            active: line.active !== false
+          })));
+        } else {
+          setBpuLines([]);
+          setBpuError("Aucune version du BPU n'est enregistrée.");
+        }
+      } catch (error) {
+        console.error("Erreur chargement du BPU :", error);
+        if (!cancelled) setBpuError(error?.message || "Impossible de charger le bordereau de prix.");
+      } finally {
+        if (!cancelled) setBpuLoading(false);
+      }
+    }
+    loadBPU();
+    return () => { cancelled = true; };
+  }, [page, session]);
+
+  function updateBpuLine(id, field, value) {
+    setBpuLines((current) => current.map((line) => line.id === id ? { ...line, [field]: value } : line));
+  }
+
+  async function createBpuVersion(event) {
+    event.preventDefault();
+    setBpuError(""); setBpuMessage("");
+    if (bpuSaving) return;
+    const current = bpuVersions.find((version) => version.is_current) || bpuVersions[0] || null;
+    if (!current) { setBpuError("Aucune version existante à réviser."); return; }
+    const name = bpuVersionName.trim();
+    if (!name) { setBpuError("Donnez un nom à la nouvelle version du BPU."); return; }
+    if (!bpuValidFrom || bpuValidFrom <= (current.valid_from || "")) {
+      setBpuError("La nouvelle date de validité doit être postérieure au " + (current.valid_from || "début de contrat") + ".");
+      return;
+    }
+    if (!bpuLines.length) { setBpuError("Le BPU ne contient aucune ligne à enregistrer."); return; }
+    for (const line of bpuLines) {
+      if (!String(line.designation || "").trim() || !String(line.unit || "").trim()) {
+        setBpuError("Chaque ligne doit comporter une désignation et une unité.");
+        return;
+      }
+      for (const field of ["unit_price", "price_le_8_m2", "price_8_15_m2", "price_gt_15_m2"]) {
+        const value = String(line[field] ?? "").trim();
+        if (value !== "" && (!Number.isFinite(Number(value.replace(",", "."))) || Number(value.replace(",", ".")) < 0)) {
+          setBpuError("Les prix doivent être des nombres positifs ou nuls. Vérifiez la ligne « " + line.designation + " ».");
+          return;
+        }
+      }
+    }
+    if (appSettings?.prices_renegotiable === false && !window.confirm("Les paramètres du marché indiquent que les prix ne sont pas renégociables. Créer quand même une nouvelle version du BPU ? L'action sera historisée.")) return;
+    const details = "Créer la version « " + name + " » à partir du " + new Date(bpuValidFrom + "T12:00:00").toLocaleDateString("fr-FR") + " en copiant " + bpuLines.length + " lignes. La version actuelle et ses prix restent conservés dans l'historique.";
+    if (!window.confirm(details + "\n\nConfirmer la création ?")) return;
+    const { data: authData, error: authError } = await supabase.auth.getUser();
+    const user = authData?.user;
+    if (authError || !user) { setBpuError("Connexion requise pour enregistrer une version du BPU."); return; }
+    setBpuSaving(true);
+    try {
+      const payload = bpuLines.map((line) => ({
+        code: String(line.code || "").trim() || null,
+        designation: String(line.designation || "").trim(),
+        unit: String(line.unit || "").trim(),
+        unit_price: String(line.unit_price ?? "0").trim().replace(",", "."),
+        trade: String(line.trade || "").trim() || null,
+        material: String(line.material || "").trim() || null,
+        active: line.active !== false,
+        price_le_8_m2: String(line.price_le_8_m2 ?? "").trim().replace(",", "."),
+        price_8_15_m2: String(line.price_8_15_m2 ?? "").trim().replace(",", "."),
+        price_gt_15_m2: String(line.price_gt_15_m2 ?? "").trim().replace(",", ".")
+      }));
+      const { data: result, error } = await supabase.rpc("create_bpu_version_from_current", {
+        p_version_name: name,
+        p_valid_from: bpuValidFrom,
+        p_notes: bpuNotes.trim() || null,
+        p_user_id: user.id,
+        p_lines: payload
+      });
+      if (error) throw error;
+      if (!result?.version_id || Number(result?.line_count) !== bpuLines.length) {
+        throw new Error("La base n'a pas confirmé la création complète de la nouvelle version.");
+      }
+      setBpuMessage("✅ Version « " + result.version_name + " » enregistrée avec " + result.line_count + " lignes. L'ancienne version est conservée.");
+      setBpuVersionName(result.version_name + " - révision");
+      setBpuNotes("");
+      setBpuLoading(true);
+      const { data: versions, error: versionsError } = await supabase.from("bpu_versions").select("id, version_name, valid_from, valid_to, is_current, imported_at, notes").order("valid_from", { ascending: false });
+      if (versionsError) throw versionsError;
+      const versionRows = versions || [];
+      const current = versionRows.find((version) => version.is_current);
+      if (!current) throw new Error("Nouvelle version créée mais la version active n'a pas été trouvée à la relecture.");
+      const { data: lines, error: linesError } = await supabase.from("bpu_lines").select("id, version_id, code, designation, unit, unit_price, trade, material, active, price_le_8_m2, price_8_15_m2, price_gt_15_m2").eq("version_id", current.id).order("designation", { ascending: true });
+      if (linesError) throw linesError;
+      setBpuVersions(versionRows);
+      setBpuLines((lines || []).map((line) => ({
+        ...line,
+        code: line.code || "",
+        designation: line.designation || "",
+        unit: line.unit || "",
+        unit_price: line.unit_price == null ? "0" : String(line.unit_price),
+        trade: line.trade || "",
+        material: line.material || "",
+        price_le_8_m2: line.price_le_8_m2 == null ? "" : String(line.price_le_8_m2),
+        price_8_15_m2: line.price_8_15_m2 == null ? "" : String(line.price_8_15_m2),
+        price_gt_15_m2: line.price_gt_15_m2 == null ? "" : String(line.price_gt_15_m2),
+        active: line.active !== false
+      })));
+      setBpuValidFrom((previous) => {
+        const next = current.valid_from ? new Date(current.valid_from + "T12:00:00") : new Date();
+        next.setDate(next.getDate() + 1);
+        return next.toISOString().slice(0, 10);
+      });
+    } catch (error) {
+      console.error("Erreur création de version BPU :", error);
+      setBpuError(error?.message || "Impossible de créer la nouvelle version du BPU.");
+    } finally { setBpuSaving(false); setBpuLoading(false); }
+  }
 
   async function saveAppSettings(event) {
     event.preventDefault();
@@ -311,7 +471,7 @@ function App() {
     <header className="header"><div><h1>{appSettings?.company_name || "SETOM"}</h1><small>Gestion des travaux routiers</small></div><div><small>Marché {appSettings?.donor_name || "Eau de Toulouse"}</small></div></header>
     <main className="container">
       <nav className="nav">
-        {[["dashboard","📊 Tableau de bord"],["os","📋 OS"],["map","🗺️ Carte"],["planning","📅 Planning"],["teams","👷 Équipes"],["reserves","⚠️ Réserves"],["settings","⚙️ Paramètres"]].map(([id,label]) => <button key={id} className={page === id ? "active" : ""} onClick={() => setPage(id)}>{label}</button>)}
+        {[["dashboard","📊 Tableau de bord"],["os","📋 OS"],["map","🗺️ Carte"],["planning","📅 Planning"],["teams","👷 Équipes"],["reserves","⚠️ Réserves"],["bpu","💶 Bordereau de prix"],["settings","⚙️ Paramètres"]].map(([id,label]) => <button key={id} className={page === id ? "active" : ""} onClick={() => setPage(id)}>{label}</button>)}
       </nav>
       {page === "dashboard" && <><h2>Tableau de bord</h2><div className="cards"><div className="card"><div>OS actifs</div><div className="number">{stats.total}</div></div><div className="card"><div>À planifier</div><div className="number">{stats.planning}</div></div><div className="card"><div>Travaux en cours</div><div className="number">{stats.travaux}</div></div><div className="card"><div>À facturer</div><div className="number">{stats.facturation}</div></div><div className="card"><div>Validation</div><div className="number">{stats.validation}</div></div><div className="card"><div>Réserves</div><div className="number">{stats.reserves}</div></div><div className="card"><div>OS en erreur</div><div className="number">{stats.errors}</div></div></div><h2>OS récents</h2><div className="os-list">{osList.slice(0,5).map((os) => <OSCard key={os.id} os={os} onOpen={() => setSelectedOS(os)} />)}</div></>}
       {page === "os" && <>
@@ -349,7 +509,24 @@ function App() {
         </form>
         {dbTeams.length === 0 ? <div className="card"><strong>Aucune équipe enregistrée</strong><p>Ajoutez vos équipes ici pour pouvoir les affecter aux OS dans le planning.</p></div> : <div className="cards">{dbTeams.map((team) => { const count = osList.filter((os) => os.teamId === team.id).length; return <div className="card" key={team.id} style={{ opacity: team.active ? 1 : .65 }}><div style={{ display: "flex", justifyContent: "space-between", alignItems: "start", gap: 12 }}><strong>👷 {team.name}</strong><span className="badge">{team.active ? "Active" : "Inactive"}</span></div><div>{team.team_type === "sous-traitant" ? "Sous-traitant" : "Équipe interne"}</div>{team.usual_sector_id && <div style={{ color: "#475467", fontSize: 13 }}>Secteur habituel : {dbSectors.find((sector) => sector.id === team.usual_sector_id)?.name || "Secteur inactif"}</div>}<div className="number">{count}</div><div>OS affecté{count === 1 ? "" : "s"}</div>{team.indicative_capacity && <div style={{ marginTop: 8, color: "#667085", fontSize: 13 }}>Capacité indicative : {team.indicative_capacity} m²/jour</div>}<button className="secondary" disabled={teamSaving} style={{ marginTop: 12 }} onClick={() => toggleTeamActive(team)}>{team.active ? "Désactiver" : "Réactiver"}</button></div>; })}</div>}
       </>}
-      {page === "reserves" && <><h2>Réserves et corrections</h2><div className="os-list">{osList.filter((os)=>os.status==="Réserve"||os.status==="Correction à réaliser"||(os.constatStatus==="Validé avec réserve"&&!os.reserveResolvedAt)).map((os)=><OSCard key={os.id} os={os} onOpen={()=>setSelectedOS(os)}/>)}{osList.filter((os)=>os.status==="Réserve"||os.status==="Correction à réaliser"||(os.constatStatus==="Validé avec réserve"&&!os.reserveResolvedAt)).length===0&&<div className="card">Aucune réserve en cours.</div>}</div></>}{page === "settings" && <><h2>Paramètres du marché</h2>
+      {page === "reserves" && <><h2>Réserves et corrections</h2><div className="os-list">{osList.filter((os)=>os.status==="Réserve"||os.status==="Correction à réaliser"||(os.constatStatus==="Validé avec réserve"&&!os.reserveResolvedAt)).map((os)=><OSCard key={os.id} os={os} onOpen={()=>setSelectedOS(os)}/>)}{osList.filter((os)=>os.status==="Réserve"||os.status==="Correction à réaliser"||(os.constatStatus==="Validé avec réserve"&&!os.reserveResolvedAt)).length===0&&<div className="card">Aucune réserve en cours.</div>}</div></>}{page === "bpu" && <><h2>Bordereau de prix (BPU)</h2>
+        <p style={{ color: "#667085", marginTop: -6 }}>Modifier les prix, puis créer une nouvelle version datée. Les constats déjà émis conservent leurs prix enregistrés.</p>
+        {bpuVersions.length > 0 && <div className="cards" style={{ marginBottom: 16 }}>{bpuVersions.map((version) => <div className="card" key={version.id} style={{ border: version.is_current ? "2px solid #175cd3" : "1px solid #e4e7ec" }}><div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "start" }}><strong>{version.version_name}</strong><span className="badge">{version.is_current ? "En vigueur" : "Historique"}</span></div><div style={{ fontSize: 13, marginTop: 8 }}>Valide du {version.valid_from ? new Date(version.valid_from + "T12:00:00").toLocaleDateString("fr-FR") : "—"}{version.valid_to ? " au " + new Date(version.valid_to + "T12:00:00").toLocaleDateString("fr-FR") : version.is_current ? " · sans date de fin" : ""}</div>{version.notes && <p style={{ fontSize: 12, color: "#667085" }}>{version.notes}</p>}</div>)}</div>}
+        {bpuLoading && <div className="card">Chargement du BPU…</div>}
+        {bpuError && <div className="card" style={{ color: "#b42318", marginBottom: 12 }}>{bpuError}</div>}
+        {bpuMessage && <div className="card" style={{ color: "#027a48", marginBottom: 12 }}>{bpuMessage}</div>}
+        {!bpuLoading && bpuLines.length > 0 && <><div className="card" style={{ marginBottom: 12 }}><strong>{bpuLines.length} lignes · version actuelle : {(bpuVersions.find((version) => version.is_current) || bpuVersions[0])?.version_name}</strong><p style={{ marginBottom: 0, fontSize: 13, color: "#667085" }}>Les modifications restent en brouillon dans cet écran. Elles ne sont appliquées qu'après confirmation et création d'une nouvelle version.</p></div>
+          <div className="card" style={{ padding: 0, overflow: "hidden", marginBottom: 18 }}><div style={{ overflowX: "auto", maxHeight: "58vh" }}><table style={{ width: "100%", minWidth: 1220, borderCollapse: "collapse", fontSize: 12 }}><thead style={{ position: "sticky", top: 0, zIndex: 1, background: "#f8fafc" }}><tr>{["Code","Désignation","Unité","Prix unitaire (€)","≤ 8 m² (€)","8–15 m² (€)","> 15 m² (€)","Lot / corps d'état","Matériau","Actif"].map((heading) => <th key={heading} style={{ textAlign: "left", padding: 9, borderBottom: "1px solid #e4e7ec", whiteSpace: "nowrap" }}>{heading}</th>)}</tr></thead><tbody>{bpuLines.map((line) => <tr key={line.id} style={{ opacity: line.active ? 1 : .55 }}><td style={{ padding: 6, borderBottom: "1px solid #edf0f4" }}><input aria-label={"Code " + line.designation} value={line.code} onChange={(e) => updateBpuLine(line.id,"code",e.target.value)} style={{ width: 85 }} /></td><td style={{ padding: 6, borderBottom: "1px solid #edf0f4" }}><input aria-label={"Désignation " + line.designation} value={line.designation} onChange={(e) => updateBpuLine(line.id,"designation",e.target.value)} style={{ width: 260 }} /></td><td style={{ padding: 6, borderBottom: "1px solid #edf0f4" }}><input aria-label={"Unité " + line.designation} value={line.unit} onChange={(e) => updateBpuLine(line.id,"unit",e.target.value)} style={{ width: 70 }} /></td>
+          {[["unit_price","Prix unitaire"],["price_le_8_m2","Prix jusqu'à 8 m²"],["price_8_15_m2","Prix de 8 à 15 m²"],["price_gt_15_m2","Prix au-delà de 15 m²"]].map(([field,label]) => <td key={field} style={{ padding: 6, borderBottom: "1px solid #edf0f4" }}><input aria-label={label + " — " + line.designation} type="number" min="0" step="0.0001" value={line[field]} onChange={(e) => updateBpuLine(line.id,field,e.target.value)} style={{ width: 108 }} /></td>)}
+          <td style={{ padding: 6, borderBottom: "1px solid #edf0f4" }}><input aria-label={"Lot " + line.designation} value={line.trade} onChange={(e) => updateBpuLine(line.id,"trade",e.target.value)} style={{ width: 130 }} /></td><td style={{ padding: 6, borderBottom: "1px solid #edf0f4" }}><input aria-label={"Matériau " + line.designation} value={line.material} onChange={(e) => updateBpuLine(line.id,"material",e.target.value)} style={{ width: 130 }} /></td><td style={{ padding: 6, borderBottom: "1px solid #edf0f4", textAlign: "center" }}><input aria-label={"Ligne active " + line.designation} type="checkbox" checked={line.active} onChange={(e) => updateBpuLine(line.id,"active",e.target.checked)} /></td></tr>)}</tbody></table></div></div>
+          <form className="card" onSubmit={createBpuVersion} style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(220px,1fr))", gap: 12, alignItems: "end" }}>
+            <div><label htmlFor="bpu-version-name">Nom de la nouvelle version *</label><input id="bpu-version-name" value={bpuVersionName} onChange={(e) => setBpuVersionName(e.target.value)} required style={{ width: "100%", boxSizing: "border-box" }} /></div>
+            <div><label htmlFor="bpu-valid-from">Valide à partir du *</label><input id="bpu-valid-from" type="date" value={bpuValidFrom} min={(bpuVersions.find((version) => version.is_current) || bpuVersions[0])?.valid_from ? new Date(new Date((bpuVersions.find((version) => version.is_current) || bpuVersions[0]).valid_from + "T12:00:00").getTime()+86400000).toISOString().slice(0,10) : undefined} onChange={(e) => setBpuValidFrom(e.target.value)} required style={{ width: "100%", boxSizing: "border-box" }} /></div>
+            <div style={{ gridColumn: "1 / -1" }}><label htmlFor="bpu-notes">Notes de version / motif de modification</label><textarea id="bpu-notes" rows={2} value={bpuNotes} onChange={(e) => setBpuNotes(e.target.value)} placeholder="Ex. renégociation annuelle, révision de tarifs…" style={{ width: "100%", boxSizing: "border-box" }} /></div>
+            <div style={{ gridColumn: "1 / -1", display: "flex", flexWrap: "wrap", gap: 10, alignItems: "center" }}><button className="primary" type="submit" disabled={bpuSaving || bpuLoading}>{bpuSaving ? "Création de la version…" : "💾 Créer une nouvelle version et appliquer ces prix"}</button><button className="secondary" type="button" disabled={bpuSaving || bpuLoading} onClick={() => { const current = bpuVersions.find((version) => version.is_current) || bpuVersions[0]; if (!current) return; setBpuLines((lines) => [...lines].sort((a,b) => String(a.designation).localeCompare(String(b.designation),"fr"))); setBpuError(""); setBpuMessage("Ordre des lignes remis par désignation. Les changements de tarifs sont toujours en brouillon."); }}>Trier par désignation</button></div>
+          </form>
+        </>}
+      </>}{page === "settings" && <><h2>Paramètres du marché</h2>
         {!appSettings ? <div className="card">Chargement des paramètres…</div> : <form onSubmit={saveAppSettings} className="card" style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(230px,1fr))", gap: 14, alignItems: "start" }}>
           <div><label htmlFor="setting-company">Nom de l'application / entreprise</label><input id="setting-company" value={appSettings.company_name || ""} onChange={(e) => setAppSettings((current) => ({ ...current, company_name: e.target.value }))} required style={{ width: "100%", boxSizing: "border-box" }}/></div>
           <div><label htmlFor="setting-donor">Donneur d'ordre</label><input id="setting-donor" value={appSettings.donor_name || ""} onChange={(e) => setAppSettings((current) => ({ ...current, donor_name: e.target.value }))} required style={{ width: "100%", boxSizing: "border-box" }}/></div>
