@@ -34,7 +34,7 @@ function Planner({ onClose, initialView = "mois" }) {
 
   async function load() {
     setLoading(true); setError("");
-    const { data: rows, error: woError } = await supabase.from("work_orders").select("id, os_number, creation_date, address, postal_code, city, material_detail, planned_surface_m2, status, deadline_date, is_night").order("os_number", { ascending: true });
+    const { data: rows, error: woError } = await supabase.from("work_orders").select("id, os_number, creation_date, address, postal_code, city, latitude, longitude, material_detail, planned_surface_m2, status, deadline_date, is_night").order("os_number", { ascending: true });
     if (woError) { setError(woError.message); setLoading(false); return; }
     const ids = (rows || []).map((r) => r.id);
     let interventions = [];
@@ -163,7 +163,8 @@ function Planner({ onClose, initialView = "mois" }) {
         const addressParts = [order.address, order.postal_code, order.city, "France"].filter(Boolean);
         const query = addressParts.join(" ");
         const cacheKey = query.toLocaleLowerCase("fr-FR");
-        let point = Object.prototype.hasOwnProperty.call(cache, cacheKey) ? cache[cacheKey] : undefined;
+        const hasStoredCoordinates = order.latitude !== null && order.latitude !== undefined && order.longitude !== null && order.longitude !== undefined && Number.isFinite(Number(order.latitude)) && Number.isFinite(Number(order.longitude));
+        let point = hasStoredCoordinates ? { lat: Number(order.latitude), lon: Number(order.longitude) } : (Object.prototype.hasOwnProperty.call(cache, cacheKey) ? cache[cacheKey] : undefined);
         if (point === undefined) {
           try {
             const params = new URLSearchParams({ q: query, limit: "1" });
@@ -179,7 +180,13 @@ function Planner({ onClose, initialView = "mois" }) {
             point = null;
           }
         }
-        if (point && Number.isFinite(point.lat) && Number.isFinite(point.lon)) next[order.id] = point;
+        if (point && Number.isFinite(point.lat) && Number.isFinite(point.lon)) {
+          next[order.id] = point;
+          if (!hasStoredCoordinates) {
+            const { error: coordinateSaveError } = await supabase.from("work_orders").update({ latitude: point.lat, longitude: point.lon }).eq("id", order.id);
+            if (coordinateSaveError) console.warn("Coordonnées affichées mais non enregistrées pour", fullOsNumber(order), coordinateSaveError);
+          }
+        }
         processed += 1;
         if (!cancelled) {
           setGeoPoints({ ...next });
@@ -226,7 +233,7 @@ function Planner({ onClose, initialView = "mois" }) {
     if (view !== "carte" || !map) return;
     let cancelled = false;
     if (routeLayerRef.current) { map.removeLayer(routeLayerRef.current); routeLayerRef.current = null; }
-    const stops = (byDate.get(selectedDate) || []).filter((order) => geoPoints[order.id]);
+    const stops = (byDate.get(selectedDate) || []).filter((order) => STATUS_PLANIFIABLE.includes(order.status) && geoPoints[order.id]);
     if (stops.length === 0) { setRouteSummary("Aucun OS géolocalisé sur cette journée."); return; }
     if (stops.length === 1) { setRouteSummary("1 arrêt planifié. Ajoutez un autre OS à la journée pour calculer un itinéraire."); map.setView([geoPoints[stops[0].id].lat, geoPoints[stops[0].id].lon], 14); return; }
     setRouteSummary("Calcul de l’itinéraire de " + stops.length + " arrêts…");
