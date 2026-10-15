@@ -54,6 +54,25 @@
     window.setTimeout(applyOsFilter, 250);
   }
 
+  function openSpecificOS(osNumber) {
+    activeFilter = null;
+    const navButton = Array.from(document.querySelectorAll("nav button"))
+      .find((button) => String(button.textContent || "").includes("📋 OS"));
+    if (!navButton) return;
+    navButton.click();
+
+    const findAndClick = () => {
+      const target = getOsCards().find((card) => String(card.textContent || "").includes(osNumber));
+      if (!target) return false;
+      target.scrollIntoView({ behavior: "smooth", block: "center" });
+      target.click();
+      return true;
+    };
+
+    if (findAndClick()) return;
+    window.setTimeout(() => { if (!findAndClick()) window.setTimeout(findAndClick, 250); }, 100);
+  }
+
   document.addEventListener("click", (event) => {
     const card = event.target.closest?.(".cards .card");
     if (!card) return;
@@ -64,6 +83,13 @@
     event.stopPropagation();
     openOSFilter(filter);
   }, true);
+
+  // The planning/classeur helper emits this event after closing the planning overlay.
+  // We then open the same OS detail modal used everywhere else in SETOM.
+  window.addEventListener("setom:open-os-from-classeur", (event) => {
+    const osNumber = String(event.detail?.osNumber || "").trim();
+    if (osNumber) openSpecificOS(osNumber);
+  });
 
   // React recreates the OS cards when the page changes. Reapply the selected dashboard view.
   const observer = new MutationObserver(() => {
