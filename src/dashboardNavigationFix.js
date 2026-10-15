@@ -1,5 +1,4 @@
 // Dashboard counters: navigate to the OS concerned by the clicked counter.
-// This is intentionally isolated from the workflow/data layer: it only changes the OS list view.
 (function installDashboardNavigation() {
   const filters = {
     "OS actifs": { type: "statuses", statuses: ["Nouveau", "À planifier", "Planifié", "En travaux", "Travaux en cours", "En erreur", "Travaux réalisés", "Constat à vérifier", "Travaux effectués", "Constat de facturation", "En attente de validation", "Validé", "Validé avec réserve", "Réserve", "Correction à réaliser", "Payé"] },
@@ -39,15 +38,12 @@
 
   function applyOsFilter() {
     if (!activeFilter || !isOsPage()) return;
-    getOsCards().forEach((card) => {
-      card.style.display = isCardMatch(card, activeFilter) ? "" : "none";
-    });
+    getOsCards().forEach((card) => { card.style.display = isCardMatch(card, activeFilter) ? "" : "none"; });
   }
 
   function openOSFilter(filter) {
     activeFilter = filter;
-    const navButton = Array.from(document.querySelectorAll("nav button"))
-      .find((button) => String(button.textContent || "").includes("📋 OS"));
+    const navButton = Array.from(document.querySelectorAll("nav button")).find((button) => String(button.textContent || "").includes("📋 OS"));
     if (!navButton) return;
     navButton.click();
     window.setTimeout(applyOsFilter, 80);
@@ -56,21 +52,29 @@
 
   function openSpecificOS(osNumber) {
     activeFilter = null;
-    const navButton = Array.from(document.querySelectorAll("nav button"))
-      .find((button) => String(button.textContent || "").includes("📋 OS"));
+    const navButton = Array.from(document.querySelectorAll("nav button")).find((button) => String(button.textContent || "").includes("📋 OS"));
     if (!navButton) return;
     navButton.click();
 
-    const findAndClick = () => {
-      const target = getOsCards().find((card) => String(card.textContent || "").includes(osNumber));
+    const findAndOpen = () => {
+      const target = getOsCards().find((card) => {
+        const text = String(card.textContent || "");
+        return text.includes(osNumber);
+      });
       if (!target) return false;
       target.scrollIntoView({ behavior: "smooth", block: "center" });
-      target.click();
+      // The OS card itself is not necessarily clickable. Use its real action button.
+      const openButton = Array.from(target.querySelectorAll("button, [role=button]")).find((button) => {
+        const text = String(button.textContent || "").replace(/\s+/g, " ").trim().toLowerCase();
+        return text.includes("ouvrir l'os") || text.includes("ouvrir os") || text === "ouvrir";
+      });
+      if (openButton) openButton.click();
+      else target.click();
       return true;
     };
 
-    if (findAndClick()) return;
-    window.setTimeout(() => { if (!findAndClick()) window.setTimeout(findAndClick, 250); }, 100);
+    if (findAndOpen()) return;
+    window.setTimeout(() => { if (!findAndOpen()) window.setTimeout(findAndOpen, 350); }, 150);
   }
 
   document.addEventListener("click", (event) => {
@@ -84,14 +88,11 @@
     openOSFilter(filter);
   }, true);
 
-  // The planning/classeur helper emits this event after closing the planning overlay.
-  // We then open the same OS detail modal used everywhere else in SETOM.
   window.addEventListener("setom:open-os-from-classeur", (event) => {
     const osNumber = String(event.detail?.osNumber || "").trim();
     if (osNumber) openSpecificOS(osNumber);
   });
 
-  // React recreates the OS cards when the page changes. Reapply the selected dashboard view.
   const observer = new MutationObserver(() => {
     if (activeFilter) window.requestAnimationFrame(applyOsFilter);
   });
