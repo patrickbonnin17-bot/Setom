@@ -49,8 +49,13 @@ async function saveActual(row,value,date){
 async function saveLoad(materialId,value,date){
  const qty=n(value); if(qty<0){alert("Le chargement doit être positif ou nul.");return;}
  const {data:u}=await supabase.auth.getUser();
- const {error}=await supabase.from("truck_daily_loads").upsert({load_date:date,material_id:materialId,loaded_quantity:qty,unit:"t",created_by:u?.user?.id||null,updated_at:new Date().toISOString()},{onConflict:"load_date,material_id"});
- if(error) alert("Impossible d'enregistrer le chargement : "+error.message); else render(date);
+ const payload={load_date:date,material_id:materialId,loaded_quantity:qty,unit:"t",created_by:u?.user?.id||null,updated_at:new Date().toISOString()};
+ const {data:existing,error:lookupError}=await supabase.from("truck_daily_loads").select("id").eq("load_date",date).eq("material_id",materialId).order("created_at",{ascending:false}).limit(1).maybeSingle();
+ if(lookupError){alert("Impossible de vérifier le chargement existant : "+lookupError.message);return;}
+ const result=existing?.id
+  ? await supabase.from("truck_daily_loads").update(payload).eq("id",existing.id)
+  : await supabase.from("truck_daily_loads").insert(payload);
+ if(result.error) alert("Impossible d'enregistrer le chargement : "+result.error.message); else render(date);
 }
 
 async function render(date){
