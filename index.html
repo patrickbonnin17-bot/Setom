@@ -1,1 +1,59 @@
-<div id="root"><div id="setom-boot-check" style="min-height:100vh;display:flex;align-items:center;justify-content:center;padding:24px;background:#f6f7f9;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;color:#17202a"><div style="max-width:520px;width:100%;padding:28px;border-radius:18px;background:#fff;box-shadow:0 8px 30px rgba(0,0,0,.08);text-align:center"><div style="font-size:32px;font-weight:800;margin-bottom:8px">SETOM</div><div style="font-size:17px;font-weight:600">Chargement de l’application…</div><div style="margin-top:10px;font-size:13px;color:#667085">Diagnostic de démarrage actif</div></div></div></div><script>(function(){function show(type,message){try{var box=document.getElementById('setom-runtime-error');if(!box){box=document.createElement('div');box.id='setom-runtime-error';box.style='position:fixed;z-index:999999;inset:12px;background:#fff;border:2px solid #c62828;border-radius:14px;padding:18px;font-family:-apple-system,BlinkMacSystemFont,Segoe UI,sans-serif;color:#222;box-shadow:0 8px 30px rgba(0,0,0,.2);overflow:auto}box.innerHTML='<h2 style="margin:0 0 12px;color:#c62828">SETOM — erreur de démarrage</h2><div style="font-weight:600">'+type+'</div><pre style="white-space:pre-wrap;font-size:14px;line-height:1.4">'+String(message||'Erreur inconnue').replace(/[&<>]/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;'}[c]})+'</pre>';document.body.appendChild(box)}catch(e){}}window.addEventListener('error',function(e){show('JavaScript',e.message+'\n'+(e.filename||'')+':'+(e.lineno||''))});window.addEventListener('unhandledrejection',function(e){show('Promesse non gérée',e.reason&&e.reason.stack||e.reason)})();})();</script><link rel="stylesheet" href="/src/uiPolish.css" /><link rel="stylesheet" href="/src/responsive.css" /><script type="module" src="/src/main.jsx"></script><script type="module" src="/src/planningOverlay.jsx"></script><script type="module" src="/src/dashboardNavigationFix.js"></script><script type="module" src="/src/classeurNavigationFix.js"></script><script type="module" src="/src/osModalPortalFix.js"></script>
+<!doctype html>
+<html lang="fr">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+    <meta name="theme-color" content="#f6f7f9" />
+    <title>SETOM — Gestion des interventions</title>
+    <link rel="stylesheet" href="/src/uiPolish.css" />
+    <link rel="stylesheet" href="/src/responsive.css" />
+    <script>
+      (function () {
+        function show(type, message) {
+          try {
+            var box = document.getElementById("setom-runtime-error");
+            if (!box) {
+              box = document.createElement("div");
+              box.id = "setom-runtime-error";
+              box.style = "position:fixed;z-index:999999;inset:12px;background:#fff;border:2px solid #c62828;border-radius:14px;padding:18px;font-family:-apple-system,BlinkMacSystemFont,Segoe UI,sans-serif;color:#222;box-shadow:0 8px 30px rgba(0,0,0,.2);overflow:auto";
+            }
+            box.textContent = "";
+            var title = document.createElement("h2");
+            title.textContent = "SETOM — erreur de démarrage";
+            title.style.color = "#c62828";
+            var label = document.createElement("div");
+            label.style.fontWeight = "600";
+            label.textContent = type;
+            var details = document.createElement("pre");
+            details.style.whiteSpace = "pre-wrap";
+            details.textContent = String(message || "Erreur inconnue");
+            box.append(title, label, details);
+            document.body.appendChild(box);
+          } catch (_) {}
+        }
+        window.addEventListener("error", function (e) {
+          show("JavaScript ou chargement du module", (e.message || "Erreur inconnue") + "\\n" + (e.filename || "") + ":" + (e.lineno || ""));
+        });
+        window.addEventListener("unhandledrejection", function (e) {
+          show("Promesse non gérée", e.reason && e.reason.stack || e.reason);
+        });
+      })();
+    </script>
+  </head>
+  <body>
+    <div id="root">
+      <div id="setom-boot-check" style="min-height:100vh;display:flex;align-items:center;justify-content:center;padding:24px;background:#f6f7f9;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;color:#17202a">
+        <div style="max-width:520px;width:100%;padding:28px;border-radius:18px;background:#fff;box-shadow:0 8px 30px rgba(0,0,0,.08);text-align:center">
+          <div style="font-size:32px;font-weight:800;margin-bottom:8px">SETOM</div>
+          <div style="font-size:17px;font-weight:600">Chargement de l’application…</div>
+          <div style="margin-top:10px;font-size:13px;color:#667085">Initialisation</div>
+        </div>
+      </div>
+    </div>
+    <script type="module" src="/src/main.jsx"></script>
+    <script type="module" src="/src/planningOverlay.jsx"></script>
+    <script type="module" src="/src/dashboardNavigationFix.js"></script>
+    <script type="module" src="/src/classeurNavigationFix.js"></script>
+    <script type="module" src="/src/osModalPortalFix.js"></script>
+  </body>
+</html>
