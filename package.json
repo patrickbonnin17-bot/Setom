@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "vite build",
+    "build": "python3 scripts/patch_mobile_travaux.py && vite build",
     "preview": "vite preview"
   },
   "dependencies": {
