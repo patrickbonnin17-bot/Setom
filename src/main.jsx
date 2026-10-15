@@ -35,10 +35,22 @@ function getDayColor(day) {
   return found ? found.color : "#777";
 }
 
+function getPhotoMimeType(file) {
+  const type = String(file?.type || "").toLowerCase();
+  if (type.startsWith("image/")) return type;
+  const extension = String(file?.name || "").split(".").pop()?.toLowerCase();
+  const knownTypes = {
+    heic: "image/heic", heif: "image/heif", jpg: "image/jpeg",
+    jpeg: "image/jpeg", png: "image/png", webp: "image/webp",
+    gif: "image/gif", avif: "image/avif", bmp: "image/bmp"
+  };
+  return knownTypes[extension] || "";
+}
+
 function LocalImagePreview({ file }) {
   const [previewUrl, setPreviewUrl] = useState("");
   useEffect(() => {
-    if (!file || !file.type || !file.type.startsWith("image/")) { setPreviewUrl(""); return undefined; }
+    if (!file || !getPhotoMimeType(file)) { setPreviewUrl(""); return undefined; }
     const url = URL.createObjectURL(file);
     setPreviewUrl(url);
     return () => URL.revokeObjectURL(url);
@@ -847,6 +859,7 @@ function OSModal({ os, onClose, onUpdate, profile }) {
   const [circulationType, setCirculationType] = useState(""); const [circulationHours, setCirculationHours] = useState(""); const [marquageSurface, setMarquageSurface] = useState(""); const [workComment, setWorkComment] = useState("");
   const [constat, setConstat] = useState(null); const [constatLines, setConstatLines] = useState([]); const [constatLoading, setConstatLoading] = useState(false); const [constatEditMode, setConstatEditMode] = useState(false); const [editableConstatLines, setEditableConstatLines] = useState([]); const [constatEditObservations, setConstatEditObservations] = useState(""); const [constatSaving, setConstatSaving] = useState(false);
   const [previewAttachment, setPreviewAttachment] = useState(null);
+  const [workDraftKeyLoaded, setWorkDraftKeyLoaded] = useState("");
   const [issueReason, setIssueReason] = useState(os?.suspensionReason || "");
   const [issueComment, setIssueComment] = useState(os?.suspensionComment || "");
   const [issueNightProposal, setIssueNightProposal] = useState(!!os?.isNight);
@@ -913,6 +926,142 @@ function OSModal({ os, onClose, onUpdate, profile }) {
     }
     loadAttachments();
   }, [os?.dbId]);
+
+
+  // Restore the Travaux form from a per-OS local draft; fall back to saved server values.
+  // Lengths and widths are kept locally because the current DB schema stores surfaces only.
+  useEffect(() => {
+    const workOrderId = os?.dbId;
+    let cancelled = false;
+    setWorkDraftKeyLoaded("");
+    setWorkPhotoFiles([]);
+
+    const setters = {
+      realLength: setRealLength, realWidth: setRealWidth, realSurface: setRealSurface,
+      roadLength: setRoadLength, roadWidth: setRoadWidth,
+      sidewalkLength: setSidewalkLength, sidewalkWidth: setSidewalkWidth,
+      otherLength: setOtherLength, otherWidth: setOtherWidth,
+      realRoadSurface: setRealRoadSurface, realSidewalkSurface: setRealSidewalkSurface,
+      realOtherSurface: setRealOtherSurface, thickness: setThickness, sciage: setSciage,
+      joints: setJoints, boucheAcle: setBoucheAcle, circulationType: setCirculationType,
+      circulationHours: setCirculationHours, marquageSurface: setMarquageSurface,
+      workComment: setWorkComment
+    };
+    const resetFields = () => Object.values(setters).forEach((setter) => setter(""));
+    if (!workOrderId) {
+      resetFields();
+      return () => { cancelled = true; };
+    }
+
+    const storageKey = "setom:travaux-draft:v1:" + workOrderId;
+    let savedDraft = null;
+    try {
+      const rawDraft = window.localStorage.getItem(storageKey);
+      if (rawDraft) savedDraft = JSON.parse(rawDraft);
+    } catch (error) {
+      console.warn("Brouillon Travaux local illisible :", error);
+    }
+
+    if (savedDraft && savedDraft.version === 1) {
+      Object.entries(setters).forEach(([field, setter]) => {
+        const value = savedDraft[field];
+        setter(value == null ? "" : String(value));
+      });
+      setWorkDraftKeyLoaded(workOrderId);
+      return () => { cancelled = true; };
+    }
+
+    resetFields();
+    async function loadSavedWork() {
+      try {
+        const { data: workOrder, error: workOrderError } = await supabase
+          .from("work_orders")
+          .select("actual_road_surface_m2, actual_sidewalk_surface_m2, actual_other_surface_m2")
+          .eq("id", workOrderId)
+          .maybeSingle();
+        if (cancelled) return;
+        if (workOrderError) console.error("Erreur chargement mesures Travaux :", workOrderError);
+        if (workOrder) {
+          setRealRoadSurface(workOrder.actual_road_surface_m2 == null ? "" : String(workOrder.actual_road_surface_m2));
+          setRealSidewalkSurface(workOrder.actual_sidewalk_surface_m2 == null ? "" : String(workOrder.actual_sidewalk_surface_m2));
+          setRealOtherSurface(workOrder.actual_other_surface_m2 == null ? "" : String(workOrder.actual_other_surface_m2));
+        }
+
+        let interventionId = os?.interventionId || null;
+        if (!interventionId) {
+          const { data: intervention, error: interventionError } = await supabase
+            .from("interventions").select("id").eq("work_order_id", workOrderId).maybeSingle();
+          if (interventionError) console.error("Erreur lecture intervention Travaux :", interventionError);
+          interventionId = intervention?.id || null;
+        }
+        if (!interventionId) return;
+        const { data: rows, error: realizationsError } = await supabase
+          .from("work_realizations")
+          .select("designation, quantity, surface_m2, length_ml, thickness_cm, observations, unit")
+          .eq("intervention_id", interventionId);
+        if (cancelled) return;
+        if (realizationsError) {
+          console.error("Erreur rechargement des travaux réalisés :", realizationsError);
+          return;
+        }
+        const realizations = rows || [];
+        const main = realizations.find((row) => row.surface_m2 != null && !["Démolition", "Marquage"].includes(row.designation));
+        const saw = realizations.find((row) => row.designation === "Sciage");
+        const jointRow = realizations.find((row) => row.designation === "Joints");
+        const keyRow = realizations.find((row) => row.designation === "Bouché à clé");
+        const traffic = realizations.find((row) => row.designation?.startsWith("Circulation alternée"));
+        const marking = realizations.find((row) => row.designation === "Marquage");
+
+        if (main) {
+          const zone = os?.rehabilitationZone;
+          if (!zone || !["Chaussée", "Trottoir", "Chaussée + trottoir", "Autre"].includes(zone)) {
+            setRealSurface(String(main.surface_m2 ?? main.quantity ?? ""));
+          }
+          if (main.thickness_cm != null) setThickness(String(main.thickness_cm));
+          if (main.observations != null) setWorkComment(String(main.observations));
+        }
+        if (saw) setSciage(String(saw.length_ml ?? saw.quantity ?? ""));
+        if (jointRow) setJoints(String(jointRow.length_ml ?? jointRow.quantity ?? ""));
+        if (keyRow) setBoucheAcle(String(keyRow.quantity ?? ""));
+        if (traffic) {
+          setCirculationType(traffic.designation.includes("K10") ? "K10" : "FEUX");
+          const hours = traffic.observations
+            ? Number(String(traffic.observations).replace(" h", ""))
+            : Number(traffic.quantity || 0) * 4;
+          setCirculationHours(Number.isFinite(hours) && hours > 0 ? String(hours) : "");
+        }
+        if (marking) setMarquageSurface(String(marking.surface_m2 ?? marking.quantity ?? ""));
+      } catch (error) {
+        console.error("Impossible de recharger les données Travaux :", error);
+      } finally {
+        if (!cancelled) setWorkDraftKeyLoaded(workOrderId);
+      }
+    }
+    loadSavedWork();
+    return () => { cancelled = true; };
+  }, [os?.dbId, os?.interventionId, os?.rehabilitationZone]);
+
+  // Save every edit locally so changing tabs or reopening the same OS doesn't clear measurements.
+  useEffect(() => {
+    if (!os?.dbId || workDraftKeyLoaded !== os.dbId) return;
+    const draft = {
+      version: 1,
+      realLength, realWidth, realSurface, roadLength, roadWidth, sidewalkLength, sidewalkWidth,
+      otherLength, otherWidth, realRoadSurface, realSidewalkSurface, realOtherSurface,
+      thickness, sciage, joints, boucheAcle, circulationType, circulationHours, marquageSurface, workComment,
+      savedAt: new Date().toISOString()
+    };
+    try {
+      window.localStorage.setItem("setom:travaux-draft:v1:" + os.dbId, JSON.stringify(draft));
+    } catch (error) {
+      console.warn("Impossible de sauvegarder le brouillon Travaux sur cet appareil :", error);
+    }
+  }, [
+    os?.dbId, workDraftKeyLoaded, realLength, realWidth, realSurface, roadLength, roadWidth,
+    sidewalkLength, sidewalkWidth, otherLength, otherWidth, realRoadSurface, realSidewalkSurface,
+    realOtherSurface, thickness, sciage, joints, boucheAcle, circulationType, circulationHours,
+    marquageSurface, workComment
+  ]);
 
   async function saveIssueReport() {
     if (!os?.dbId || issueSaving) return;
@@ -1069,12 +1218,51 @@ function OSModal({ os, onClose, onUpdate, profile }) {
     }catch(error){console.error("Erreur planning :",error);alert("Impossible d'enregistrer le planning :\n\n"+(error?.message||"Erreur inconnue"));}finally{setPlanningSaving(false);}
   }
 
-  async function uploadWorkPhotos(interventionId=os?.interventionId||null,showSuccess=true){
-    if(!os?.dbId||workPhotoFiles.length===0)return true; setWorkPhotoSaving(true); const uploadedAttachments=[];
-    try { const {data:authData,error:authError}=await supabase.auth.getUser(); const user=authData?.user;if(authError||!user)throw new Error("Utilisateur non connecté.");
-      for(const file of workPhotoFiles){if(!file.type?.startsWith("image/"))throw new Error("Seules les images peuvent être ajoutées comme photos des travaux réalisés.");const safeFileName=file.name.normalize("NFD").replace(/[\u0300-\u036f]/g,"").replace(/[^a-zA-Z0-9._-]/g,"_");const storagePath="work-orders/"+os.dbId+"/travaux-realises/"+Date.now()+"-"+safeFileName;const {error:uploadError}=await supabase.storage.from("setom-files").upload(storagePath,file,{cacheControl:"3600",upsert:false});if(uploadError)throw uploadError;const {data:attachment,error:attachmentError}=await supabase.from("attachments").insert({work_order_id:os.dbId,intervention_id:interventionId||null,category:"travaux_realises",file_name:file.name,storage_path:storagePath,mime_type:file.type||null,captured_at:new Date().toISOString(),created_by:user.id}).select("*").single();if(attachmentError){await supabase.storage.from("setom-files").remove([storagePath]);throw attachmentError;}const {data:signedData,error:signedError}=await supabase.storage.from("setom-files").createSignedUrl(storagePath,3600);uploadedAttachments.push({...attachment,url:signedError?null:(signedData?.signedUrl||null)});}
-      setAttachments((current)=>[...uploadedAttachments,...current]);setWorkPhotoFiles([]);if(showSuccess)alert("✅ Photos des travaux enregistrées.");return true;
-    }catch(error){console.error("Erreur enregistrement photos des travaux :",error);alert("Impossible d'enregistrer les photos des travaux :\n\n"+(error?.message||"Erreur inconnue"));return false;}finally{setWorkPhotoSaving(false);}
+  async function uploadWorkPhotos(interventionId=os?.interventionId||null,showSuccess=true) {
+    if (!os?.dbId || workPhotoFiles.length === 0) return true;
+    setWorkPhotoSaving(true);
+    const uploadedAttachments = [];
+    try {
+      const { data: authData, error: authError } = await supabase.auth.getUser();
+      const user = authData?.user;
+      if (authError || !user) throw new Error("Utilisateur non connecté.");
+
+      for (let index = 0; index < workPhotoFiles.length; index += 1) {
+        const file = workPhotoFiles[index];
+        const mimeType = getPhotoMimeType(file);
+        if (!mimeType) {
+          throw new Error("Le fichier « " + file.name + " » n'est pas reconnu comme une image. Choisissez un JPG, PNG, HEIC, HEIF ou WEBP.");
+        }
+        const safeFileName = file.name.normalize("NFD").replace(/[\\u0300-\\u036f]/g, "").replace(/[^a-zA-Z0-9._-]/g, "_");
+        const storagePath = "work-orders/" + os.dbId + "/travaux-realises/" + Date.now() + "-" + index + "-" + Math.random().toString(36).slice(2, 8) + "-" + safeFileName;
+        const { error: uploadError } = await supabase.storage.from("setom-files").upload(storagePath, file, {
+          cacheControl: "3600", upsert: false, contentType: mimeType
+        });
+        if (uploadError) throw uploadError;
+
+        const { data: attachment, error: attachmentError } = await supabase.from("attachments").insert({
+          work_order_id: os.dbId, intervention_id: interventionId || null, category: "travaux_realises",
+          file_name: file.name, storage_path: storagePath, mime_type: mimeType,
+          captured_at: new Date().toISOString(), created_by: user.id
+        }).select("*").single();
+        if (attachmentError) {
+          await supabase.storage.from("setom-files").remove([storagePath]);
+          throw attachmentError;
+        }
+        const { data: signedData, error: signedError } = await supabase.storage.from("setom-files").createSignedUrl(storagePath, 3600);
+        uploadedAttachments.push({ ...attachment, url: signedError ? null : (signedData?.signedUrl || null) });
+      }
+      setAttachments((current) => [...uploadedAttachments, ...current]);
+      setWorkPhotoFiles([]);
+      if (showSuccess) alert("✅ Photos des travaux enregistrées.");
+      return true;
+    } catch (error) {
+      console.error("Erreur enregistrement photos des travaux :", error);
+      alert("Impossible d'enregistrer les photos des travaux :\\n\\n" + (error?.message || "Erreur inconnue"));
+      return false;
+    } finally {
+      setWorkPhotoSaving(false);
+    }
   }
 
   async function save() {
@@ -1377,7 +1565,7 @@ async function markConstatPaid() {
         {os.rehabilitationZone==="Autre"&&<div className="work-subsection"><strong>Autre</strong><div className="work-grid"><div><label>Longueur (m)</label><input type="number" step="0.01" min="0" value={otherLength} onChange={(e)=>{const value=e.target.value;setOtherLength(value);const l=Number(value),w=Number(otherWidth);setRealOtherSurface(l>0&&w>0?(l*w).toFixed(2):"");}} placeholder="Ex. 5"/></div><div><label>Largeur (m)</label><input type="number" step="0.01" min="0" value={otherWidth} onChange={(e)=>{const value=e.target.value;setOtherWidth(value);const l=Number(otherLength),w=Number(value);setRealOtherSurface(l>0&&w>0?(l*w).toFixed(2):"");}} placeholder="Ex. 2"/></div></div><div className="work-result"><span>Surface réalisée</span><strong>{realOtherSurface?`${realOtherSurface} m²`:"—"}</strong></div></div>}
         {(!os.rehabilitationZone||!["Chaussée","Trottoir","Chaussée + trottoir","Autre"].includes(os.rehabilitationZone))&&<div className="work-grid"><div><label>Longueur (m)</label><input type="number" step="0.01" value={realLength} onChange={(e)=>{const value=e.target.value;setRealLength(value);const l=Number(value),w=Number(realWidth);if(l>0&&w>0)setRealSurface((l*w).toFixed(2));}} placeholder="Ex. 5"/></div><div><label>Largeur (m)</label><input type="number" step="0.01" value={realWidth} onChange={(e)=>{const value=e.target.value;setRealWidth(value);const l=Number(realLength),w=Number(value);if(l>0&&w>0)setRealSurface((l*w).toFixed(2));}} placeholder="Ex. 3"/></div></div>}
         <div className="work-result"><span>Total surface réellement réalisée</span><strong>{totalSurface>0?`${totalSurface.toFixed(2)} m²`:"—"}</strong></div><h4>Caractéristiques</h4><div className="work-grid"><div><label>Épaisseur (cm)</label><input type="number" step="0.5" value={thickness} onChange={(e)=>setThickness(e.target.value)} placeholder="Ex. 5"/></div><div><label>Sciage (ml)</label><input type="number" step="0.01" value={sciage} onChange={(e)=>setSciage(e.target.value)} placeholder="Ex. 13"/></div><div><label>Joints (ml)</label><input type="number" step="0.01" value={joints} onChange={(e)=>setJoints(e.target.value)} placeholder="Ex. 8"/></div><div><label>Bouché à clé (U)</label><input type="number" step="1" value={boucheAcle} onChange={(e)=>setBoucheAcle(e.target.value)} placeholder="Ex. 1"/></div><div><label>Démolition automatique (m²)</label><input type="number" step="0.01" value={Math.max(0,totalSurface-(Number(os.quantity?.replace(" m²","").replace(",","."))||0)).toFixed(2)} readOnly/></div></div>
-        <div className="attachments-section" style={{marginTop:18}}><label>📷 Photos des travaux réalisés — obligatoires pour transmettre les travaux</label><div className="attachments-buttons"><label className="attachment-button">📷 Prendre une photo<input type="file" accept="image/*" capture="environment" multiple onChange={(e)=>{const files=Array.from(e.target.files||[]).filter((file)=>file.type.startsWith("image/"));setWorkPhotoFiles((current)=>[...current,...files]);e.target.value="";}}/></label><label className="attachment-button">🖼️ Choisir une image dans Photos ou Fichiers<input type="file" accept="image/*" multiple onChange={(e)=>{const files=Array.from(e.target.files||[]).filter((file)=>file.type.startsWith("image/"));setWorkPhotoFiles((current)=>[...current,...files]);e.target.value="";}}/></label></div>{workPhotoFiles.length>0&&<div className="attachments-list">{workPhotoFiles.map((file,index)=><div className="attachment-item" key={file.name+"-"+file.lastModified+"-"+index}><LocalImagePreview file={file}/><span>{file.name}</span><button type="button" aria-label={"Retirer "+file.name} onClick={()=>setWorkPhotoFiles((current)=>current.filter((_,i)=>i!==index))}>×</button></div>)}</div>}<div style={{display:"flex",gap:10,alignItems:"center",flexWrap:"wrap",marginTop:10}}><button className="secondary" type="button" disabled={workPhotoSaving||workPhotoFiles.length===0} onClick={()=>uploadWorkPhotos(os?.interventionId||null,true)}>{workPhotoSaving?"Enregistrement des photos...":"💾 Enregistrer les photos"}</button><span style={{fontSize:13,color:"#555"}}>Photos enregistrées : {travauxPhotos.length}</span></div></div>
+        <div className="attachments-section" style={{marginTop:18}}><label>📷 Photos des travaux réalisés — obligatoires pour transmettre les travaux</label><div className="attachments-buttons"><label className="attachment-button">📷 Prendre une photo<input type="file" accept="image/*" capture="environment" multiple onChange={(e)=>{const files=Array.from(e.target.files||[]).filter((file)=>file.type.startsWith("image/"));setWorkPhotoFiles((current)=>[...current,...files]);e.target.value="";}}/></label><label className="attachment-button">🖼️ Choisir une image dans Photos ou Fichiers<input type="file" accept="image/*,.heic,.heif,.jpg,.jpeg,.png,.webp,.avif" multiple onChange={(e)=>{const files=Array.from(e.target.files||[]).filter((file)=>Boolean(getPhotoMimeType(file)));setWorkPhotoFiles((current)=>[...current,...files]);e.target.value="";}}/></label></div>{workPhotoFiles.length>0&&<div className="attachments-list">{workPhotoFiles.map((file,index)=><div className="attachment-item" key={file.name+"-"+file.lastModified+"-"+index}><LocalImagePreview file={file}/><span>{file.name}</span><button type="button" aria-label={"Retirer "+file.name} onClick={()=>setWorkPhotoFiles((current)=>current.filter((_,i)=>i!==index))}>×</button></div>)}</div>}<div style={{display:"flex",gap:10,alignItems:"center",flexWrap:"wrap",marginTop:10}}><button className="secondary" type="button" disabled={workPhotoSaving||workPhotoFiles.length===0} onClick={()=>uploadWorkPhotos(os?.interventionId||null,true)}>{workPhotoSaving?"Enregistrement des photos...":"💾 Enregistrer les photos"}</button><span style={{fontSize:13,color:"#555"}}>Photos enregistrées : {travauxPhotos.length}</span></div></div>
         <h4>Autres travaux</h4><div className="work-grid"><div><label>Circulation</label><select value={circulationType} onChange={(e)=>setCirculationType(e.target.value)}><option value="">Non renseignée</option><option value="K10">2 agents avec panneaux K10</option><option value="FEUX">2 feux tricolores à batterie</option></select>{circulationType&&<input type="number" min="0" step="0.5" value={circulationHours} onChange={(e)=>setCirculationHours(e.target.value)} placeholder="Durée en heures"/>}{circulationHours&&!isNaN(Number(circulationHours))&&<small>{(Number(circulationHours)/4).toFixed(2)} unité(s) de 1/2 journée facturable(s)</small>}</div><div><label>Marquage — surface de peinture (m²)</label><input type="number" min="0" step="0.01" value={marquageSurface} onChange={(e)=>setMarquageSurface(e.target.value)} placeholder="Surface de peinture uniquement"/></div></div><h4>Observations</h4><textarea value={workComment} onChange={(e)=>setWorkComment(e.target.value)} placeholder="Difficultés rencontrées, particularités, complément d'information..." rows="4"/><div className="work-actions">{["admin","bureau","equipe_terrain"].includes(profile?.role) && ["Planifié","Travaux en cours","Travaux réalisés"].includes(os?.status) && <button className="primary" type="button" onClick={save}>✅ Transmettre les travaux réalisés</button>}{os?.status === "À planifier" && <span style={{ color: "#667085", fontSize: 13 }}>Préparation possible : renseignez les mesures et ajoutez les photos. La transmission sera disponible après planification.</span>}{!["À planifier","Planifié","Travaux en cours","Travaux réalisés"].includes(os?.status) && <span style={{ color: "#667085", fontSize: 13 }}>Les travaux ne peuvent plus être transmis depuis ce statut.</span>}</div>
       </div></fieldset></div>}
       {activeTab==="planning"&&<div className="os-section"><h3>Planning</h3><div className="os-field"><label>Date d'intervention</label>{canManagePlanning ? <input type="date" value={plannedDate} onChange={(e)=>setPlannedDate(e.target.value)}/> : <strong>{plannedDate ? new Date(plannedDate + "T12:00:00").toLocaleDateString("fr-FR") : "Aucune date planifiée"}</strong>}<small>{day?`Jour : ${day}`:"Aucune date planifiée"}</small></div>{canManagePlanning && <div className="os-field"><button type="button" className="primary" disabled={planningSaving} onClick={savePlanning}>{planningSaving?"Enregistrement...":"💾 Enregistrer le planning"}</button></div>}<div className="os-field"><label>Statut OS</label><strong>{status||"—"}</strong></div><div className="os-planning-info"><div><span>Équipe</span><strong>{os.team||"Non affectée"}</strong></div><div><span>Secteur</span><strong>{os.sector||"—"}</strong></div></div></div>}
