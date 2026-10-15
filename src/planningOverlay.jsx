@@ -21,6 +21,8 @@ function Planner({ onClose, initialView = "mois" }) {
   const [selectedDate, setSelectedDate] = useState(iso(new Date()));
   const [orders, setOrders] = useState([]);
   const [teams, setTeams] = useState([]);
+  const [sectors, setSectors] = useState([]);
+  const [sectorFilter, setSectorFilter] = useState("Tous");
   const [loading, setLoading] = useState(true);
   const [savingId, setSavingId] = useState(null);
   const [error, setError] = useState("");
@@ -35,11 +37,16 @@ function Planner({ onClose, initialView = "mois" }) {
 
   async function load() {
     setLoading(true); setError("");
-    const { data: rows, error: woError } = await supabase.from("work_orders").select("id, os_number, creation_date, address, postal_code, city, latitude, longitude, material_detail, planned_surface_m2, status, deadline_date, is_night").order("os_number", { ascending: true });
+    const { data: rows, error: woError } = await supabase.from("work_orders").select("id, os_number, creation_date, address, postal_code, city, sector_id, latitude, longitude, material_detail, planned_surface_m2, status, deadline_date, is_night").order("os_number", { ascending: true });
     if (woError) { setError(woError.message); setLoading(false); return; }
     const { data: settingsRow, error: settingsError } = await supabase.from("app_settings").select("os_label").order("created_at", { ascending: true }).limit(1).maybeSingle();
     if (settingsError) console.error("Erreur lecture du libellé OS pour le planning :", settingsError);
     const osLabel = String(settingsRow?.os_label || "OS").trim() || "OS";
+    const sectorResult = await supabase.from("sectors").select("id, name, active, sort_order").order("sort_order", { ascending: true });
+    const sectorRows = sectorResult.error ? [] : (sectorResult.data || []).filter((sector) => sector.active !== false);
+    if (sectorResult.error) console.error("Erreur chargement secteurs du planning :", sectorResult.error);
+    setSectors(sectorRows);
+    const sectorById = new Map(sectorRows.map((sector) => [sector.id, sector.name]));
     const ids = (rows || []).map((r) => r.id);
     let interventions = [];
     if (ids.length) {
@@ -57,7 +64,7 @@ function Planner({ onClose, initialView = "mois" }) {
     setTeams(teamRows);
     setOrders((rows || []).map((r) => {
       const i = byWO.get(r.id);
-      return { ...r, osLabel, interventionId: i?.id || null, planned_date: i?.planned_date || null, planned_order: Number(i?.planned_order || 0), team_id: i?.team_id || null, team_name: byTeam.get(i?.team_id) || "Non affectée" };
+      return { ...r, osLabel, sector_name: sectorById.get(r.sector_id) || "Non classé", interventionId: i?.id || null, planned_date: i?.planned_date || null, planned_order: Number(i?.planned_order || 0), team_id: i?.team_id || null, team_name: byTeam.get(i?.team_id) || "Non affectée" };
     }));
     setLoading(false);
   }
@@ -134,7 +141,7 @@ function Planner({ onClose, initialView = "mois" }) {
   const monthCells = useMemo(() => { const first = new Date(cursor.getFullYear(), cursor.getMonth(), 1, 12); const start = startOfWeek(first); return Array.from({ length: 42 }, (_, i) => addDays(start, i)); }, [cursor]);
   const weekCells = useMemo(() => Array.from({ length: 7 }, (_, i) => addDays(startOfWeek(cursor), i)), [cursor]);
   const selectedOrders = byDate.get(selectedDate) || [];
-  const mapOrders = useMemo(() => orders.filter((o) => STATUS_PLANIFIABLE.includes(o.status)), [orders]);
+  const mapOrders = useMemo(() => orders.filter((o) => STATUS_PLANIFIABLE.includes(o.status) && (sectorFilter === "Tous" || o.sector_name === sectorFilter)), [orders, sectorFilter]);
   const geoTargets = useMemo(() => orders.filter((o) => STATUS_PLANIFIABLE.includes(o.status) || !!o.planned_date), [orders]);
 
   useEffect(() => {
@@ -246,7 +253,7 @@ function Planner({ onClose, initialView = "mois" }) {
     let cancelled = false;
     if (routeLayerRef.current) { map.removeLayer(routeLayerRef.current); routeLayerRef.current = null; }
     if (!geocodingComplete) { setRouteSummary("Localisation des adresses avant calcul de l’itinéraire…"); return; }
-    const stops = (byDate.get(selectedDate) || []).filter((order) => STATUS_PLANIFIABLE.includes(order.status) && geoPoints[order.id]);
+    const stops = (byDate.get(selectedDate) || []).filter((order) => STATUS_PLANIFIABLE.includes(order.status) && geoPoints[order.id] && (sectorFilter === "Tous" || order.sector_name === sectorFilter));
     if (stops.length === 0) { setRouteSummary("Aucun OS géolocalisé sur cette journée."); return; }
     if (stops.length === 1) { setRouteSummary("1 arrêt planifié. Ajoutez un autre OS à la journée pour calculer un itinéraire."); map.setView([geoPoints[stops[0].id].lat, geoPoints[stops[0].id].lon], 14); return; }
     setRouteSummary("Calcul de l’itinéraire de " + stops.length + " arrêts…");
@@ -271,7 +278,7 @@ function Planner({ onClose, initialView = "mois" }) {
     }
     calculateRoute();
     return () => { cancelled = true; };
-  }, [view, selectedDate, byDate, geoPoints, geocodingComplete]);
+  }, [view, selectedDate, byDate, geoPoints, geocodingComplete, sectorFilter]);
 
   function navigateDate(delta) {
     if (view === "mois") { setCursor(new Date(cursor.getFullYear(), cursor.getMonth() + delta, 1, 12)); return; }
@@ -315,10 +322,10 @@ function Planner({ onClose, initialView = "mois" }) {
             <div ref={mapElementRef} className="setom-map-canvas" aria-label="Carte interactive des OS planifiables"></div>
             <small className="setom-map-attribution">{mapStatus} · Fond cartographique © OpenStreetMap contributors · Géocodage IGN Géoplateforme · calcul routier OSRM (service public de démonstration).</small>
           </div>
-          <aside className="setom-map-order-list"><header><strong>OS planifiables</strong><span>{mapOrders.length} OS</span></header>
+          <aside className="setom-map-order-list"><header style={{ display: "flex", flexDirection: "column", alignItems: "stretch", gap: 8 }}><div style={{ display: "flex", justifyContent: "space-between", gap: 8 }}><strong>OS planifiables</strong><span>{mapOrders.length} OS</span></div><label style={{ fontSize: 12, color: "#475569" }}>Secteur<select value={sectorFilter} onChange={(e) => setSectorFilter(e.target.value)}><option value="Tous">Tous les secteurs</option>{sectors.map((sector) => <option key={sector.id} value={sector.name}>{sector.name}</option>)}<option value="Non classé">Non classés</option></select></label></header>
             {mapOrders.map((o) => <article className="setom-map-order" key={o.id}>
               <strong>{fullOsNumber(o)}</strong><span>{o.address}{o.city ? `, ${o.city}` : ""}</span>
-              <small>{o.material_detail || "Intervention"} · {o.planned_surface_m2 ? `${o.planned_surface_m2} m²` : "surface non renseignée"}{o.is_night ? " · Nuit" : ""}</small>
+              <small>{o.sector_name || "Non classé"} · {o.material_detail || "Intervention"} · {o.planned_surface_m2 ? `${o.planned_surface_m2} m²` : "surface non renseignée"}{o.is_night ? " · Nuit" : ""}</small>
               <label>Date de passage<input type="date" value={o.planned_date || selectedDate} disabled={savingId === o.id} onChange={(e) => planOrder(o, e.target.value || null, o.team_id)} /></label>
               <label>Équipe<select value={o.team_id || ""} onChange={(e) => changeOrderTeam(o, e.target.value || null)} disabled={savingId === o.id}><option value="">Non affectée</option>{o.team_id && !teams.some((t) => t.id === o.team_id) && <option value={o.team_id} disabled>Inactive — {o.team_name || "Équipe"}</option>}{teams.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}</select></label>
               <button disabled={savingId === o.id || o.planned_date === selectedDate} onClick={() => planOrder(o, selectedDate, o.team_id)}>{o.planned_date ? "Déplacer vers cette journée" : "Ajouter à cette journée"}</button>
