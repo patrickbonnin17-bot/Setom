@@ -21,6 +21,7 @@ function Planner({ onClose, initialView = "mois" }) {
   const [selectedDate, setSelectedDate] = useState(iso(new Date()));
   const [orders, setOrders] = useState([]);
   const [teams, setTeams] = useState([]);
+  const [plannerMaterials, setPlannerMaterials] = useState([]);
   const [sectors, setSectors] = useState([]);
   const [sectorFilter, setSectorFilter] = useState("Tous");
   const [loading, setLoading] = useState(true);
@@ -47,6 +48,9 @@ function Planner({ onClose, initialView = "mois" }) {
     const osLabel = String(settingsRow?.os_label || "OS").trim() || "OS";
     const defaultCapacity = Number(settingsRow?.enrobee_reference_capacity_m2);
     setDefaultDailyCapacity(Number.isFinite(defaultCapacity) && defaultCapacity > 0 ? defaultCapacity : 35);
+    const materialResult = await supabase.from("materials").select("id, name, category, active, planning_difficulty, indicative_capacity_m2, sort_order").order("sort_order", { ascending: true });
+    if (materialResult.error) console.error("Erreur chargement capacités matériaux :", materialResult.error);
+    setPlannerMaterials(materialResult.error ? [] : (materialResult.data || []).filter((material) => material.active !== false));
     const sectorResult = await supabase.from("sectors").select("id, name, active, sort_order").order("sort_order", { ascending: true });
     const sectorRows = sectorResult.error ? [] : (sectorResult.data || []).filter((sector) => sector.active !== false);
     if (sectorResult.error) console.error("Erreur chargement secteurs du planning :", sectorResult.error);
@@ -125,8 +129,15 @@ function Planner({ onClose, initialView = "mois" }) {
             if (sectorTeams.length) teamPool = sectorTeams;
           }
           const surface = Math.max(0, Number(order.planned_surface_m2 || 0));
+          const materialName = String(order.material_detail || "").trim().toLocaleLowerCase("fr-FR");
+          const materialRow = plannerMaterials.find((material) => String(material.name || "").trim().toLocaleLowerCase("fr-FR") === materialName)
+            || plannerMaterials.find((material) => String(material.category || "").trim().toLocaleLowerCase("fr-FR") === materialName)
+            || null;
+          const materialDifficulty = Number(materialRow?.planning_difficulty) > 0 ? Number(materialRow.planning_difficulty) : 1;
           const choices = teamPool.map((team) => {
-            const capacity = Number(team.indicative_capacity) > 0 ? Number(team.indicative_capacity) : defaultDailyCapacity;
+            const teamCapacity = Number(team.indicative_capacity) > 0 ? Number(team.indicative_capacity) : defaultDailyCapacity;
+            const materialCapacity = Number(materialRow?.indicative_capacity_m2) > 0 ? Number(materialRow.indicative_capacity_m2) : teamCapacity;
+            const capacity = Math.min(teamCapacity, materialCapacity) / materialDifficulty;
             const key = candidateDate + "|" + team.id;
             const used = Number(loads.get(key) || 0);
             const fits = surface > capacity ? used === 0 : used + surface <= capacity;
