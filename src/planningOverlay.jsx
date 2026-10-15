@@ -26,6 +26,7 @@ function Planner({ onClose, initialView = "mois" }) {
   const [error, setError] = useState("");
   const [mapStatus, setMapStatus] = useState("La carte charge les adresses des OS.");
   const [geoPoints, setGeoPoints] = useState({});
+  const [geocodingComplete, setGeocodingComplete] = useState(false);
   const [routeSummary, setRouteSummary] = useState("Sélectionnez une journée pour afficher son itinéraire.");
   const mapElementRef = useRef(null);
   const mapInstanceRef = useRef(null);
@@ -150,9 +151,16 @@ function Planner({ onClose, initialView = "mois" }) {
   }, [view]);
 
   useEffect(() => {
-    if (view !== "carte" || !geoTargets.length) return;
+    if (view !== "carte") return;
     let cancelled = false;
+    if (!geoTargets.length) {
+      setGeoPoints({});
+      setMapStatus("Aucun OS à géocoder.");
+      setGeocodingComplete(true);
+      return () => { cancelled = true; };
+    }
     async function geocodeOrders() {
+      setGeocodingComplete(false);
       let cache = {};
       try { cache = JSON.parse(sessionStorage.getItem("setom-geocodes-v1") || "{}"); } catch { cache = {}; }
       const next = {};
@@ -197,6 +205,7 @@ function Planner({ onClose, initialView = "mois" }) {
         setGeoPoints(next);
         const located = Object.keys(next).length;
         setMapStatus(located + "/" + geoTargets.length + " adresses localisées. Les adresses non reconnues restent accessibles dans la liste.");
+        setGeocodingComplete(true);
       }
     }
     geocodeOrders();
@@ -233,6 +242,7 @@ function Planner({ onClose, initialView = "mois" }) {
     if (view !== "carte" || !map) return;
     let cancelled = false;
     if (routeLayerRef.current) { map.removeLayer(routeLayerRef.current); routeLayerRef.current = null; }
+    if (!geocodingComplete) { setRouteSummary("Localisation des adresses avant calcul de l’itinéraire…"); return; }
     const stops = (byDate.get(selectedDate) || []).filter((order) => STATUS_PLANIFIABLE.includes(order.status) && geoPoints[order.id]);
     if (stops.length === 0) { setRouteSummary("Aucun OS géolocalisé sur cette journée."); return; }
     if (stops.length === 1) { setRouteSummary("1 arrêt planifié. Ajoutez un autre OS à la journée pour calculer un itinéraire."); map.setView([geoPoints[stops[0].id].lat, geoPoints[stops[0].id].lon], 14); return; }
@@ -258,7 +268,7 @@ function Planner({ onClose, initialView = "mois" }) {
     }
     calculateRoute();
     return () => { cancelled = true; };
-  }, [view, selectedDate, byDate, geoPoints]);
+  }, [view, selectedDate, byDate, geoPoints, geocodingComplete]);
 
   function navigateDate(delta) {
     if (view === "mois") { setCursor(new Date(cursor.getFullYear(), cursor.getMonth() + delta, 1, 12)); return; }
