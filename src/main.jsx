@@ -374,12 +374,37 @@ function OSModal({ os, onClose, onUpdate }) {
   const [issueComment, setIssueComment] = useState(os?.suspensionComment || "");
   const [issueNightProposal, setIssueNightProposal] = useState(!!os?.isNight);
   const [issueSaving, setIssueSaving] = useState(false);
+  const [osEditMode, setOsEditMode] = useState(false);
+  const [osEditLoading, setOsEditLoading] = useState(false);
+  const [osEditSaving, setOsEditSaving] = useState(false);
+  const [osEditError, setOsEditError] = useState("");
+  const [osEditDraft, setOsEditDraft] = useState({ address: "", postal_code: "", city: "", material_detail: "", planned_surface_m2: "", deadline_date: "", particularities: "" });
 
   useEffect(() => {
     setIssueReason(os?.suspensionReason || "");
     setIssueComment(os?.suspensionComment || "");
     setIssueNightProposal(!!os?.isNight);
   }, [os?.dbId, os?.suspensionReason, os?.suspensionComment, os?.isNight]);
+
+  useEffect(() => {
+    if (!os?.dbId) return;
+    let cancelled = false;
+    async function loadEditableOSFields() {
+      setOsEditLoading(true); setOsEditError("");
+      const { data, error } = await supabase.from("work_orders").select("address, postal_code, city, material_detail, planned_surface_m2, deadline_date, particularities").eq("id", os.dbId).single();
+      if (error) {
+        console.error("Erreur chargement des informations modifiables de l'OS :", error);
+        if (!cancelled) { setOsEditError(error.message || "Impossible de charger l'OS."); setOsEditLoading(false); }
+        return;
+      }
+      if (!cancelled) {
+        setOsEditDraft({ address: data.address || "", postal_code: data.postal_code || "", city: data.city || "", material_detail: data.material_detail || "", planned_surface_m2: data.planned_surface_m2 == null ? "" : String(data.planned_surface_m2), deadline_date: data.deadline_date || "", particularities: data.particularities || "" });
+        setOsEditLoading(false);
+      }
+    }
+    loadEditableOSFields();
+    return () => { cancelled = true; };
+  }, [os?.dbId]);
 
   useEffect(() => {
     if (!os?.dbId) return; let cancelled = false;
@@ -481,6 +506,72 @@ function OSModal({ os, onClose, onUpdate }) {
       console.error("Erreur de réactivation OS :", error);
       alert("Impossible de réactiver l'OS :\n\n" + (error?.message || "Erreur inconnue"));
     } finally { setIssueSaving(false); }
+  }
+
+  async function saveOSEdit(event) {
+    event.preventDefault();
+    setOsEditError("");
+    if (!os?.dbId || osEditSaving) return;
+    if (!["Nouveau", "À planifier", "Planifié", "Travaux en cours", "En erreur"].includes(os.status)) {
+      setOsEditError("Les informations de l'OS sont verrouillées après la transmission des travaux. Utilisez le constat pour les ajustements de facturation.");
+      return;
+    }
+    const address = String(osEditDraft.address || "").trim();
+    const material = String(osEditDraft.material_detail || "").trim();
+    const surfaceText = String(osEditDraft.planned_surface_m2 ?? "").trim().replace(",", ".");
+    const surface = surfaceText === "" ? null : Number(surfaceText);
+    if (!address) { setOsEditError("L'adresse est obligatoire."); return; }
+    if (!material) { setOsEditError("Le matériau ou type d'intervention est obligatoire."); return; }
+    if (surface !== null && (!Number.isFinite(surface) || surface < 0)) { setOsEditError("La surface prévue doit être un nombre positif ou nul."); return; }
+    if (!osEditDraft.deadline_date) { setOsEditError("L'échéance de l'OS est obligatoire."); return; }
+    const { data: authData, error: authError } = await supabase.auth.getUser();
+    const user = authData?.user;
+    if (authError || !user) { setOsEditError("Connexion requise pour modifier cet OS."); return; }
+    setOsEditSaving(true);
+    try {
+      const payload = {
+        address,
+        postal_code: String(osEditDraft.postal_code || "").trim() || null,
+        city: String(osEditDraft.city || "").trim() || null,
+        material_detail: material,
+        planned_surface_m2: surface,
+        deadline_date: osEditDraft.deadline_date,
+        particularities: String(osEditDraft.particularities || "").trim() || null,
+        updated_by: user.id,
+        updated_at: new Date().toISOString()
+      };
+      const { data, error } = await supabase.from("work_orders").update(payload).eq("id", os.dbId).select("address, postal_code, city, material_detail, planned_surface_m2, deadline_date, particularities").single();
+      if (error) throw error;
+      const saved = {
+        address: data.address || "",
+        postal_code: data.postal_code || "",
+        city: data.city || "",
+        material_detail: data.material_detail || "",
+        planned_surface_m2: data.planned_surface_m2 == null ? "" : String(data.planned_surface_m2),
+        deadline_date: data.deadline_date || "",
+        particularities: data.particularities || ""
+      };
+      setOsEditDraft(saved);
+      setOsEditMode(false);
+      onUpdate(os.id, {
+        address: saved.address + (saved.city ? ", " + saved.city : ""),
+        work: saved.material_detail || "Intervention",
+        intervention: saved.material_detail || "Intervention",
+        trade: saved.material_detail || "Intervention",
+        sector: saved.city || "",
+        quantity: saved.planned_surface_m2 === "" ? "" : saved.planned_surface_m2 + " m²",
+        deadline: saved.deadline_date,
+        postalCode: saved.postal_code,
+        city: saved.city,
+        materialDetail: saved.material_detail,
+        particularities: saved.particularities
+      });
+      window.dispatchEvent(new Event("setom:planning-updated"));
+      alert("✅ Informations de l'OS enregistrées.");
+    } catch (error) {
+      console.error("Erreur modification OS :", error);
+      setOsEditError(error?.message || "Impossible d'enregistrer les modifications.");
+    } finally { setOsEditSaving(false); }
   }
 
   async function savePlanning() {
@@ -662,7 +753,26 @@ function OSModal({ os, onClose, onUpdate }) {
     <div className="os-detail-summary"><div className="os-detail-badge"><span>Zone de réfection</span><strong>{os.rehabilitationZone||"—"}</strong></div>{os.rehabilitationZone==="Autre"&&os.rehabilitationOtherDetail&&<div className="os-detail-badge"><span>Précision</span><strong>{os.rehabilitationOtherDetail}</strong></div>}{os.rehabilitationZone==="Chaussée + trottoir"&&<><div className="os-detail-badge"><span>Chaussée</span><strong>{os.roadSurface!=null?`${os.roadSurface} m²`:"—"}</strong></div><div className="os-detail-badge"><span>Trottoir</span><strong>{os.sidewalkSurface!=null?`${os.sidewalkSurface} m²`:"—"}</strong></div></>}{os.rehabilitationZone==="Chaussée"&&<div className="os-detail-badge"><span>Surface chaussée</span><strong>{os.roadSurface!=null?`${os.roadSurface} m²`:"—"}</strong></div>}{os.rehabilitationZone==="Trottoir"&&<div className="os-detail-badge"><span>Surface trottoir</span><strong>{os.sidewalkSurface!=null?`${os.sidewalkSurface} m²`:"—"}</strong></div>}<div className="os-detail-badge"><span>Statut</span><strong>{os.status||"Nouveau"}</strong></div><div className="os-detail-badge"><span>Matériau</span><strong>{os.work||"—"}</strong></div><div className="os-detail-badge"><span>Surface</span><strong>{os.quantity||"—"}</strong></div><div className="os-detail-badge"><span>Équipe</span><strong>{os.team||"Non affectée"}</strong></div></div>
     <div className="os-tabs">{tabs.map((tab)=><button key={tab.id} type="button" className={activeTab===tab.id?"os-tab active":"os-tab"} onClick={()=>setActiveTab(tab.id)}><span>{tab.icon}</span><span>{tab.label}</span></button>)}</div>
     <div className="os-tab-content">
-      {activeTab==="resume"&&<div className="os-section"><h3>Informations générales</h3><div className="os-info-grid"><div><span>Ordre de service</span><strong>{os.id}</strong></div><div><span>Adresse</span><strong>{os.address||"—"}</strong></div><div><span>Matériau</span><strong>{os.work||"—"}</strong></div><div><span>Métier</span><strong>{os.trade||"—"}</strong></div><div><span>Secteur</span><strong>{os.sector||"—"}</strong></div><div><span>Quantité prévue</span><strong>{os.quantity||"—"}</strong></div><div><span>Équipe</span><strong>{os.team||"Non affectée"}</strong></div><div><span>Jour prévu</span><strong>{os.day||"Non planifié"}</strong></div></div><div className="os-status-box"><span>Échéance</span><strong>{os.deadline?new Date(os.deadline).toLocaleDateString("fr-FR"):"—"}</strong></div><div className="os-issue-panel" style={{ marginTop: 18, padding: 16, border: "1px solid #d9e0e7", borderRadius: 12, background: "#fbfcfe" }}>
+      {activeTab==="resume"&&<div className="os-section"><h3>Informations générales</h3><div className="os-info-grid"><div><span>Ordre de service</span><strong>{os.id}</strong></div><div><span>Adresse</span><strong>{os.address||"—"}</strong></div><div><span>Matériau</span><strong>{os.work||"—"}</strong></div><div><span>Métier</span><strong>{os.trade||"—"}</strong></div><div><span>Secteur</span><strong>{os.sector||"—"}</strong></div><div><span>Quantité prévue</span><strong>{os.quantity||"—"}</strong></div><div><span>Équipe</span><strong>{os.team||"Non affectée"}</strong></div><div><span>Jour prévu</span><strong>{os.day||"Non planifié"}</strong></div></div><div className="os-status-box"><span>Échéance</span><strong>{os.deadline?new Date(os.deadline).toLocaleDateString("fr-FR"):"—"}</strong></div><div className="card" style={{ marginTop: 18, border: "1px solid #d9e0e7" }}>
+    <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
+      <div><strong>📝 Informations de l'ordre de service</strong><div style={{ color: "#667085", fontSize: 12, marginTop: 4 }}>Modifier l'adresse, le matériau, la surface et l'échéance sans changer le numéro OS.</div></div>
+      {["Nouveau", "À planifier", "Planifié", "Travaux en cours", "En erreur"].includes(os.status) && <button type="button" className="secondary" onClick={() => { setOsEditError(""); setOsEditMode((value) => !value); }} disabled={osEditLoading || osEditSaving}>{osEditMode ? "Fermer" : "✏️ Modifier l'OS"}</button>}
+    </div>
+    {osEditLoading && <p style={{ fontSize: 13, color: "#667085" }}>Chargement des informations…</p>}
+    {osEditError && <div style={{ color: "#b42318", marginTop: 10, fontSize: 13 }}>{osEditError}</div>}
+    {!osEditMode && !osEditLoading && <div style={{ marginTop: 10, fontSize: 13, color: "#344054" }}><strong>{osEditDraft.address || "Adresse non renseignée"}</strong>{osEditDraft.postal_code || osEditDraft.city ? <div>{[osEditDraft.postal_code, osEditDraft.city].filter(Boolean).join(" ")}</div> : null}<div>{osEditDraft.material_detail || "Type non renseigné"} · {osEditDraft.planned_surface_m2 ? osEditDraft.planned_surface_m2 + " m²" : "Surface non renseignée"}</div>{osEditDraft.particularities && <p style={{ whiteSpace: "pre-wrap" }}>{osEditDraft.particularities}</p>}</div>}
+    {osEditMode && <form onSubmit={saveOSEdit} style={{ marginTop: 14, display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(220px,1fr))", gap: 12 }}>
+      <div><label htmlFor="os-edit-address">Adresse *</label><input id="os-edit-address" value={osEditDraft.address} onChange={(e) => setOsEditDraft((current) => ({ ...current, address: e.target.value }))} required style={{ width: "100%", boxSizing: "border-box" }}/></div>
+      <div><label htmlFor="os-edit-postal">Code postal</label><input id="os-edit-postal" value={osEditDraft.postal_code} onChange={(e) => setOsEditDraft((current) => ({ ...current, postal_code: e.target.value }))} style={{ width: "100%", boxSizing: "border-box" }}/></div>
+      <div><label htmlFor="os-edit-city">Ville</label><input id="os-edit-city" value={osEditDraft.city} onChange={(e) => setOsEditDraft((current) => ({ ...current, city: e.target.value }))} style={{ width: "100%", boxSizing: "border-box" }}/></div>
+      <div><label htmlFor="os-edit-material">Matériau / intervention *</label><input id="os-edit-material" value={osEditDraft.material_detail} onChange={(e) => setOsEditDraft((current) => ({ ...current, material_detail: e.target.value }))} required style={{ width: "100%", boxSizing: "border-box" }}/></div>
+      <div><label htmlFor="os-edit-surface">Surface prévue (m²)</label><input id="os-edit-surface" type="number" min="0" step="0.01" value={osEditDraft.planned_surface_m2} onChange={(e) => setOsEditDraft((current) => ({ ...current, planned_surface_m2: e.target.value }))} style={{ width: "100%", boxSizing: "border-box" }}/></div>
+      <div><label htmlFor="os-edit-deadline">Échéance *</label><input id="os-edit-deadline" type="date" value={osEditDraft.deadline_date} onChange={(e) => setOsEditDraft((current) => ({ ...current, deadline_date: e.target.value }))} required style={{ width: "100%", boxSizing: "border-box" }}/></div>
+      <div style={{ gridColumn: "1 / -1" }}><label htmlFor="os-edit-particularities">Particularités / consignes</label><textarea id="os-edit-particularities" rows={3} value={osEditDraft.particularities} onChange={(e) => setOsEditDraft((current) => ({ ...current, particularities: e.target.value }))} style={{ width: "100%", boxSizing: "border-box" }}/></div>
+      <div style={{ gridColumn: "1 / -1", display: "flex", gap: 8, flexWrap: "wrap" }}><button className="primary" type="submit" disabled={osEditSaving}>{osEditSaving ? "Enregistrement…" : "💾 Enregistrer l'OS"}</button><button className="secondary" type="button" disabled={osEditSaving} onClick={() => { setOsEditMode(false); setOsEditError(""); }}>Annuler</button></div>
+    </form>}
+    {!["Nouveau", "À planifier", "Planifié", "Travaux en cours", "En erreur"].includes(os.status) && <p style={{ fontSize: 12, color: "#667085", marginBottom: 0 }}>Les champs de l'OS sont verrouillés après transmission des travaux ; le constat dispose de ses propres outils de correction.</p>}
+  </div><div className="os-issue-panel" style={{ marginTop: 18, padding: 16, border: "1px solid #d9e0e7", borderRadius: 12, background: "#fbfcfe" }}>
   <h3 style={{ marginTop: 0 }}>⚠️ Aléas, erreurs et travail de nuit</h3>
   <p style={{ color: "#667085", fontSize: 13 }}>Signalez une contrainte avant la transmission des travaux. La date et l'équipe prévues sont conservées pendant la suspension.</p>
   {os.status === "En erreur" && <div style={{ padding: 10, borderRadius: 8, background: "#fff1f2", color: "#9f1239", marginBottom: 12 }}>
