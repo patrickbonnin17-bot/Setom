@@ -23,11 +23,11 @@ function styles(){
 
 async function load(date){
  const [o,c,l,i,m,t] = await Promise.all([
-  supabase.from("work_orders").select("id,os_number,status,sector_id,planned_surface_m2,material_id,material_detail").order("os_number",{ascending:true}),
+  supabase.from("work_orders").select("id,os_number,status,sector_id,planned_surface_m2,material_id,material_detail,actual_road_surface_m2,actual_sidewalk_surface_m2,actual_other_surface_m2").order("os_number",{ascending:true}),
   supabase.from("constats").select("id,work_order_id,status,constat_date,total_amount,validated_at,created_at").in("status",["Validé","Payé","Archivé"]).order("created_at",{ascending:false}),
   supabase.from("constat_lines").select("constat_id,bpu_line_id,designation,quantity,unit,unit_price,amount,actual_quantity,billing_coefficient,actual_thickness_cm"),
   supabase.from("interventions").select("id,work_order_id,team_id,planned_date,actual_date,arrival_time,departure_time,actual_surface_m2"),
-  supabase.from("materials").select("id,name,purchase_price_per_t,density_t_m3,default_thickness_cm"),
+  supabase.from("materials").select("id,name,category,purchase_price_per_t,density_t_m3,default_thickness_cm"),
   supabase.from("truck_material_consumptions").select("work_order_id,material_id,consumption_date,quantity,estimated").eq("consumption_date",date)
  ]);
  for(const r of [o,c,l,i,m,t]) if(r.error) throw r.error;
@@ -47,10 +47,29 @@ function rowFor(order,data,date){
  const revenue=constat?(n(constat.total_amount)||lineTotal):0;
  const siteMinutes=dayInts.reduce((s,x)=>s+mins(x.arrival_time,x.departure_time),0);
  const actualCons=data.consumptions.get(order.id)||[];
- let materialCost=0, materialQty=0;
- for(const x of actualCons){ const mat=data.materials.get(x.material_id); materialQty+=n(x.quantity); materialCost+=n(x.quantity)*n(mat?.purchase_price_per_t); }
+ const materialDetail=String(order.material_detail||"").toLowerCase();
+ const material=data.materials.get(order.material_id)||[...data.materials.values()].find(m=>{
+  const name=String(m.name||"").toLowerCase(), category=String(m.category||"").toLowerCase();
+  return (name&&materialDetail.includes(name))||(category&&materialDetail.includes(category));
+ })||null;
  const hasActualMaterial=actualCons.some(x=>x.estimated===false);
- return {order,constat,ints:dayInts,revenue,siteMinutes,laborCost:0,materialCost,materialQty,hasActualMaterial,totalCost:materialCost,margin:revenue-materialCost,marginPct:revenue?(revenue-materialCost)/revenue*100:0,timeProvisional:false};
+ let materialQty=0,materialCost=0,materialEstimateAvailable=false;
+ if(actualCons.length){
+  for(const x of actualCons){const mat=data.materials.get(x.material_id);materialQty+=n(x.quantity);materialCost+=n(x.quantity)*n(mat?.purchase_price_per_t);}
+ }else{
+  const measuredSurface=n(order.actual_road_surface_m2)+n(order.actual_sidewalk_surface_m2)+n(order.actual_other_surface_m2);
+  const interventionSurface=dayInts.reduce((sum,x)=>sum+n(x.actual_surface_m2),0);
+  const surface=measuredSurface>0?measuredSurface:(interventionSurface>0?interventionSurface:n(order.planned_surface_m2));
+  const thickness=n(material?.default_thickness_cm);
+  const density=n(material?.density_t_m3);
+  const price=n(material?.purchase_price_per_t);
+  materialEstimateAvailable=Boolean(material&&surface>0&&thickness>0&&density>0&&price>0);
+  if(materialEstimateAvailable){
+   materialQty=surface*thickness/100*density;
+   materialCost=materialQty*price;
+  }
+ }
+ return {order,constat,ints:dayInts,revenue,siteMinutes,laborCost:0,materialCost,materialQty,hasActualMaterial,materialEstimateAvailable,totalCost:materialCost,margin:revenue-materialCost,marginPct:revenue?(revenue-materialCost)/revenue*100:0,timeProvisional:false};
 }
 
 function allocateLaborCosts(rows,rate){
@@ -116,9 +135,9 @@ async function render(date){
  try{
   const data=await load(date); const all=data.orders.map(o=>rowFor(o,data,date)); const rows=all.filter(r=>r.ints.length>0); const allocation=allocateLaborCosts(rows,n(localStorage.getItem(LABOR_RATE_KEY)??45));
   const day=rows.filter(r=>r.constat); const revenue=day.reduce((s,r)=>s+r.revenue,0), mat=day.reduce((s,r)=>s+r.materialCost,0), labor=day.reduce((s,r)=>s+r.laborCost,0), cost=mat+labor, margin=revenue-cost;
-  const missingRevenue=rows.filter(r=>!r.constat).length; const missingMaterial=day.filter(r=>!r.hasActualMaterial).length;
+  const missingRevenue=rows.filter(r=>!r.constat).length; const missingMaterial=day.filter(r=>!r.hasActualMaterial).length; const missingMaterialParameters=day.filter(r=>!r.hasActualMaterial&&!r.materialEstimateAvailable).length;
   root.querySelector("#pf-content").innerHTML=`<div class="pf-grid"><div class="pf-card"><div class="pf-muted">OS travaillés</div><strong style="font-size:28px">${rows.length}</strong></div><div class="pf-card"><div class="pf-muted">CA HT constaté</div><strong style="font-size:28px">${money(revenue)}</strong></div><div class="pf-card"><div class="pf-muted">Coût matière</div><strong style="font-size:28px">${money(mat)}</strong></div><div class="pf-card"><div class="pf-muted">Main-d'œuvre</div><strong style="font-size:28px">${money(labor)}</strong></div><div class="pf-card"><div class="pf-muted">Coût total</div><strong style="font-size:28px">${money(cost)}</strong></div><div class="pf-card"><div class="pf-muted">Marge</div><strong class="${margin<0?"pf-bad":"pf-good"}" style="font-size:28px">${money(margin)}</strong><div>${revenue?((margin/revenue)*100).toFixed(1)+" %":"—"}</div></div></div>
-  ${allocation.incompleteInterventions?`<div class="pf-card pf-warn">⚠️ ${allocation.incompleteInterventions} intervention(s) sans horaires complets ou sans équipe : la main-d’œuvre et la marge restent provisoires.</div>`:""}${missingRevenue?`<div class="pf-card pf-warn">⚠️ ${missingRevenue} OS travaillé(s) n'ont pas encore de constat validé : ils ne sont pas inclus dans le CA/marge.</div>`:""}${missingMaterial?`<div class="pf-card pf-warn">ℹ️ ${missingMaterial} OS ont encore une consommation matière estimée : la marge est provisoire tant que la consommation réelle n'est pas saisie.</div>`:""}
+  ${allocation.incompleteInterventions?`<div class="pf-card pf-warn">⚠️ ${allocation.incompleteInterventions} intervention(s) sans horaires complets ou sans équipe : la main-d’œuvre et la marge restent provisoires.</div>`:""}${missingRevenue?`<div class="pf-card pf-warn">⚠️ ${missingRevenue} OS travaillé(s) n'ont pas encore de constat validé : ils ne sont pas inclus dans le CA/marge.</div>`:""}${missingMaterialParameters?`<div class="pf-card pf-warn">⚠️ Pour ${missingMaterialParameters} OS, il manque le matériau, l’épaisseur, la densité ou le prix d’achat : le coût matière prévisionnel ne peut pas être calculé.</div>`:""}${missingMaterial?`<div class="pf-card pf-warn">ℹ️ ${missingMaterial} OS ont encore une consommation matière estimée : la marge est provisoire tant que la consommation réelle n'est pas saisie.</div>`:""}
   <div class="pf-card" style="overflow:auto"><h3 style="margin-top:0">Rentabilité par OS — ${esc(date)}</h3><table class="pf-table"><thead><tr><th>OS</th><th>Constat</th><th>CA HT</th><th>Matière</th><th>Main-d'œuvre</th><th>Coûts</th><th>Marge</th></tr></thead><tbody>${renderTable(rows)}</tbody></table></div>
   <div class="pf-card"><h3 style="margin-top:0">Méthode</h3><p class="pf-muted" style="margin:0">Le CA HT provient du constat validé (avec repli sur le total des lignes si le montant enregistré est nul). La matière vient des consommations camion du jour. La main-d’œuvre de la journée (amplitude moins 1 h de pause) est répartie entre les OS selon leur temps de chantier. Si des horaires manquent, la marge est provisoire. Les frais de camion, carburant, matériel et autres frais restent à intégrer.</p></div>`;
  }catch(e){root.querySelector("#pf-content").innerHTML=`<div class="pf-card pf-bad">Impossible de charger la rentabilité : ${esc(e?.message||e)}</div>`;}
