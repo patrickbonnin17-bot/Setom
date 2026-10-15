@@ -1,0 +1,280 @@
+/* SETOM — base responsive cross-platform
+   No métier logic is changed here. The goal is a reliable UI on iPhone,
+   Android, tablets, Windows, macOS and Chromebook browsers. */
+
+html {
+  -webkit-text-size-adjust: 100%;
+  text-size-adjust: 100%;
+}
+
+body {
+  min-width: 320px;
+  overflow-x: hidden;
+}
+
+img,
+video,
+canvas {
+  max-width: 100%;
+}
+
+button,
+a,
+input,
+select,
+textarea {
+  touch-action: manipulation;
+}
+
+button,
+.attachment-button,
+.os-tab,
+.nav button {
+  min-height: 44px;
+}
+
+/* Tablets and smaller laptops */
+@media (max-width: 1100px) {
+  .cards {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .container {
+    width: 100%;
+  }
+
+  .os-detail-modal {
+    width: min(100%, 980px);
+  }
+}
+
+/* Phones and narrow tablets */
+@media (max-width: 700px) {
+  .header {
+    position: sticky;
+    top: 0;
+    padding: 12px 14px;
+    gap: 10px;
+    flex-wrap: wrap;
+  }
+
+  .header > div:first-child {
+    min-width: 0;
+    flex: 1 1 180px;
+  }
+
+  .header > div:last-child {
+    flex: 0 1 auto;
+    max-width: 100%;
+  }
+
+  .header small {
+    font-size: 11px;
+  }
+
+  .container {
+    padding: 10px;
+  }
+
+  .nav {
+    top: 0;
+    margin: 0 -2px 14px;
+    padding: 6px;
+    border-radius: 12px;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .nav button {
+    flex: 0 0 auto;
+    padding: 9px 12px;
+  }
+
+  .cards {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 8px;
+  }
+
+  .card {
+    min-width: 0;
+    padding: 12px;
+    border-radius: 13px;
+  }
+
+  .card .number {
+    font-size: 24px;
+  }
+
+  .toolbar {
+    padding: 10px;
+    gap: 8px;
+    border-radius: 12px;
+  }
+
+  .toolbar input,
+  .toolbar select,
+  .toolbar button {
+    width: 100%;
+    min-height: 44px;
+  }
+
+  .os {
+    padding: 13px;
+  }
+
+  .os-top {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .os-actions {
+    display: grid;
+    grid-template-columns: 1fr;
+  }
+
+  .os-actions button,
+  .work-actions button,
+  .modal-actions button {
+    width: 100%;
+    min-height: 46px;
+  }
+
+  .map {
+    min-height: 58vh;
+  }
+
+  .planning {
+    margin-right: -10px;
+    margin-left: -10px;
+    padding: 0 10px;
+  }
+
+  .week {
+    min-width: 760px;
+  }
+
+  .modal-bg,
+  .modal-overlay {
+    align-items: flex-end;
+    padding: 0;
+  }
+
+  .modal,
+  .os-detail-modal {
+    width: 100%;
+    max-width: none;
+    max-height: 94vh;
+    border-radius: 20px 20px 0 0;
+    padding: 16px;
+  }
+
+  .modal-header,
+  .os-detail-modal > .modal-header {
+    gap: 8px;
+  }
+
+  .os-detail-modal > .modal-header {
+    position: sticky;
+    top: -16px;
+    margin: -16px -16px 14px;
+    padding: 14px 16px 10px;
+  }
+
+  .os-tabs,
+  .tabs,
+  .work-tabs {
+    display: flex;
+    overflow-x: auto;
+    gap: 6px;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: none;
+  }
+
+  .os-tabs::-webkit-scrollbar,
+  .tabs::-webkit-scrollbar,
+  .work-tabs::-webkit-scrollbar {
+    display: none;
+  }
+
+  .os-tab {
+    flex: 0 0 auto;
+  }
+
+  .work-grid,
+  .os-info-grid,
+  .os-planning-info,
+  .material-cards,
+  .rehabilitation-cards {
+    grid-template-columns: 1fr !important;
+  }
+
+  .attachments-buttons {
+    grid-template-columns: 1fr;
+  }
+
+  .attachment-button {
+    width: 100%;
+    min-height: 52px;
+  }
+
+  input:not([type="checkbox"]):not([type="radio"]),
+  select,
+  textarea {
+    min-height: 44px;
+    font-size: 16px;
+  }
+
+  textarea {
+    min-height: 110px;
+  }
+
+  .os-photo-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+  }
+
+  .work-actions {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    align-items: stretch !important;
+  }
+
+  .work-actions button {
+    width: 100%;
+  }
+}
+
+/* Very small phones */
+@media (max-width: 380px) {
+  .container {
+    padding: 8px;
+  }
+
+  .cards {
+    grid-template-columns: 1fr;
+  }
+
+  .header h1 {
+    font-size: 18px;
+  }
+
+  .modal,
+  .os-detail-modal {
+    padding: 14px;
+  }
+
+  .os-photo-grid {
+    grid-template-columns: 1fr !important;
+  }
+}
+
+/* Respect users who prefer less animation on any platform. */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    scroll-behavior: auto !important;
+    transition-duration: 0.01ms !important;
+    animation-duration: 0.01ms !important;
+  }
+}
