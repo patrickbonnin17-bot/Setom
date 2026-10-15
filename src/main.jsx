@@ -301,7 +301,7 @@ function App() {
     planning: osList.filter((o) => o.status === "À planifier").length,
     today: osList.filter((o) => o.day === currentDayName).length,
     travaux: osList.filter((o) => o.status === "En travaux" || o.status === "Travaux en cours" || o.status === "Travaux réalisés").length,
-    facturation: osList.filter((o) => o.status === "Travaux effectués" || o.status === "Constat de facturation").length,
+    facturation: osList.filter((o) => (o.status === "Travaux effectués" || o.status === "Constat de facturation") && !(o.constatStatus === "Validé avec réserve" && !o.reserveResolvedAt)).length,
     validation: osList.filter((o) => o.status === "En attente de validation" || o.status === "Constat à vérifier" || o.status === "Constat validé").length,
     reserves: osList.filter((o) => o.status === "Réserve" || o.status === "Correction à réaliser" || (o.constatStatus === "Validé avec réserve" && !o.reserveResolvedAt)).length,
     errors: osList.filter((o) => o.status === "En erreur").length,
@@ -371,7 +371,7 @@ function App() {
 }
 
 function OSCard({ os, onOpen }) {
-  return <div className="os" style={{borderLeftColor:os.day?getDayColor(os.day):"#777"}}><div className="os-top"><div><div className="os-number">{os.id}</div><div className="os-info">📍 {os.address}</div></div><span className="badge">{os.constatStatus === "Validé avec réserve" && !os.reserveResolvedAt ? "Réserve à lever" : os.status}</span></div><div className="os-info">🔧 {os.work}<br/>🧭 Secteur : {os.sector || "Non classé"}<br/>👷 {os.team}<br/>📅 {os.day||"Non planifié"}<br/>📐 {os.quantity}</div><div className="os-actions"><button className="primary" onClick={onOpen}>Ouvrir l'OS</button><button className="secondary" onClick={()=>window.open(`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(os.address)}`,"_blank")}>🧭 Naviguer</button></div></div>;
+  return <div className="os" style={{borderLeftColor:os.day?getDayColor(os.day):"#777"}}><div className="os-top"><div><div className="os-number">{os.id}</div><div className="os-info">📍 {os.address}</div></div><span className="badge">{os.constatStatus === "Validé avec réserve" && !os.reserveResolvedAt ? "Réserve à lever" : os.status}</span></div>{os.constatStatus === "Validé avec réserve" && !os.reserveResolvedAt && os.reserveReason && <div className="os-info" style={{ color: "#9a3412" }}>🚧 Motif de réserve : {os.reserveReason}</div>}<div className="os-info">🔧 {os.work}<br/>🧭 Secteur : {os.sector || "Non classé"}<br/>👷 {os.team}<br/>📅 {os.day||"Non planifié"}<br/>📐 {os.quantity}</div><div className="os-actions"><button className="primary" onClick={onOpen}>Ouvrir l'OS</button><button className="secondary" onClick={()=>window.open(`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(os.address)}`,"_blank")}>🧭 Naviguer</button></div></div>;
 }
 
 function OSModal({ os, onClose, onUpdate }) {
