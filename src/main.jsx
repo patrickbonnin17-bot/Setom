@@ -46,6 +46,7 @@ function App() {
   const [password, setPassword] = useState("");
   const [authError, setAuthError] = useState("");
   const [osList, setOsList] = useState([]);
+  const [osRefreshVersion, setOsRefreshVersion] = useState(0);
   const [selectedOS, setSelectedOS] = useState(null);
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState("Tous");
@@ -71,6 +72,12 @@ function App() {
     supabase.auth.getSession().then(({ data }) => { if (mounted) { setSession(data.session); setAuthLoading(false); } });
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, newSession) => { setSession(newSession); setAuthLoading(false); });
     return () => { mounted = false; subscription.unsubscribe(); };
+  }, []);
+
+  useEffect(() => {
+    const handlePlanningUpdate = () => setOsRefreshVersion((version) => version + 1);
+    window.addEventListener("setom:planning-updated", handlePlanningUpdate);
+    return () => window.removeEventListener("setom:planning-updated", handlePlanningUpdate);
   }, []);
 
   useEffect(() => {
@@ -122,7 +129,7 @@ function App() {
     }
     loadOS().catch((e) => console.error("Erreur inattendue au chargement des OS :", e));
     return () => { cancelled = true; };
-  }, [session]);
+  }, [session, osRefreshVersion]);
 
   async function handleLogin(event) {
     event.preventDefault(); setAuthError("");
