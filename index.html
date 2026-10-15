@@ -4,6 +4,7 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
     <meta name="theme-color" content="#f6f7f9" />
+    <meta name="setom-build" content="2026-10-15-waiting-status-ui" />
     <title>SETOM — Gestion des interventions</title>
     <link rel="stylesheet" href="/src/uiPolish.css" />
     <link rel="stylesheet" href="/src/responsive.css" />
@@ -32,7 +33,7 @@
           } catch (_) {}
         }
         window.addEventListener("error", function (e) {
-          show("JavaScript ou chargement du module", (e.message || "Erreur inconnue") + "\\n" + (e.filename || "") + ":" + (e.lineno || ""));
+          show("JavaScript ou chargement du module", (e.message || "Erreur inconnue") + "\n" + (e.filename || "") + ":" + (e.lineno || ""));
         });
         window.addEventListener("unhandledrejection", function (e) {
           show("Promesse non gérée", e.reason && e.reason.stack || e.reason);
@@ -50,10 +51,10 @@
         </div>
       </div>
     </div>
-    <script type="module" src="/src/main.jsx"></script>
-    <script type="module" src="/src/planningOverlay.jsx"></script>
-    <script type="module" src="/src/dashboardNavigationFix.js"></script>
-    <script type="module" src="/src/classeurNavigationFix.js"></script>
-    <script type="module" src="/src/osModalPortalFix.js"></script>
+    <script type="module" src="/src/main.jsx?v=2026-10-15-waiting-status-ui"></script>
+    <script type="module" src="/src/planningOverlay.jsx?v=2026-10-15-waiting-status-ui"></script>
+    <script type="module" src="/src/dashboardNavigationFix.js?v=2026-10-15-waiting-status-ui"></script>
+    <script type="module" src="/src/classeurNavigationFix.js?v=2026-10-15-waiting-status-ui"></script>
+    <script type="module" src="/src/osModalPortalFix.js?v=2026-10-15-waiting-status-ui"></script>
   </body>
 </html>
