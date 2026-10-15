@@ -112,6 +112,21 @@ function getDayColor(day) {
   return found ? found.color : "#777";
 }
 
+function LocalImagePreview({ file }) {
+  const [previewUrl, setPreviewUrl] = useState("");
+  useEffect(() => {
+    if (!file || !file.type || !file.type.startsWith("image/")) {
+      setPreviewUrl("");
+      return undefined;
+    }
+    const url = URL.createObjectURL(file);
+    setPreviewUrl(url);
+    return () => URL.revokeObjectURL(url);
+  }, [file]);
+  if (!previewUrl) return null;
+  return <img src={previewUrl} alt={file?.name || "Aperçu de la photo"} style={{ width: 88, height: 68, objectFit: "cover", borderRadius: 8, flexShrink: 0 }} />;
+}
+
 function App() {
  const [page, setPage] = useState("dashboard");
 
@@ -145,12 +160,18 @@ function App() {
   }, []);
 
   useEffect(() => {
-    if (!session) return;
+    if (!session) {
+      setOsList([]);
+      return;
+    }
+
+    let cancelled = false;
 
     async function loadOS() {
-      const { data, error } = await supabase
+      // Charge d'abord les OS seuls : une jointure facultative ne doit jamais les faire disparaître.
+      const { data: rows, error } = await supabase
         .from("work_orders")
-        .select("*, interventions(id, team_id, planned_date, planned_order, status, teams(id, name))")
+        .select("*")
         .order("creation_date", { ascending: false });
 
       if (error) {
@@ -158,34 +179,64 @@ function App() {
         return;
       }
 
-      const formattedOS = data.map((row) => {
-        const intervention = Array.isArray(row.interventions)
-          ? row.interventions[0]
-          : row.interventions;
+      const workOrderIds = (rows || []).map((row) => row.id);
+      let interventions = [];
+      if (workOrderIds.length > 0) {
+        const result = await supabase
+          .from("interventions")
+          .select("id, work_order_id, team_id, planned_date, planned_order, status")
+          .in("work_order_id", workOrderIds);
+        if (result.error) {
+          console.error("Erreur chargement interventions (les OS restent affichés) :", result.error);
+        } else {
+          interventions = result.data || [];
+        }
+      }
+
+      const teamIds = [...new Set(interventions.map((item) => item.team_id).filter(Boolean))];
+      let teams = [];
+      if (teamIds.length > 0) {
+        const result = await supabase.from("teams").select("id, name").in("id", teamIds);
+        if (result.error) {
+          console.error("Erreur chargement équipes (les OS restent affichés) :", result.error);
+        } else {
+          teams = result.data || [];
+        }
+      }
+
+      const teamById = new Map(teams.map((team) => [team.id, team.name]));
+      const interventionByOS = new Map();
+      for (const item of interventions) {
+        if (!interventionByOS.has(item.work_order_id)) {
+          interventionByOS.set(item.work_order_id, item);
+        } else {
+          const current = interventionByOS.get(item.work_order_id);
+          if (!current?.planned_date && item.planned_date) interventionByOS.set(item.work_order_id, item);
+        }
+      }
+
+      const formattedOS = (rows || []).map((row) => {
+        const intervention = interventionByOS.get(row.id) || null;
         const plannedDate = intervention?.planned_date || null;
         const plannedDay = plannedDate
-          ? new Date(`${plannedDate}T12:00:00`).toLocaleDateString("fr-FR", { weekday: "long" })
+          ? new Date(plannedDate + "T12:00:00").toLocaleDateString("fr-FR", { weekday: "long" })
           : null;
-        const day = plannedDay
-          ? plannedDay.charAt(0).toUpperCase() + plannedDay.slice(1)
-          : null;
+        const day = plannedDay ? plannedDay.charAt(0).toUpperCase() + plannedDay.slice(1) : null;
 
         return {
           dbId: row.id,
           interventionId: intervention?.id || null,
-          id: `OS-${new Date(row.creation_date).getFullYear()}-${String(row.os_number).padStart(5, "0")}`,
-          address: `${row.address || ""}${row.city ? `, ${row.city}` : ""}`,
+          id: "OS-" + new Date(row.creation_date).getFullYear() + "-" + String(row.os_number).padStart(5, "0"),
+          address: String(row.address || "") + (row.city ? ", " + row.city : ""),
           work: row.material_detail || "Intervention",
           day,
           plannedDate,
-          team: intervention?.teams?.name || "Non affectée",
+          team: teamById.get(intervention?.team_id) || "Non affectée",
           teamId: intervention?.team_id || null,
           trade: row.material_detail || "Intervention",
           sector: row.city || "",
           status: row.status || "Nouveau",
-          quantity: row.planned_surface_m2
-            ? `${row.planned_surface_m2} m²`
-            : "",
+          quantity: row.planned_surface_m2 ? String(row.planned_surface_m2) + " m²" : "",
           intervention: row.material_detail || "Intervention",
           rehabilitationZone: row.rehabilitation_zone,
           rehabilitationOtherDetail: row.rehabilitation_other_detail,
@@ -199,13 +250,13 @@ function App() {
         };
       });
 
-      setOsList(formattedOS);
+      if (!cancelled) setOsList(formattedOS);
     }
 
-    loadOS();
+    loadOS().catch((loadError) => console.error("Erreur inattendue au chargement des OS :", loadError));
+    return () => { cancelled = true; };
   }, [session]);
   
-
   async function handleLogin(event) {
     event.preventDefault();
     setAuthError("");
@@ -538,7 +589,7 @@ const [newOSSaving, setNewOSSaving] = useState(false);
     );
   }
 
-  const activeStatuses = new Set(["Nouveau", "À planifier", "Planifié", "En travaux", "Travaux effectués", "Constat de facturation", "En attente de validation", "Validé", "Validé avec réserve", "Réserve", "Correction à réaliser", "Payé"]);
+  const activeStatuses = new Set(["Nouveau", "À planifier", "Planifié", "En travaux", "Travaux en cours", "Travaux réalisés", "Constat à vérifier", "Constat validé", "Travaux effectués", "Constat de facturation", "En attente de validation", "Validé", "Validé avec réserve", "Réserve", "Correction à réaliser", "Payé"]);
   const currentWeekday = new Date().toLocaleDateString("fr-FR", { weekday: "long" });
   const currentDayName = currentWeekday.charAt(0).toUpperCase() + currentWeekday.slice(1);
   const stats = {
@@ -547,7 +598,7 @@ const [newOSSaving, setNewOSSaving] = useState(false);
     today: osList.filter((o) => o.day === currentDayName).length,
     travaux: osList.filter((o) => o.status === "En travaux").length,
     facturation: osList.filter((o) => o.status === "Travaux effectués" || o.status === "Constat de facturation").length,
-    validation: osList.filter((o) => o.status === "En attente de validation").length,
+    validation: osList.filter((o) => o.status === "En attente de validation" || o.status === "Constat à vérifier" || o.status === "Constat validé").length,
     reserves: osList.filter((o) => o.status === "Réserve" || o.status === "Validé avec réserve" || o.status === "Correction à réaliser").length,
   };
 
@@ -1026,17 +1077,23 @@ const [newOSSaving, setNewOSSaving] = useState(false);
         />
 <div className="attachments-section">
   <label>📎 Photos et documents</label>
-
   <div className="attachments-buttons">
     <label className="attachment-button">
-      📷 Ajouter une photo
-      <input
-        type="file"
-        accept="image/*"
-        multiple
-        capture="environment"
+      📷 Prendre une photo
+      <input type="file" accept="image/*" capture="environment" multiple
         onChange={(e) => {
-          const files = Array.from(e.target.files || []);
+          const files = Array.from(e.target.files || []).filter((file) => file.type.startsWith("image/"));
+          setNewOSFiles((current) => [...current, ...files]);
+          e.target.value = "";
+        }}
+      />
+    </label>
+
+    <label className="attachment-button">
+      🖼️ Choisir / télécharger une photo
+      <input type="file" accept="image/*" multiple
+        onChange={(e) => {
+          const files = Array.from(e.target.files || []).filter((file) => file.type.startsWith("image/"));
           setNewOSFiles((current) => [...current, ...files]);
           e.target.value = "";
         }}
@@ -1045,10 +1102,7 @@ const [newOSSaving, setNewOSSaving] = useState(false);
 
     <label className="attachment-button">
       📄 Ajouter un document
-      <input
-        type="file"
-        accept=".pdf,.jpg,.jpeg,.png,.doc,.docx,.xls,.xlsx"
-        multiple
+      <input type="file" accept=".pdf,.doc,.docx,.xls,.xlsx" multiple
         onChange={(e) => {
           const files = Array.from(e.target.files || []);
           setNewOSFiles((current) => [...current, ...files]);
@@ -1061,22 +1115,12 @@ const [newOSSaving, setNewOSSaving] = useState(false);
   {newOSFiles.length > 0 && (
     <div className="attachments-list">
       {newOSFiles.map((file, index) => (
-        <div className="attachment-item" key={`${file.name}-${index}`}>
-          <span>
-            {file.type.startsWith("image/") ? "🖼️" : "📄"}{" "}
-            {file.name}
-          </span>
-
-          <button
-            type="button"
-            onClick={() => {
-              setNewOSFiles((current) =>
-                current.filter((_, i) => i !== index)
-              );
-            }}
-          >
-            ×
-          </button>
+        <div className="attachment-item" key={file.name + "-" + index}>
+          {file.type.startsWith("image/") && <LocalImagePreview file={file} />}
+          <span>{file.type.startsWith("image/") ? "🖼️" : "📄"} {file.name}</span>
+          <button type="button" aria-label={"Retirer " + file.name}
+            onClick={() => setNewOSFiles((current) => current.filter((_, i) => i !== index))}
+          >×</button>
         </div>
       ))}
     </div>
@@ -1448,6 +1492,8 @@ function OSModal({ os, onClose, onUpdate }) {
   const [planningSaving, setPlanningSaving] = useState(false);
 const [attachments, setAttachments] = useState([]);
 const [attachmentsLoading, setAttachmentsLoading] = useState(false);
+const [workPhotoFiles, setWorkPhotoFiles] = useState([]);
+const [workPhotoSaving, setWorkPhotoSaving] = useState(false);
  const [realLength, setRealLength] = useState("");
 const [realWidth, setRealWidth] = useState("");
 const [realSurface, setRealSurface] = useState("");
@@ -1654,215 +1700,179 @@ async function savePlanning() {
   }
 }
 
-async function save() {
+async function uploadWorkPhotos(interventionId = os?.interventionId || null, showSuccess = true) {
+  if (!os?.dbId || workPhotoFiles.length === 0) return true;
+  setWorkPhotoSaving(true);
+  const uploadedAttachments = [];
+
   try {
-    const {
-      data: { user },
-      error: userError,
-    } = await supabase.auth.getUser();
+    const { data: authData, error: authError } = await supabase.auth.getUser();
+    const user = authData?.user;
+    if (authError || !user) throw new Error("Utilisateur non connecté.");
 
-    if (userError || !user) {
-      throw new Error("Utilisateur non connecté.");
-    }
-    // 1. Chercher une intervention existante pour cet OS
-    let { data: intervention, error: interventionError } = await supabase
-  .from("interventions")
-  .select("id, work_order_id, type, status, planned_surface_m2, actual_surface_m2")
-  .eq("work_order_id", os.dbId)
-  .maybeSingle();
-    if (interventionError) {
-      console.error("Erreur recherche intervention :", interventionError);
-      alert("Impossible de retrouver l'intervention.");
-      return;
-    }
+    for (const file of workPhotoFiles) {
+      if (!file.type?.startsWith("image/")) throw new Error("Seules les images peuvent être ajoutées comme photos des travaux réalisés.");
+      const safeFileName = file.name.normalize("NFD")
+        .replace(/[\\u0300-\\u036f]/g, "")
+        .replace(/[^a-zA-Z0-9._-]/g, "_");
+      const storagePath = "work-orders/" + os.dbId + "/travaux-realises/" + Date.now() + "-" + safeFileName;
 
-    // 2. Si aucune intervention n'existe, on en crée une
-    if (!intervention) {
-      const { data: newIntervention, error: createInterventionError } =
-        await supabase
-          .from("interventions")
-          .insert({
-            work_order_id: os.dbId,
-            type: os.intervention || os.work || "Intervention",
-            status: "Travaux effectués",
-            planned_surface_m2:
-              os.quantity && parseFloat(os.quantity)
-                ? parseFloat(os.quantity)
-                : null,
-            actual_surface_m2:
-              realSurface && !isNaN(Number(realSurface))
-                ? Number(realSurface)
-                : null,
-          })
-          .select("*")
-          .single();
+      const { error: uploadError } = await supabase.storage.from("setom-files")
+        .upload(storagePath, file, { cacheControl: "3600", upsert: false });
+      if (uploadError) throw uploadError;
 
-      if (createInterventionError) {
-        console.error(
-          "Erreur création intervention :",
-          createInterventionError
-        );
-        alert(
-          "Impossible de créer l'intervention : " +
-            createInterventionError.message
-        );
-        return;
+      const { data: attachment, error: attachmentError } = await supabase
+        .from("attachments")
+        .insert({
+          work_order_id: os.dbId,
+          intervention_id: interventionId || null,
+          category: "travaux_realises",
+          file_name: file.name,
+          storage_path: storagePath,
+          mime_type: file.type || null,
+          captured_at: new Date().toISOString(),
+          created_by: user.id,
+        })
+        .select("*")
+        .single();
+
+      if (attachmentError) {
+        await supabase.storage.from("setom-files").remove([storagePath]);
+        throw attachmentError;
       }
 
-      intervention = newIntervention;
+      const { data: signedData, error: signedError } = await supabase.storage
+        .from("setom-files").createSignedUrl(storagePath, 3600);
+      uploadedAttachments.push({ ...attachment, url: signedError ? null : (signedData?.signedUrl || null) });
     }
 
-     // 3. Enregistrer les travaux réellement réalisés
+    setAttachments((current) => [...uploadedAttachments, ...current]);
+    setWorkPhotoFiles([]);
+    if (showSuccess) alert("✅ Photos des travaux enregistrées.");
+    return true;
+  } catch (error) {
+    console.error("Erreur enregistrement photos des travaux :", error);
+    alert("Impossible d'enregistrer les photos des travaux :\n\n" + (error?.message || "Erreur inconnue"));
+    return false;
+  } finally {
+    setWorkPhotoSaving(false);
+  }
+}
+
+async function save() {
+  if (["À planifier", "Nouveau"].includes(os?.status)) {
+    alert("Cet OS n'est pas encore planifié. Enregistrez d'abord une date dans l'onglet Planning.");
+    setActiveTab("planning");
+    return;
+  }
+  if (["Constat à vérifier", "Constat validé", "Travaux effectués", "Payé", "Archivé"].includes(os?.status)) {
+    setActiveTab("constat");
+    alert("Les travaux ont déjà été transmis pour cet OS. Vérifiez le constat, puis validez-le depuis l'onglet Constat.");
+    return;
+  }
+  if (!["Planifié", "Travaux en cours", "Travaux réalisés"].includes(os?.status)) {
+    alert("Le statut actuel de cet OS ne permet pas de transmettre les travaux : " + (os?.status || "non renseigné") + ".");
+    return;
+  }
+
+  try {
+    const { data: authData, error: userError } = await supabase.auth.getUser();
+    const user = authData?.user;
+    if (userError || !user) throw new Error("Utilisateur non connecté.");
+
+    let { data: intervention, error: interventionError } = await supabase
+      .from("interventions")
+      .select("id, work_order_id, type, status, planned_surface_m2, actual_surface_m2")
+      .eq("work_order_id", os.dbId)
+      .maybeSingle();
+    if (interventionError) throw new Error("Impossible de retrouver l'intervention : " + interventionError.message);
+
+    if (!intervention) {
+      const { data: newIntervention, error: createInterventionError } = await supabase
+        .from("interventions")
+        .insert({
+          work_order_id: os.dbId,
+          type: os.intervention || os.work || "Intervention",
+          status: "Travaux en cours",
+          planned_surface_m2: os.quantity && parseFloat(os.quantity) ? parseFloat(os.quantity) : null,
+          planned_date: os.plannedDate || null,
+          actual_surface_m2: null,
+        })
+        .select("*")
+        .single();
+      if (createInterventionError) throw new Error("Impossible de créer l'intervention : " + createInterventionError.message);
+      intervention = newIntervention;
+    }
 
     const roadActual = realRoadSurface !== "" && !isNaN(Number(realRoadSurface)) ? Number(realRoadSurface) : 0;
     const sidewalkActual = realSidewalkSurface !== "" && !isNaN(Number(realSidewalkSurface)) ? Number(realSidewalkSurface) : 0;
     const otherActual = realOtherSurface !== "" && !isNaN(Number(realOtherSurface)) ? Number(realOtherSurface) : 0;
     const genericActual = realSurface !== "" && !isNaN(Number(realSurface)) ? Number(realSurface) : 0;
     const totalActualSurface =
-      os.rehabilitationZone === "Chaussée + trottoir"
-        ? roadActual + sidewalkActual
-        : os.rehabilitationZone === "Chaussée"
-          ? roadActual
-          : os.rehabilitationZone === "Trottoir"
-            ? sidewalkActual
-            : os.rehabilitationZone === "Autre"
-              ? otherActual
-              : genericActual;
+      os.rehabilitationZone === "Chaussée + trottoir" ? roadActual + sidewalkActual :
+      os.rehabilitationZone === "Chaussée" ? roadActual :
+      os.rehabilitationZone === "Trottoir" ? sidewalkActual :
+      os.rehabilitationZone === "Autre" ? otherActual : genericActual;
+
     const plannedSurface = Number(os.quantity?.replace(" m²", "").replace(",", ".")) || 0;
     const automaticDemolition = Math.max(0, totalActualSurface - plannedSurface);
-
     const realizations = [];
 
-    // Travail principal : surface réellement réalisée
     if (totalActualSurface > 0) {
       realizations.push({
         intervention_id: intervention.id,
-        designation:
-          os.intervention ||
-          os.work ||
-          "Travaux réalisés",
+        designation: os.intervention || os.work || "Travaux réalisés",
         quantity: totalActualSurface,
         unit: "m²",
         surface_m2: totalActualSurface,
-        thickness_cm:
-          thickness !== "" &&
-          !isNaN(Number(thickness))
-            ? Number(thickness)
-            : null,
-        observations:
-          workComment || null,
+        thickness_cm: thickness !== "" && !isNaN(Number(thickness)) ? Number(thickness) : null,
+        observations: workComment || null,
       });
     }
-
-    // Sciage
-    if (
-      sciage !== "" &&
-      !isNaN(Number(sciage))
-    ) {
-      realizations.push({
-        intervention_id: intervention.id,
-        designation: "Sciage",
-        quantity: Number(sciage),
-        unit: "ml",
-        length_ml: Number(sciage),
-      });
-    }
-
-    // Joints
-    if (
-      joints !== "" &&
-      !isNaN(Number(joints))
-    ) {
-      realizations.push({
-        intervention_id: intervention.id,
-        designation: "Joints",
-        quantity: Number(joints),
-        unit: "ml",
-        length_ml: Number(joints),
-      });
-    }
-
-    // Bouché à clé
-    if (
-      boucheAcle !== "" &&
-      !isNaN(Number(boucheAcle))
-    ) {
-      realizations.push({
-        intervention_id: intervention.id,
-        designation: "Bouché à clé",
-        quantity: Number(boucheAcle),
-        unit: "U",
-      });
-    }
-
-    // Démolition automatique = surface réelle - surface prévue
-    if (automaticDemolition > 0) {
-      realizations.push({
-        intervention_id: intervention.id,
-        designation: "Démolition",
-        quantity: automaticDemolition,
-        unit: "m²",
-        surface_m2: automaticDemolition,
-      });
-    }
-
-    // Circulation : 2 h = 0,5 unité de 1/2 journée ; 4 h = 1 unité
+    if (sciage !== "" && !isNaN(Number(sciage))) realizations.push({ intervention_id: intervention.id, designation: "Sciage", quantity: Number(sciage), unit: "ml", length_ml: Number(sciage) });
+    if (joints !== "" && !isNaN(Number(joints))) realizations.push({ intervention_id: intervention.id, designation: "Joints", quantity: Number(joints), unit: "ml", length_ml: Number(joints) });
+    if (boucheAcle !== "" && !isNaN(Number(boucheAcle))) realizations.push({ intervention_id: intervention.id, designation: "Bouché à clé", quantity: Number(boucheAcle), unit: "U" });
+    if (automaticDemolition > 0) realizations.push({ intervention_id: intervention.id, designation: "Démolition", quantity: automaticDemolition, unit: "m²", surface_m2: automaticDemolition });
     if (circulationType && circulationHours !== "" && !isNaN(Number(circulationHours)) && Number(circulationHours) > 0) {
       const designation = circulationType === "K10"
         ? "Circulation alternée manuelle par 2 agents munis de panneaux K10"
         : "Circulation alternée par 2 feux tricolores à batterie synchronisés, y compris la présignalisation, l'entretien et la surveillance des feux";
-      realizations.push({
-        intervention_id: intervention.id,
-        designation,
-        quantity: Number(circulationHours) / 4,
-        unit: "1/2 j",
-        observations: `${Number(circulationHours)} h`,
-      });
+      realizations.push({ intervention_id: intervention.id, designation, quantity: Number(circulationHours) / 4, unit: "1/2 j", observations: Number(circulationHours) + " h" });
     }
+    if (marquageSurface !== "" && !isNaN(Number(marquageSurface)) && Number(marquageSurface) > 0) realizations.push({ intervention_id: intervention.id, designation: "Marquage", quantity: Number(marquageSurface), unit: "m²", surface_m2: Number(marquageSurface) });
 
-    // Marquage : surface de peinture saisie séparément, sans lien avec la surface de réfection
-    if (marquageSurface !== "" && !isNaN(Number(marquageSurface)) && Number(marquageSurface) > 0) {
-      realizations.push({
-        intervention_id: intervention.id,
-        designation: "Marquage",
-        quantity: Number(marquageSurface),
-        unit: "m²",
-        surface_m2: Number(marquageSurface),
-      });
-    }
+    const { error: deleteRealizationsError } = await supabase
+      .from("work_realizations").delete().eq("intervention_id", intervention.id);
+    if (deleteRealizationsError) throw new Error("Erreur lors du remplacement des travaux réalisés : " + deleteRealizationsError.message);
 
-    // Supprimer les anciennes réalisations de cette intervention
-    // afin d'éviter les doublons lors d'une nouvelle sauvegarde.
-    const {
-      error: deleteRealizationsError,
-    } = await supabase
-      .from("work_realizations")
-      .delete()
-      .eq("intervention_id", intervention.id);
-
-    if (deleteRealizationsError) {
-      throw new Error(
-        "Erreur lors du remplacement des travaux réalisés : " +
-        deleteRealizationsError.message
-      );
-    }
-
-    // Enregistrer les nouvelles réalisations
     if (realizations.length > 0) {
-      const {
-        error: realizationError,
-      } = await supabase
-        .from("work_realizations")
-        .insert(realizations);
-
-      if (realizationError) {
-        throw new Error(
-          "Erreur lors de l'enregistrement des travaux réalisés : " +
-          realizationError.message
-        );
-      }
+      const { error: realizationError } = await supabase.from("work_realizations").insert(realizations);
+      if (realizationError) throw new Error("Erreur lors de l'enregistrement des travaux réalisés : " + realizationError.message);
     }
-    // 4. Mettre l'intervention à jour
+
+    const photosSaved = await uploadWorkPhotos(intervention.id, false);
+    if (!photosSaved) return;
+
+    // Enregistrer les surfaces sans faire passer prématurément l'OS à « Travaux effectués ».
+    const { error: workOrderError } = await supabase
+      .from("work_orders")
+      .update({
+        actual_road_surface_m2: os.rehabilitationZone === "Chaussée" || os.rehabilitationZone === "Chaussée + trottoir" ? (roadActual || null) : null,
+        actual_sidewalk_surface_m2: os.rehabilitationZone === "Trottoir" || os.rehabilitationZone === "Chaussée + trottoir" ? (sidewalkActual || null) : null,
+        actual_other_surface_m2: os.rehabilitationZone === "Autre" ? (otherActual || null) : null,
+        updated_by: user.id,
+      })
+      .eq("id", os.dbId);
+    if (workOrderError) throw new Error("Impossible d'enregistrer les surfaces de l'OS : " + workOrderError.message);
+
+    // Remettre l'intervention à l'état de travail avant l'étape finale pour relancer proprement
+    // la synchronisation si une ancienne tentative avait déjà marqué l'intervention terminée.
+    const { error: prepareInterventionError } = await supabase
+      .from("interventions")
+      .update({ status: "Travaux en cours", actual_surface_m2: totalActualSurface > 0 ? totalActualSurface : null })
+      .eq("id", intervention.id);
+    if (prepareInterventionError) throw new Error("Impossible de préparer la transmission des travaux : " + prepareInterventionError.message);
+
     const { error: updateInterventionError } = await supabase
       .from("interventions")
       .update({
@@ -1871,81 +1881,49 @@ async function save() {
         actual_surface_m2: totalActualSurface > 0 ? totalActualSurface : null,
       })
       .eq("id", intervention.id);
+    if (updateInterventionError) throw new Error("Impossible de transmettre les travaux : " + updateInterventionError.message);
 
-    if (updateInterventionError) {
-      console.error(
-        "Erreur mise à jour intervention :",
-        updateInterventionError
-      );
-    }
-
-    // 5. Mettre l'OS à "Travaux effectués"
-    const { error: workOrderError } = await supabase
+    const { data: refreshedOS, error: refreshError } = await supabase
       .from("work_orders")
-      .update({
-        status: "Travaux effectués",
-        actual_road_surface_m2: os.rehabilitationZone === "Chaussée" || os.rehabilitationZone === "Chaussée + trottoir" ? (roadActual || null) : null,
-        actual_sidewalk_surface_m2: os.rehabilitationZone === "Trottoir" || os.rehabilitationZone === "Chaussée + trottoir" ? (sidewalkActual || null) : null,
-        actual_other_surface_m2: os.rehabilitationZone === "Autre" ? (otherActual || null) : null,
-        updated_by: user.id,
-      })
-      .eq("id", os.dbId);
+      .select("status, actual_road_surface_m2, actual_sidewalk_surface_m2, actual_other_surface_m2")
+      .eq("id", os.dbId)
+      .single();
+    if (refreshError) throw new Error("Les travaux ont été transmis, mais l'OS n'a pas pu être relu : " + refreshError.message);
 
-    if (workOrderError) {
-      console.error(
-        "Erreur mise à jour OS :",
-        workOrderError
-      );
-      alert(
-        "Les travaux sont enregistrés, mais le statut de l'OS n'a pas pu être mis à jour."
-      );
-      return;
-    }
-
-    // 6. Générer le constat uniquement s'il n'existe pas encore.
-    // Cela protège les corrections manuelles apportées ensuite au constat.
-    const { data: existingConstatPayload, error: existingConstatError } = await supabase.rpc(
-      "get_constat_for_work_order",
-      { p_work_order_id: os.dbId }
+    const { data: constatPayload, error: constatReadError } = await supabase.rpc(
+      "get_constat_for_work_order", { p_work_order_id: os.dbId }
     );
-    if (existingConstatError) {
-      console.error("Erreur lecture constat avant génération :", existingConstatError);
-    } else if (!existingConstatPayload?.constat) {
-      const { error: constatError } = await supabase.rpc(
-        "generate_constat_for_work_order",
-        { p_work_order_id: os.dbId, p_user_id: user.id }
-      );
-      if (constatError) {
-        console.error("Erreur génération constat :", constatError);
-        alert("⚠️ Les travaux sont enregistrés, mais le constat n'a pas pu être généré :\n\n" + constatError.message);
-      }
+    if (constatReadError) {
+      console.error("Constat transmis mais lecture du constat impossible :", constatReadError);
+    } else {
+      setConstat(constatPayload?.constat || null);
+      setConstatLines(constatPayload?.lines || []);
     }
 
-    // 7. Mettre également l'affichage de l'application à jour
+    const finalStatus = refreshedOS?.status || "Constat à vérifier";
     onUpdate(os.id, {
       day: os.day || null,
       plannedDate: os.plannedDate || null,
-      status: "Travaux effectués",
-      actualRoadSurface: os.rehabilitationZone === "Chaussée" || os.rehabilitationZone === "Chaussée + trottoir" ? roadActual : null,
-      actualSidewalkSurface: os.rehabilitationZone === "Trottoir" || os.rehabilitationZone === "Chaussée + trottoir" ? sidewalkActual : null,
-      actualOtherSurface: os.rehabilitationZone === "Autre" ? otherActual : null,
+      status: finalStatus,
+      actualRoadSurface: refreshedOS?.actual_road_surface_m2 ?? (roadActual || null),
+      actualSidewalkSurface: refreshedOS?.actual_sidewalk_surface_m2 ?? (sidewalkActual || null),
+      actualOtherSurface: refreshedOS?.actual_other_surface_m2 ?? (otherActual || null),
+      interventionId: intervention.id,
     });
-
-    alert("✅ Travaux réalisés enregistrés.");
-
-    onClose();
+    setActiveTab("constat");
+    alert(finalStatus === "Constat à vérifier"
+      ? "✅ Travaux transmis. Le constat automatique est prêt à être vérifié."
+      : "✅ Travaux enregistrés. Statut actuel de l'OS : " + finalStatus + ".");
   } catch (error) {
-  console.error("Erreur générale :", error);
+    console.error("Erreur générale lors de la transmission des travaux :", error);
+    alert("Erreur lors de l'enregistrement :\n\n" + (error?.message || "Erreur inconnue") +
+      (error?.details ? "\n\nDétails : " + error.details : "") +
+      (error?.hint ? "\n\nAide : " + error.hint : ""));
+  }
+}
 
-  alert(
-    "Erreur lors de l'enregistrement :\n\n" +
-    (error?.message || "Erreur inconnue") +
-    (error?.details ? "\n\nDétails : " + error.details : "") +
-    (error?.hint ? "\n\nAide : " + error.hint : "")
-  );
-}
-}
   const constatLocked = ["Validé", "Validé avec réserve", "Payé", "Archivé"].includes(constat?.status);
+  const hasTravauxRealisesPhoto = attachments.some((file) => file.category === "travaux_realises" && file.mime_type?.startsWith("image/"));
 
   function startConstatEdit() {
     if (!constat || constatLocked) return;
@@ -2040,6 +2018,67 @@ async function save() {
     } catch (error) {
       console.error("Erreur modification constat :", error);
       alert("Impossible d'enregistrer le constat :\n\n" + (error?.message || "Erreur inconnue"));
+    } finally {
+      setConstatSaving(false);
+    }
+  }
+
+  async function validateConstat() {
+    if (!constat || constatLocked || constatEditMode || constatSaving) return;
+
+    if (!hasTravauxRealisesPhoto) {
+      alert("Validation impossible : ajoutez au moins une photo des travaux réalisés dans l'onglet Travaux.");
+      setActiveTab("travaux");
+      return;
+    }
+    if (!["Brouillon", "À vérifier", "À valider"].includes(constat.status || "Brouillon")) {
+      alert("Le statut actuel du constat ne permet pas cette validation : " + (constat.status || "inconnu") + ".");
+      return;
+    }
+
+    const { data: authData, error: authError } = await supabase.auth.getUser();
+    const user = authData?.user;
+    if (authError || !user) {
+      alert("Connexion requise pour valider le constat.");
+      return;
+    }
+    if (!window.confirm("Valider ce constat de facturation ? L'OS passera automatiquement à « Travaux effectués »."))
+      return;
+
+    setConstatSaving(true);
+    try {
+      const { data: validatedConstat, error: validationError } = await supabase
+        .from("constats")
+        .update({
+          status: "Validé",
+          validated_at: new Date().toISOString(),
+          validated_by: user.id,
+        })
+        .eq("id", constat.id)
+        .eq("status", constat.status || "Brouillon")
+        .select("*")
+        .single();
+
+      if (validationError) throw validationError;
+      setConstat(validatedConstat);
+
+      const { data: refreshedOS, error: refreshError } = await supabase
+        .from("work_orders")
+        .select("status")
+        .eq("id", os.dbId)
+        .single();
+      if (refreshError) console.error("Constat validé mais statut OS impossible à relire :", refreshError);
+
+      const finalStatus = refreshedOS?.status || "Constat validé";
+      onUpdate(os.id, { status: finalStatus });
+      alert(finalStatus === "Travaux effectués"
+        ? "✅ Constat validé. L'OS est automatiquement passé à « Travaux effectués »."
+        : "Constat validé. Vérifiez le statut de l'OS : " + finalStatus + ".");
+    } catch (error) {
+      console.error("Erreur validation du constat :", error);
+      alert("Impossible de valider le constat :\n\n" + (error?.message || "Erreur inconnue") +
+        (error?.details ? "\n\nDétails : " + error.details : "") +
+        (error?.hint ? "\n\nAide : " + error.hint : ""));
     } finally {
       setConstatSaving(false);
     }
@@ -2570,6 +2609,58 @@ async function save() {
 
       </div>
 
+<div className="attachments-section" style={{ marginTop: 18 }}>
+        <label>📷 Photos des travaux réalisés — obligatoires pour valider le constat</label>
+        <div className="attachments-buttons">
+          <label className="attachment-button">
+            📷 Prendre une photo
+            <input type="file" accept="image/*" capture="environment" multiple
+              onChange={(e) => {
+                const files = Array.from(e.target.files || []).filter((file) => file.type.startsWith("image/"));
+                setWorkPhotoFiles((current) => [...current, ...files]);
+                e.target.value = "";
+              }}
+            />
+          </label>
+          <label className="attachment-button">
+            🖼️ Choisir / télécharger une photo
+            <input type="file" accept="image/*" multiple
+              onChange={(e) => {
+                const files = Array.from(e.target.files || []).filter((file) => file.type.startsWith("image/"));
+                setWorkPhotoFiles((current) => [...current, ...files]);
+                e.target.value = "";
+              }}
+            />
+          </label>
+        </div>
+
+        {workPhotoFiles.length > 0 && (
+          <div className="attachments-list">
+            {workPhotoFiles.map((file, index) => (
+              <div className="attachment-item" key={file.name + "-" + file.lastModified + "-" + index}>
+                <LocalImagePreview file={file} />
+                <span>{file.name}</span>
+                <button type="button" aria-label={"Retirer " + file.name}
+                  onClick={() => setWorkPhotoFiles((current) => current.filter((_, i) => i !== index))}
+                >×</button>
+              </div>
+            ))}
+          </div>
+        )}
+
+        <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap", marginTop: 10 }}>
+          <button className="secondary" type="button"
+            disabled={workPhotoSaving || workPhotoFiles.length === 0}
+            onClick={() => uploadWorkPhotos(os?.interventionId || null, true)}
+          >
+            {workPhotoSaving ? "Enregistrement des photos..." : "💾 Enregistrer les photos"}
+          </button>
+          <span style={{ fontSize: 13, color: "#555" }}>
+            Photos des travaux enregistrées : {attachments.filter((file) => file.category === "travaux_realises" && file.mime_type?.startsWith("image/")).length}
+          </span>
+        </div>
+      </div>
+
       <h4>Observations</h4>
 
       <textarea
@@ -2764,6 +2855,23 @@ async function save() {
                     <div><span>Total</span><strong>{Number(constat.total_amount || 0).toFixed(2)} €</strong></div>
                   </div>
 
+                  {!constatLocked && !constatEditMode && (
+                    <div className="os-empty-state" style={{ marginTop: 16, marginBottom: 16 }}>
+                      <strong>{hasTravauxRealisesPhoto ? "Photo des travaux réalisés présente" : "Une photo des travaux réalisés est obligatoire pour valider ce constat."}</strong>
+                      {!hasTravauxRealisesPhoto && (
+                        <button className="secondary" type="button" onClick={() => setActiveTab("travaux")}>
+                          📷 Ajouter une photo
+                        </button>
+                      )}
+                      <button className="primary" type="button"
+                        disabled={!hasTravauxRealisesPhoto || constatSaving}
+                        onClick={validateConstat}
+                      >
+                        {constatSaving ? "Validation..." : "✅ Valider le constat"}
+                      </button>
+                    </div>
+                  )}
+
                   {constatLocked ? (
                     <div className="os-empty-state" style={{ marginTop: 16 }}>
                       🔒 <strong>Constat verrouillé</strong>
@@ -2884,13 +2992,11 @@ async function save() {
 
         <div className="os-actions">
 
-          <button
-            className="primary"
-            onClick={save}
-            type="button"
-          >
-            💾 Enregistrer
-          </button>
+{activeTab === "travaux" && (
+            <button className="primary" onClick={save} type="button">
+              💾 Enregistrer les travaux
+            </button>
+          )}
 
           <button
             className="secondary"
