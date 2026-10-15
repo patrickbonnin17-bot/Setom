@@ -210,6 +210,7 @@ function App() {
     facturation: osList.filter((o) => o.status === "Travaux effectués" || o.status === "Constat de facturation").length,
     validation: osList.filter((o) => o.status === "En attente de validation" || o.status === "Constat à vérifier" || o.status === "Constat validé").length,
     reserves: osList.filter((o) => o.status === "Réserve" || o.status === "Validé avec réserve" || o.status === "Correction à réaliser").length,
+    errors: osList.filter((o) => o.status === "En erreur").length,
   };
 
   return <div className="app">
@@ -218,7 +219,7 @@ function App() {
       <nav className="nav">
         {[["dashboard","📊 Tableau de bord"],["os","📋 OS"],["map","🗺️ Carte"],["planning","📅 Planning"],["teams","👷 Équipes"],["reserves","⚠️ Réserves"]].map(([id,label]) => <button key={id} className={page === id ? "active" : ""} onClick={() => setPage(id)}>{label}</button>)}
       </nav>
-      {page === "dashboard" && <><h2>Tableau de bord</h2><div className="cards"><div className="card"><div>OS actifs</div><div className="number">{stats.total}</div></div><div className="card"><div>À planifier</div><div className="number">{stats.planning}</div></div><div className="card"><div>Travaux en cours</div><div className="number">{stats.travaux}</div></div><div className="card"><div>À facturer</div><div className="number">{stats.facturation}</div></div><div className="card"><div>Validation</div><div className="number">{stats.validation}</div></div><div className="card"><div>Réserves</div><div className="number">{stats.reserves}</div></div></div><h2>OS récents</h2><div className="os-list">{osList.slice(0,5).map((os) => <OSCard key={os.id} os={os} onOpen={() => setSelectedOS(os)} />)}</div></>}
+      {page === "dashboard" && <><h2>Tableau de bord</h2><div className="cards"><div className="card"><div>OS actifs</div><div className="number">{stats.total}</div></div><div className="card"><div>À planifier</div><div className="number">{stats.planning}</div></div><div className="card"><div>Travaux en cours</div><div className="number">{stats.travaux}</div></div><div className="card"><div>À facturer</div><div className="number">{stats.facturation}</div></div><div className="card"><div>Validation</div><div className="number">{stats.validation}</div></div><div className="card"><div>Réserves</div><div className="number">{stats.reserves}</div></div><div className="card"><div>OS en erreur</div><div className="number">{stats.errors}</div></div></div><h2>OS récents</h2><div className="os-list">{osList.slice(0,5).map((os) => <OSCard key={os.id} os={os} onOpen={() => setSelectedOS(os)} />)}</div></>}
       {page === "os" && <>
         {showNewOS && <div className="modal-overlay"><div className="modal"><div className="modal-header"><h2>Nouvel ordre de service</h2><button className="secondary" type="button" onClick={() => setShowNewOS(false)}>✕</button></div><form onSubmit={handleCreateOS}>
           <label>Adresse *</label><input type="text" value={newOSAddress} onChange={(e) => setNewOSAddress(e.target.value)} placeholder="Ex. 12 rue de la République" required />
