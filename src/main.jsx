@@ -47,6 +47,7 @@ function App() {
   const [authError, setAuthError] = useState("");
   const [osList, setOsList] = useState([]);
   const [dbTeams, setDbTeams] = useState([]);
+  const [dbSectors, setDbSectors] = useState([]);
   const [appSettings, setAppSettings] = useState(null);
   const [settingsSaving, setSettingsSaving] = useState(false);
   const [settingsMessage, setSettingsMessage] = useState("");
@@ -54,6 +55,7 @@ function App() {
   const [newTeamName, setNewTeamName] = useState("");
   const [newTeamType, setNewTeamType] = useState("interne");
   const [newTeamCapacity, setNewTeamCapacity] = useState("");
+  const [newTeamSectorId, setNewTeamSectorId] = useState("");
   const [teamSaving, setTeamSaving] = useState(false);
   const [teamError, setTeamError] = useState("");
   const [osRefreshVersion, setOsRefreshVersion] = useState(0);
@@ -66,6 +68,7 @@ function App() {
   const [newOSAddress, setNewOSAddress] = useState("");
   const [newOSPostalCode, setNewOSPostalCode] = useState("");
   const [newOSCity, setNewOSCity] = useState("");
+  const [newOSSectorId, setNewOSSectorId] = useState("");
   const [newOSMaterial, setNewOSMaterial] = useState("");
   const [newOSMaterialDetail, setNewOSMaterialDetail] = useState("");
   const [newOSSurface, setNewOSSurface] = useState("");
@@ -106,6 +109,11 @@ function App() {
         const result = await supabase.from("interventions").select("id, work_order_id, team_id, planned_date, planned_order, status").in("work_order_id", workOrderIds);
         if (!result.error) interventions = result.data || []; else console.error("Erreur chargement interventions :", result.error);
       }
+      const sectorResult = await supabase.from("sectors").select("id, name, active, sort_order").order("sort_order", { ascending: true });
+      const sectors = sectorResult.error ? [] : (sectorResult.data || []).filter((sector) => sector.active !== false);
+      if (sectorResult.error) console.error("Erreur chargement secteurs :", sectorResult.error);
+      if (!cancelled) setDbSectors(sectors);
+      const sectorById = new Map(sectors.map((sector) => [sector.id, sector.name]));
       const teamResult = await supabase.from("teams").select("id, name, team_type, usual_sector_id, indicative_capacity, active").order("name", { ascending: true });
       const teams = teamResult.error ? [] : (teamResult.data || []);
       if (teamResult.error) console.error("Erreur chargement équipes :", teamResult.error);
@@ -128,7 +136,7 @@ function App() {
           address: String(row.address || "") + (row.city ? ", " + row.city : ""),
           work: row.material_detail || "Intervention", day, plannedDate,
           team: teamById.get(intervention?.team_id) || "Non affectée", teamId: intervention?.team_id || null,
-          trade: row.material_detail || "Intervention", sector: row.city || "", status: row.status || "Nouveau",
+          trade: row.material_detail || "Intervention", sector: sectorById.get(row.sector_id) || "Non classé", sectorId: row.sector_id || "", status: row.status || "Nouveau",
           quantity: row.planned_surface_m2 ? String(row.planned_surface_m2) + " m²" : "",
           intervention: row.material_detail || "Intervention", rehabilitationZone: row.rehabilitation_zone,
           rehabilitationOtherDetail: row.rehabilitation_other_detail, roadSurface: row.planned_road_surface_m2,
@@ -189,10 +197,10 @@ function App() {
     if (capacity !== null && (!Number.isFinite(capacity) || capacity <= 0)) { setTeamError("La capacité doit être un nombre positif (m²/jour)."); return; }
     setTeamSaving(true);
     try {
-      const { data, error } = await supabase.from("teams").insert({ name, team_type: newTeamType, indicative_capacity: capacity, active: true }).select("id, name, team_type, usual_sector_id, indicative_capacity, active").single();
+      const { data, error } = await supabase.from("teams").insert({ name, team_type: newTeamType, usual_sector_id: newTeamSectorId || null, indicative_capacity: capacity, active: true }).select("id, name, team_type, usual_sector_id, indicative_capacity, active").single();
       if (error) throw error;
       setDbTeams((current) => [...current, data].sort((a, b) => a.name.localeCompare(b.name, "fr")));
-      setNewTeamName(""); setNewTeamType("interne"); setNewTeamCapacity("");
+      setNewTeamName(""); setNewTeamType("interne"); setNewTeamCapacity(""); setNewTeamSectorId("");
       window.dispatchEvent(new Event("setom:planning-updated"));
     } catch (error) {
       console.error("Erreur création équipe :", error);
@@ -218,6 +226,7 @@ function App() {
     event.preventDefault(); setNewOSError(""); setNewOSSaving(true);
     if (!newOSAddress.trim()) { setNewOSError("L'adresse est obligatoire."); setNewOSSaving(false); return; }
     if (!newOSMaterial) { setNewOSError("Veuillez sélectionner un matériau."); setNewOSSaving(false); return; }
+    if (!newOSSectorId) { setNewOSError("Veuillez classer l'OS dans un secteur."); setNewOSSaving(false); return; }
     const parseSurface = (value) => value.trim() === "" ? null : Number(value.replace(",", "."));
     const genericSurface = parseSurface(newOSSurface), roadSurface = parseSurface(newOSRoadSurface), sidewalkSurface = parseSurface(newOSSidewalkSurface);
     if ([genericSurface, roadSurface, sidewalkSurface].some((value) => value !== null && isNaN(value))) { setNewOSError("Les surfaces doivent être des nombres."); setNewOSSaving(false); return; }
@@ -225,7 +234,7 @@ function App() {
     if (newOSRehabilitationZone === "Autre" && !newOSRehabilitationOtherDetail.trim()) { setNewOSError("Veuillez préciser la zone de réfection."); setNewOSSaving(false); return; }
     const surface = newOSRehabilitationZone === "Chaussée" ? roadSurface : newOSRehabilitationZone === "Trottoir" ? sidewalkSurface : newOSRehabilitationZone === "Chaussée + trottoir" ? (roadSurface || 0) + (sidewalkSurface || 0) : genericSurface;
     const { data, error } = await supabase.from("work_orders").insert({
-      status: "À planifier", address: newOSAddress.trim(), postal_code: newOSPostalCode.trim() || null, city: newOSCity.trim() || null,
+      status: "À planifier", address: newOSAddress.trim(), postal_code: newOSPostalCode.trim() || null, city: newOSCity.trim() || null, sector_id: newOSSectorId,
       material_detail: newOSMaterialDetail.trim() || newOSMaterial, rehabilitation_zone: newOSRehabilitationZone,
       rehabilitation_other_detail: newOSRehabilitationOtherDetail.trim() || null, planned_road_surface_m2: roadSurface,
       planned_sidewalk_surface_m2: sidewalkSurface, planned_surface_m2: surface, particularities: newOSParticularities.trim() || null,
@@ -249,7 +258,7 @@ function App() {
     const formattedOS = {
       id: `${String(appSettings?.os_label || "OS").trim()}-${new Date(data.creation_date).getFullYear()}-${String(data.os_number).padStart(5, "0")}`, dbId: data.id,
       address: `${data.address || ""}${data.city ? `, ${data.city}` : ""}`, work: data.material_detail || "Intervention", day: null,
-      team: "Non affectée", trade: data.material_detail || "Intervention", sector: data.city || "", status: data.status || "À planifier",
+      team: "Non affectée", trade: data.material_detail || "Intervention", sector: dbSectors.find((sector) => sector.id === data.sector_id)?.name || "Non classé", sectorId: data.sector_id || "", status: data.status || "À planifier",
       quantity: data.planned_surface_m2 ? `${data.planned_surface_m2} m²` : "", intervention: data.material_detail || "Intervention",
       rehabilitationZone: data.rehabilitation_zone, rehabilitationOtherDetail: data.rehabilitation_other_detail,
       roadSurface: data.planned_road_surface_m2, sidewalkSurface: data.planned_sidewalk_surface_m2,
@@ -258,7 +267,7 @@ function App() {
       suspensionReason: data.suspension_reason || "", suspensionComment: data.suspension_comment || "", suspensionStartedAt: data.suspension_started_at || null, suspensionRestartedAt: data.suspension_restarted_at || null,
     };
     setOsList((current) => [formattedOS, ...current]); setShowNewOS(false);
-    setNewOSAddress(""); setNewOSPostalCode(""); setNewOSCity(""); setNewOSMaterial(""); setNewOSMaterialDetail(""); setNewOSSurface("");
+    setNewOSAddress(""); setNewOSPostalCode(""); setNewOSCity(""); setNewOSSectorId(""); setNewOSMaterial(""); setNewOSMaterialDetail(""); setNewOSSurface("");
     setNewOSRehabilitationZone(""); setNewOSRehabilitationOtherDetail(""); setNewOSRoadSurface(""); setNewOSSidewalkSurface(""); setNewOSParticularities(""); setNewOSFiles([]); setNewOSError(""); setNewOSSaving(false);
   }
 
@@ -300,6 +309,7 @@ function App() {
           <label>Adresse *</label><input type="text" value={newOSAddress} onChange={(e) => setNewOSAddress(e.target.value)} placeholder="Ex. 12 rue de la République" required />
           <label>Code postal</label><input type="text" value={newOSPostalCode} onChange={(e) => setNewOSPostalCode(e.target.value)} placeholder="Ex. 82000" />
           <label>Ville</label><input type="text" value={newOSCity} onChange={(e) => setNewOSCity(e.target.value)} placeholder="Ex. Montauban" />
+          <label>Secteur *</label><select value={newOSSectorId} onChange={(e) => setNewOSSectorId(e.target.value)} required><option value="">Choisir un secteur…</option>{dbSectors.map((sector) => <option key={sector.id} value={sector.id}>{sector.name}</option>)}</select>
           <div className="material-section"><label>Matériau *</label><div className="material-cards">{[{value:"Béton",icon:"🧱"},{value:"Enrobé",icon:"🛣️"},{value:"GE calcaire",icon:"⛰️"},{value:"Asphalte",icon:"⬛"}].map((material) => <button key={material.value} type="button" className={`material-card ${newOSMaterial === material.value ? "selected" : ""}`} onClick={() => {setNewOSMaterial(material.value);setNewOSMaterialDetail("");}}><span className="material-icon">{material.icon}</span><span>{material.value}</span></button>)}</div></div>
           {newOSMaterial === "Béton" && <div className="material-subtypes"><label>Type de béton</label><div className="material-subtype-grid">{["Béton balayé","Béton taloché","Sous-dallage","Béton désactivé","Béton coloré"].map((type) => <button key={type} type="button" className={`material-subtype-button ${newOSMaterialDetail === type ? "selected" : ""}`} onClick={() => setNewOSMaterialDetail(type)}>{type}</button>)}</div></div>}
           {newOSMaterial === "Enrobé" && <div className="material-subtypes"><label>Type d'enrobé</label><div className="material-subtype-grid">{["Enrobé noir","Enrobé rouge","Enrobé miel","Enrobé autre","Enrobé grenaillé"].map((type) => <button key={type} type="button" className={`material-subtype-button ${newOSMaterialDetail === type ? "selected" : ""}`} onClick={() => setNewOSMaterialDetail(type)}>{type}</button>)}</div></div>}
@@ -322,11 +332,12 @@ function App() {
         <form onSubmit={handleCreateTeam} className="card" style={{ marginBottom: 18, display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(180px,1fr))", gap: 12, alignItems: "end" }}>
           <div><label htmlFor="new-team-name">Nom de l'équipe *</label><input id="new-team-name" value={newTeamName} onChange={(e) => setNewTeamName(e.target.value)} placeholder="Ex. Équipe 1" required style={{ width: "100%", boxSizing: "border-box" }}/></div>
           <div><label htmlFor="new-team-type">Type</label><select id="new-team-type" value={newTeamType} onChange={(e) => setNewTeamType(e.target.value)} style={{ width: "100%" }}><option value="interne">Équipe interne</option><option value="sous-traitant">Sous-traitant</option></select></div>
+          <div><label htmlFor="new-team-sector">Secteur habituel</label><select id="new-team-sector" value={newTeamSectorId} onChange={(e) => setNewTeamSectorId(e.target.value)} style={{ width: "100%" }}><option value="">Aucun secteur fixe</option>{dbSectors.map((sector) => <option key={sector.id} value={sector.id}>{sector.name}</option>)}</select></div>
           <div><label htmlFor="new-team-capacity">Capacité indicative (m²/jour)</label><input id="new-team-capacity" type="number" min="0.1" step="0.1" value={newTeamCapacity} onChange={(e) => setNewTeamCapacity(e.target.value)} placeholder="Facultatif" style={{ width: "100%", boxSizing: "border-box" }}/></div>
           <button className="primary" type="submit" disabled={teamSaving}>{teamSaving ? "Enregistrement…" : "＋ Ajouter l'équipe"}</button>
           {teamError && <div style={{ gridColumn: "1 / -1", color: "#b42318", fontSize: 13 }}>{teamError}</div>}
         </form>
-        {dbTeams.length === 0 ? <div className="card"><strong>Aucune équipe enregistrée</strong><p>Ajoutez vos équipes ici pour pouvoir les affecter aux OS dans le planning.</p></div> : <div className="cards">{dbTeams.map((team) => { const count = osList.filter((os) => os.teamId === team.id).length; return <div className="card" key={team.id} style={{ opacity: team.active ? 1 : .65 }}><div style={{ display: "flex", justifyContent: "space-between", alignItems: "start", gap: 12 }}><strong>👷 {team.name}</strong><span className="badge">{team.active ? "Active" : "Inactive"}</span></div><div>{team.team_type === "sous-traitant" ? "Sous-traitant" : "Équipe interne"}</div><div className="number">{count}</div><div>OS affecté{count === 1 ? "" : "s"}</div>{team.indicative_capacity && <div style={{ marginTop: 8, color: "#667085", fontSize: 13 }}>Capacité indicative : {team.indicative_capacity} m²/jour</div>}<button className="secondary" disabled={teamSaving} style={{ marginTop: 12 }} onClick={() => toggleTeamActive(team)}>{team.active ? "Désactiver" : "Réactiver"}</button></div>; })}</div>}
+        {dbTeams.length === 0 ? <div className="card"><strong>Aucune équipe enregistrée</strong><p>Ajoutez vos équipes ici pour pouvoir les affecter aux OS dans le planning.</p></div> : <div className="cards">{dbTeams.map((team) => { const count = osList.filter((os) => os.teamId === team.id).length; return <div className="card" key={team.id} style={{ opacity: team.active ? 1 : .65 }}><div style={{ display: "flex", justifyContent: "space-between", alignItems: "start", gap: 12 }}><strong>👷 {team.name}</strong><span className="badge">{team.active ? "Active" : "Inactive"}</span></div><div>{team.team_type === "sous-traitant" ? "Sous-traitant" : "Équipe interne"}</div>{team.usual_sector_id && <div style={{ color: "#475467", fontSize: 13 }}>Secteur habituel : {dbSectors.find((sector) => sector.id === team.usual_sector_id)?.name || "Secteur inactif"}</div>}<div className="number">{count}</div><div>OS affecté{count === 1 ? "" : "s"}</div>{team.indicative_capacity && <div style={{ marginTop: 8, color: "#667085", fontSize: 13 }}>Capacité indicative : {team.indicative_capacity} m²/jour</div>}<button className="secondary" disabled={teamSaving} style={{ marginTop: 12 }} onClick={() => toggleTeamActive(team)}>{team.active ? "Désactiver" : "Réactiver"}</button></div>; })}</div>}
       </>}
       {page === "reserves" && <><h2>Réserves et corrections</h2><div className="os-list">{osList.filter((os)=>os.status==="Réserve"||os.status==="Correction à réaliser").map((os)=><OSCard key={os.id} os={os} onOpen={()=>setSelectedOS(os)}/>)}{osList.filter((os)=>os.status==="Réserve"||os.status==="Correction à réaliser").length===0&&<div className="card">Aucune réserve en cours.</div>}</div></>}{page === "settings" && <><h2>Paramètres du marché</h2>
         {!appSettings ? <div className="card">Chargement des paramètres…</div> : <form onSubmit={saveAppSettings} className="card" style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(230px,1fr))", gap: 14, alignItems: "start" }}>
@@ -391,14 +402,14 @@ function OSModal({ os, onClose, onUpdate }) {
     let cancelled = false;
     async function loadEditableOSFields() {
       setOsEditLoading(true); setOsEditError("");
-      const { data, error } = await supabase.from("work_orders").select("address, postal_code, city, material_detail, planned_surface_m2, deadline_date, particularities").eq("id", os.dbId).single();
+      const { data, error } = await supabase.from("work_orders").select("address, postal_code, city, sector_id, material_detail, planned_surface_m2, deadline_date, particularities").eq("id", os.dbId).single();
       if (error) {
         console.error("Erreur chargement des informations modifiables de l'OS :", error);
         if (!cancelled) { setOsEditError(error.message || "Impossible de charger l'OS."); setOsEditLoading(false); }
         return;
       }
       if (!cancelled) {
-        setOsEditDraft({ address: data.address || "", postal_code: data.postal_code || "", city: data.city || "", material_detail: data.material_detail || "", planned_surface_m2: data.planned_surface_m2 == null ? "" : String(data.planned_surface_m2), deadline_date: data.deadline_date || "", particularities: data.particularities || "" });
+        setOsEditDraft({ address: data.address || "", postal_code: data.postal_code || "", city: data.city || "", sector_id: data.sector_id || "", material_detail: data.material_detail || "", planned_surface_m2: data.planned_surface_m2 == null ? "" : String(data.planned_surface_m2), deadline_date: data.deadline_date || "", particularities: data.particularities || "" });
         setOsEditLoading(false);
       }
     }
@@ -534,18 +545,20 @@ function OSModal({ os, onClose, onUpdate }) {
         postal_code: String(osEditDraft.postal_code || "").trim() || null,
         city: String(osEditDraft.city || "").trim() || null,
         material_detail: material,
+        sector_id: osEditDraft.sector_id || null,
         planned_surface_m2: surface,
         deadline_date: osEditDraft.deadline_date,
         particularities: String(osEditDraft.particularities || "").trim() || null,
         updated_by: user.id,
         updated_at: new Date().toISOString()
       };
-      const { data, error } = await supabase.from("work_orders").update(payload).eq("id", os.dbId).select("address, postal_code, city, material_detail, planned_surface_m2, deadline_date, particularities").single();
+      const { data, error } = await supabase.from("work_orders").update(payload).eq("id", os.dbId).select("address, postal_code, city, sector_id, material_detail, planned_surface_m2, deadline_date, particularities").single();
       if (error) throw error;
       const saved = {
         address: data.address || "",
         postal_code: data.postal_code || "",
         city: data.city || "",
+        sector_id: data.sector_id || "",
         material_detail: data.material_detail || "",
         planned_surface_m2: data.planned_surface_m2 == null ? "" : String(data.planned_surface_m2),
         deadline_date: data.deadline_date || "",
@@ -558,7 +571,8 @@ function OSModal({ os, onClose, onUpdate }) {
         work: saved.material_detail || "Intervention",
         intervention: saved.material_detail || "Intervention",
         trade: saved.material_detail || "Intervention",
-        sector: saved.city || "",
+        sector: dbSectors.find((sector) => sector.id === saved.sector_id)?.name || "Non classé",
+        sectorId: saved.sector_id || "",
         quantity: saved.planned_surface_m2 === "" ? "" : saved.planned_surface_m2 + " m²",
         deadline: saved.deadline_date,
         postalCode: saved.postal_code,
@@ -765,6 +779,7 @@ function OSModal({ os, onClose, onUpdate }) {
       <div><label htmlFor="os-edit-address">Adresse *</label><input id="os-edit-address" value={osEditDraft.address} onChange={(e) => setOsEditDraft((current) => ({ ...current, address: e.target.value }))} required style={{ width: "100%", boxSizing: "border-box" }}/></div>
       <div><label htmlFor="os-edit-postal">Code postal</label><input id="os-edit-postal" value={osEditDraft.postal_code} onChange={(e) => setOsEditDraft((current) => ({ ...current, postal_code: e.target.value }))} style={{ width: "100%", boxSizing: "border-box" }}/></div>
       <div><label htmlFor="os-edit-city">Ville</label><input id="os-edit-city" value={osEditDraft.city} onChange={(e) => setOsEditDraft((current) => ({ ...current, city: e.target.value }))} style={{ width: "100%", boxSizing: "border-box" }}/></div>
+      <div><label htmlFor="os-edit-sector">Secteur *</label><select id="os-edit-sector" value={osEditDraft.sector_id} onChange={(e) => setOsEditDraft((current) => ({ ...current, sector_id: e.target.value }))} required style={{ width: "100%", boxSizing: "border-box" }}><option value="">Choisir un secteur…</option>{dbSectors.map((sector) => <option key={sector.id} value={sector.id}>{sector.name}</option>)}</select></div>
       <div><label htmlFor="os-edit-material">Matériau / intervention *</label><input id="os-edit-material" value={osEditDraft.material_detail} onChange={(e) => setOsEditDraft((current) => ({ ...current, material_detail: e.target.value }))} required style={{ width: "100%", boxSizing: "border-box" }}/></div>
       <div><label htmlFor="os-edit-surface">Surface prévue (m²)</label><input id="os-edit-surface" type="number" min="0" step="0.01" value={osEditDraft.planned_surface_m2} onChange={(e) => setOsEditDraft((current) => ({ ...current, planned_surface_m2: e.target.value }))} style={{ width: "100%", boxSizing: "border-box" }}/></div>
       <div><label htmlFor="os-edit-deadline">Échéance *</label><input id="os-edit-deadline" type="date" value={osEditDraft.deadline_date} onChange={(e) => setOsEditDraft((current) => ({ ...current, deadline_date: e.target.value }))} required style={{ width: "100%", boxSizing: "border-box" }}/></div>
