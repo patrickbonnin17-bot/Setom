@@ -1,0 +1,108 @@
+name: Patch Travaux form
+
+on:
+  push:
+    branches: [setom-v2-stable]
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    if: "!contains(github.event.head_commit.message, '[skip travaux-patch]')"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Patch Travaux form
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          p = Path('src/main.jsx')
+          s = p.read_text()
+
+          marker = '  const [previewAttachment, setPreviewAttachment] = useState(null);'
+          effect = r'''
+
+  // Recharge systématiquement les données déjà enregistrées dans l'onglet Travaux.
+  // Cela évite de perdre les mesures lorsqu'on change d'onglet ou qu'on rouvre un OS.
+  useEffect(() => {
+    let cancelled = false;
+    async function loadWorkDraft() {
+      if (!os?.dbId) return;
+      const { data: workOrder, error: workOrderError } = await supabase
+        .from("work_orders")
+        .select("actual_road_surface_m2, actual_sidewalk_surface_m2, actual_other_surface_m2")
+        .eq("id", os.dbId)
+        .maybeSingle();
+      if (cancelled) return;
+      if (!workOrderError && workOrder) {
+        const road = workOrder.actual_road_surface_m2 == null ? "" : String(workOrder.actual_road_surface_m2);
+        const sidewalk = workOrder.actual_sidewalk_surface_m2 == null ? "" : String(workOrder.actual_sidewalk_surface_m2);
+        const other = workOrder.actual_other_surface_m2 == null ? "" : String(workOrder.actual_other_surface_m2);
+        setRealRoadSurface(road);
+        setRealSidewalkSurface(sidewalk);
+        setRealOtherSurface(other);
+      }
+
+      const interventionId = os.interventionId;
+      if (!interventionId) return;
+      const { data: rows, error } = await supabase
+        .from("work_realizations")
+        .select("designation, quantity, surface_m2, length_ml, thickness_cm, observations, unit")
+        .eq("intervention_id", interventionId);
+      if (cancelled || error) return;
+      const realizations = rows || [];
+      const main = realizations.find((row) => row.surface_m2 != null && !["Démolition", "Marquage"].includes(row.designation));
+      const saw = realizations.find((row) => row.designation === "Sciage");
+      const jointsRow = realizations.find((row) => row.designation === "Joints");
+      const key = realizations.find((row) => row.designation === "Bouché à clé");
+      const traffic = realizations.find((row) => row.designation?.startsWith("Circulation alternée"));
+      const marking = realizations.find((row) => row.designation === "Marquage");
+
+      if (main) {
+        if (main.thickness_cm != null) setThickness(String(main.thickness_cm));
+        if (main.observations != null) setWorkComment(String(main.observations));
+      }
+      if (saw) setSciage(String(saw.length_ml ?? saw.quantity ?? ""));
+      if (jointsRow) setJoints(String(jointsRow.length_ml ?? jointsRow.quantity ?? ""));
+      if (key) setBoucheAcle(String(key.quantity ?? ""));
+      if (traffic) {
+        setCirculationType(traffic.designation.includes("K10") ? "K10" : "FEUX");
+        const hours = traffic.observations ? Number(String(traffic.observations).replace(" h", "")) : Number(traffic.quantity || 0) * 4;
+        setCirculationHours(Number.isFinite(hours) && hours > 0 ? String(hours) : "");
+      }
+      if (marking) setMarquageSurface(String(marking.surface_m2 ?? marking.quantity ?? ""));
+
+      const zone = os.rehabilitationZone;
+      const road = workOrder?.actual_road_surface_m2;
+      const sidewalk = workOrder?.actual_sidewalk_surface_m2;
+      const other = workOrder?.actual_other_surface_m2;
+      const parseArea = (area) => area == null ? null : Number(area);
+      if (zone === "Chaussée" && parseArea(road) != null && Number(road) > 0) setRoadLength(String(Number(road).toFixed(2)));
+      if (zone === "Trottoir" && parseArea(sidewalk) != null && Number(sidewalk) > 0) setSidewalkLength(String(Number(sidewalk).toFixed(2)));
+      if (zone === "Autre" && parseArea(other) != null && Number(other) > 0) setOtherLength(String(Number(other).toFixed(2)));
+    }
+    loadWorkDraft().catch((error) => console.error("Erreur chargement brouillon travaux :", error));
+    return () => { cancelled = true; };
+  }, [os?.dbId, os?.interventionId, os?.rehabilitationZone]);
+'''
+          if marker not in s:
+              raise SystemExit('marker not found')
+          if 'Recharge systématiquement les données déjà enregistrées dans l’onglet Travaux.' not in s:
+              s = s.replace(marker, marker + effect, 1)
+
+          old = 'accept="image/*" multiple onChange={(e)=>{const files=Array.from(e.target.files||[]).filter((file)=>file.type.startsWith("image/"));setWorkPhotoFiles((current)=>[...current,...files]);e.target.value="";}}'
+          new = 'accept="image/*,.heic,.heif,.jpg,.jpeg,.png" multiple onChange={(e)=>{const files=Array.from(e.target.files||[]).filter((file)=>file.type.startsWith("image/")||/\\.(heic|heif|jpe?g|png|webp)$/i.test(file.name));setWorkPhotoFiles((current)=>[...current,...files]);e.target.value="";}}'
+          if old in s:
+              s = s.replace(old, new, 1)
+
+          p.write_text(s)
+          PY
+      - name: Commit patch
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add src/main.jsx
+          git diff --cached --quiet && exit 0
+          git commit -m "fix: restore travaux draft fields and photo selection [skip travaux-patch]"
+          git push
