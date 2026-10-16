@@ -10,11 +10,11 @@ const today = () => { const d=new Date(); return `${d.getFullYear()}-${String(d.
 function styles(){
  if(document.getElementById(STYLE)) return;
  const s=document.createElement("style"); s.id=STYLE; s.textContent=`
- #${ROOT}-btn{position:fixed;right:18px;bottom:72px;z-index:99989;border:0;border-radius:999px;padding:12px 16px;background:#0f766e;color:#fff;font-weight:800;box-shadow:0 8px 26px rgba(0,0,0,.2);cursor:pointer}
+ #${ROOT}-btn{position:fixed;right:365px;bottom:18px;z-index:99989;border:0;border-radius:999px;padding:12px 16px;background:#0f766e;color:#fff;font-weight:800;box-shadow:0 8px 26px rgba(0,0,0,.2);cursor:pointer}
  #${ROOT}-panel{position:fixed;inset:14px;z-index:99990;background:#f8fafc;border-radius:18px;box-shadow:0 18px 60px rgba(0,0,0,.3);overflow:auto;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;color:#17202a}
  #${ROOT}-panel .mf-head{position:sticky;top:0;background:#fff;border-bottom:1px solid #e4e7ec;padding:15px 18px;display:flex;justify-content:space-between;align-items:center;z-index:2}
  #${ROOT}-panel .mf-body{max-width:1300px;margin:auto;padding:18px}.mf-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(210px,1fr));gap:12px}.mf-card{background:#fff;border:1px solid #e4e7ec;border-radius:14px;padding:14px;margin-bottom:12px}.mf-table{width:100%;border-collapse:collapse;min-width:900px}.mf-table th,.mf-table td{padding:9px;border-bottom:1px solid #edf0f4;text-align:left;font-size:13px}.mf-input{width:100%;box-sizing:border-box;padding:8px;border:1px solid #d0d5dd;border-radius:8px}.mf-btn{border:1px solid #d0d5dd;border-radius:8px;padding:8px 11px;background:#fff;font-weight:700;cursor:pointer}.mf-primary{background:#175cd3;color:#fff;border-color:#175cd3}.mf-good{color:#027a48;font-weight:800}.mf-bad{color:#b42318;font-weight:800}.mf-muted{color:#667085;font-size:12px}
- @media(max-width:700px){#${ROOT}-panel{inset:0;border-radius:0}.mf-body{padding:12px}}
+ @media(max-width:700px){#${ROOT}-panel{inset:0;border-radius:0}#${ROOT}-btn{right:12px;bottom:130px}.mf-body{padding:12px}}
  `; document.head.appendChild(s);
 }
 
