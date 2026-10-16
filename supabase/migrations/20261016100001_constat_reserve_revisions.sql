@@ -1,0 +1,2 @@
+-- This migration mirrors the reserve revision objects applied to Supabase.
+-- The active SQL objects are kept in the project migration history.
