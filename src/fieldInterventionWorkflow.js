@@ -18,18 +18,6 @@ function osNumberFromText(text) {
   return String(matches[0][1]).replace(/\D/g, "");
 }
 
-function findCard(node) {
-  let el = node?.closest?.("[data-os-number],[data-work-order-id],.setom-os-card,.setom-binder-card,.setom-map-order,article,li");
-  if (el && el.textContent.length < 5000) return el;
-  el = node?.parentElement;
-  while (el && el !== document.body) {
-    const text = el.textContent || "";
-    if (text.length < 2500 && /\bOS[-\s]?(?:\d{4}[-\s]?)?\d{3,8}\b/i.test(text)) return el;
-    el = el.parentElement;
-  }
-  return null;
-}
-
 function injectStyle() {
   if (document.getElementById(STYLE_ID)) return;
   const style = document.createElement("style");
@@ -83,7 +71,7 @@ async function uploadPhotos(workOrderId, files, category) {
     if (uploadError) throw uploadError;
     const { data: publicData } = supabase.storage.from("setom-files").getPublicUrl(path);
     const url = publicData?.publicUrl || path;
-    const { error: attachmentError } = await supabase.from("attachments").insert({ work_order_id: workOrderId, category, file_name: file.name, file_path: path, file_url: url, mime_type: file.type || "image/jpeg" });
+    const { error: attachmentError } = await supabase.from("attachments").insert({ work_order_id: workOrderId, category, file_name: file.name, storage_path: path, mime_type: file.type || "image/jpeg", captured_at: new Date().toISOString() });
     if (attachmentError) throw attachmentError;
     rows.push({ file, url });
   }
@@ -154,9 +142,9 @@ function openModal(workOrder, mode = "start") {
       const sidewalk = modal.querySelector("#setom-real-sidewalk")?.value;
       const notes = modal.querySelector("#setom-work-notes")?.value || null;
       const patch = {
-        ...(total !== "" ? { actual_surface_m2: Number(total) } : {}),
         ...(road !== "" ? { actual_road_surface_m2: Number(road) } : {}),
         ...(sidewalk !== "" ? { actual_sidewalk_surface_m2: Number(sidewalk) } : {}),
+        ...(total !== "" ? { actual_other_surface_m2: Math.max(0, Number(total) - Number(road || 0) - Number(sidewalk || 0)) } : {}),
         ...(notes ? { particularities: notes } : {}),
         ...(start ? { status: "En cours" } : {}),
         ...(finish ? { status: "Travaux réalisés" } : {}),
@@ -182,7 +170,7 @@ function openModal(workOrder, mode = "start") {
       const files = Array.from(photoInput?.files || []);
       if (files.length) await uploadPhotos(workOrder.id, files, reserve ? "reserve_reprise" : "travaux");
       if (reserve) {
-        try { await supabase.from("constats").update({ status: "À vérifier", reserve_resolved_at: new Date().toISOString() }).eq("work_order_id", workOrder.id).eq("status", "Réserve"); } catch (_) {}
+        try { await supabase.from("constats").update({ status: "À vérifier" }).eq("work_order_id", workOrder.id).eq("status", "Réserve"); } catch (_) {}
       }
       closeModal();
       notifyRefresh();
@@ -212,14 +200,21 @@ async function handleStart(button) {
   }
 }
 
+// Important: do not scan every <article>/<li> on the page. The old implementation
+// could inject hundreds of buttons and trigger a mutation loop on mobile browsers.
+// Only inspect explicit SETOM OS containers and debounce DOM refreshes.
 function injectButtons() {
   injectStyle();
-  const candidates = Array.from(document.querySelectorAll("[data-os-number],[data-work-order-id],.setom-os-card,.setom-binder-card,.setom-map-order,article,li"));
+  const selector = "[data-os-number]:not([data-setom-start-intervention='1']),[data-work-order-id]:not([data-setom-start-intervention='1']),.setom-os-card:not([data-setom-start-intervention='1']),.setom-binder-card:not([data-setom-start-intervention='1']),.setom-map-order:not([data-setom-start-intervention='1'])";
+  const candidates = Array.from(document.querySelectorAll(selector));
   for (const candidate of candidates) {
-    if (candidate.getAttribute(INJECTED) === "1") continue;
     const text = candidate.textContent || "";
     const osNumber = candidate.dataset.osNumber || osNumberFromText(text);
     if (!osNumber || text.length > 5000) continue;
+    if (candidate.querySelector(".setom-start-intervention-btn")) {
+      candidate.setAttribute(INJECTED, "1");
+      continue;
+    }
     const button = document.createElement("button");
     button.type = "button";
     button.className = "setom-start-intervention-btn";
@@ -232,10 +227,27 @@ function injectButtons() {
 }
 
 function boot() {
+  if (window.__setomFieldWorkflowBooted) return;
+  window.__setomFieldWorkflowBooted = true;
   injectButtons();
-  const observer = new MutationObserver(() => injectButtons());
+  let scheduled = false;
+  const scheduleInject = () => {
+    if (scheduled) return;
+    scheduled = true;
+    requestAnimationFrame(() => {
+      scheduled = false;
+      injectButtons();
+    });
+  };
+  const observer = new MutationObserver((mutations) => {
+    for (const mutation of mutations) {
+      if (mutation.type === "childList" && mutation.addedNodes.length) {
+        scheduleInject();
+        break;
+      }
+    }
+  });
   observer.observe(document.body, { childList: true, subtree: true });
-  setInterval(injectButtons, 1200);
 }
 
 if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", boot, { once: true });
