@@ -12,10 +12,15 @@ const CATS = [
 const n = (v) => { const x = Number(String(v ?? "").replace(",", ".")); return Number.isFinite(x) ? x : 0; };
 const money = (v) => `${n(v).toLocaleString("fr-FR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} €`;
 const iso = (v) => String(v || "").slice(0, 10);
+const STORAGE_PREFIX = "setom-daily-team-costs-v1:";
 
 function selectedDate() {
   const el = document.querySelector("input[type=date][data-setom-selected-date], .planning-date-input");
   return iso(el?.value) || new Date().toISOString().slice(0, 10);
+}
+
+function saveLocal(date, totalData) {
+  try { localStorage.setItem(`${STORAGE_PREFIX}${date}`, JSON.stringify(totalData)); } catch {}
 }
 
 async function load(date) {
@@ -91,6 +96,17 @@ async function render(date = selectedDate()) {
         const { total, hours } = updateTotals();
         if (total <= 0) throw new Error("Saisis au moins un coût journalier.");
         if (hours <= 0) throw new Error("Il faut au moins une heure affectée à un OS.");
+        const dailyData = {
+          personnel_amount: n(box.querySelector('[data-cat="personnel"]')?.value),
+          vehicles_amount: n(box.querySelector('[data-cat="vehicules"]')?.value),
+          materials_amount: n(box.querySelector('[data-cat="materiaux"]')?.value),
+          equipment_amount: n(box.querySelector('[data-cat="materiel"]')?.value),
+          fuel_amount: n(box.querySelector('[data-cat="carburant"]')?.value),
+          other_amount: n(box.querySelector('[data-cat="autres"]')?.value),
+          hours,
+          cost_date: date
+        };
+        saveLocal(date, dailyData);
         const allocations = [];
         for (const r of interventions) {
           const h = n(box.querySelector(`[data-hours="${r.work_order_id}"]`)?.value);
@@ -108,7 +124,8 @@ async function render(date = selectedDate()) {
         if (del.error) throw del.error;
         const ins = await supabase.from("work_order_costs").insert(allocations);
         if (ins.error) throw ins.error;
-        msg.className = "dt-msg"; msg.textContent = `✓ ${money(total)} répartis sur ${hours.toFixed(2)} h (${money(total/hours)}/h). Le Pilotage journée les prendra en compte.`;
+        window.dispatchEvent(new CustomEvent("setom:daily-team-cost-saved", { detail: { date, total, hours, rate: total / hours } }));
+        msg.className = "dt-msg"; msg.textContent = `✓ ${money(total)} répartis sur ${hours.toFixed(2)} h (${money(total/hours)}/h). La journée financière est maintenant synchronisée.`;
       } catch (e) { msg.className = "dt-sub dt-warn"; msg.textContent = `⚠ ${e.message || "Erreur d'enregistrement"}`; }
     };
   } catch (e) {
