@@ -1,95 +1,12 @@
 import { supabase } from "./supabase";
 
-function getOSNumber(){
-  const m=(document.body?.innerText||"").match(/OS[- ]\d{4}[- ](\d{3,8})/i);
-  return m ? Number(m[1]) : null;
-}
-
-async function getOS(){
-  const n=getOSNumber();
-  if(!Number.isFinite(n)) throw new Error("Impossible d'identifier l'OS affiché.");
-  const {data,error}=await supabase.from("work_orders").select("id,os_number").eq("os_number",n).order("creation_date",{ascending:false}).limit(1).maybeSingle();
-  if(error) throw error;
-  if(!data) throw new Error("OS introuvable.");
-  return data;
-}
-
-async function loadReserve(os){
-  const {data:constat,error:e1}=await supabase.from("constats").select("*").eq("work_order_id",os.id).order("created_at",{ascending:false}).limit(1).maybeSingle();
-  if(e1) throw e1;
-  if(!constat || constat.status!=="Validé avec réserve" || constat.reserve_resolved_at) throw new Error("Action disponible uniquement pour une réserve non levée.");
-  const {data:lines,error:e2}=await supabase.from("constat_lines").select("*").eq("constat_id",constat.id).order("id");
-  if(e2) throw e2;
-  return {constat,lines:lines||[]};
-}
-
-function modal(title,body){
-  const wrap=document.createElement("div");
-  wrap.style="position:fixed;inset:0;z-index:999999;background:rgba(15,23,42,.55);display:flex;align-items:center;justify-content:center;padding:18px";
-  wrap.innerHTML=`<div style="width:min(960px,96vw);max-height:92vh;overflow:auto;background:#fff;border-radius:16px;padding:20px;font-family:-apple-system,BlinkMacSystemFont,Segoe UI,sans-serif"><h3 style="margin-top:0">${title}</h3>${body}</div>`;
-  document.body.appendChild(wrap);
-  return wrap;
-}
-
-async function editConstat(){
-  const os=await getOS();
-  const {constat,lines}=await loadReserve(os);
-  const box=modal("✏️ Modifier le constat",`<p>Réserve : ${String(constat.reserve_reason||"").replace(/</g,"&lt;")}</p><label>Observations</label><textarea id="sr-obs" rows="3" style="width:100%;box-sizing:border-box"></textarea><div id="sr-lines"></div><div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:12px"><button id="sr-add">+ Ajouter une prestation</button><button id="sr-save">💾 Enregistrer et soumettre à nouveau</button><button id="sr-close">Annuler</button></div>`);
-  box.querySelector("#sr-obs").value=constat.observations||"";
-  const state=lines.map(x=>({...x}));
-  const render=()=>{box.querySelector("#sr-lines").innerHTML=state.map((x,i)=>`<div data-i="${i}" style="border:1px solid #ddd;border-radius:8px;padding:8px;margin:8px 0"><input data-f="designation" value="${String(x.designation||"").replace(/"/g,"&quot;")}" placeholder="Prestation"><input data-f="quantity" type="number" step="0.01" value="${x.quantity??0}"><input data-f="unit" value="${String(x.unit||"").replace(/"/g,"&quot;")}" placeholder="Unité"><input data-f="unit_price" type="number" step="0.01" value="${x.unit_price??0}"><input data-f="observations" value="${String(x.observations||"").replace(/"/g,"&quot;")}" placeholder="Observation"><button data-remove="1">✕</button></div>`).join("");
-    box.querySelectorAll("#sr-lines [data-i]").forEach(row=>row.querySelectorAll("input").forEach(inp=>inp.onchange=()=>{const i=Number(row.dataset.i);const f=inp.dataset.f;state[i][f]=(f==="quantity"||f==="unit_price")?Number(inp.value):inp.value;}));
-    box.querySelectorAll("#sr-lines [data-remove]").forEach(btn=>btn.onclick=()=>{state.splice(Number(btn.parentElement.dataset.i),1);render();});
-  };
-  render();
-  box.querySelector("#sr-add").onclick=()=>{state.push({bpu_line_id:"",designation:"Prestation",quantity:0,unit:"",unit_price:0,observations:""});render();};
-  box.querySelector("#sr-close").onclick=()=>box.remove();
-  box.querySelector("#sr-save").onclick=async()=>{
-    const btn=box.querySelector("#sr-save");btn.disabled=true;
-    try{
-      const payload=state.map(x=>({bpu_line_id:x.bpu_line_id||"",designation:String(x.designation||"Prestation"),quantity:Number(x.quantity)||0,unit:String(x.unit||""),unit_price:Number(x.unit_price)||0,thickness_cm:x.thickness_cm??"",observations:x.observations||"",actual_quantity:x.actual_quantity??"",billing_coefficient:x.billing_coefficient??"",reference_thickness_cm:x.reference_thickness_cm??"",actual_thickness_cm:x.actual_thickness_cm??""}));
-      const {error}=await supabase.rpc("update_constat_after_reserve",{p_work_order_id:os.id,p_constat_id:constat.id,p_observations:box.querySelector("#sr-obs").value||null,p_lines:payload});
-      if(error)throw error;
-      alert("✅ Constat modifié. Il repasse À vérifier pour une nouvelle validation.");location.reload();
-    }catch(e){alert("Impossible de modifier le constat : "+(e?.message||e));btn.disabled=false;}
-  };
-}
-
-async function addReservePhotos(){
-  const os=await getOS();
-  await loadReserve(os);
-  const box=modal("📸 Photos de reprise",`<p>Ajoute les photos montrant la correction demandée.</p><input id="sr-files" type="file" accept="image/*" multiple><div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:12px"><button id="sr-upload">📤 Enregistrer les photos</button><button id="sr-close">Annuler</button></div>`);
-  box.querySelector("#sr-close").onclick=()=>box.remove();
-  box.querySelector("#sr-upload").onclick=async()=>{
-    const files=Array.from(box.querySelector("#sr-files").files||[]);if(!files.length){alert("Ajoute au moins une photo.");return;}
-    const btn=box.querySelector("#sr-upload");btn.disabled=true;
-    try{
-      const {data:userData}=await supabase.auth.getUser();if(!userData?.user)throw new Error("Utilisateur non authentifié.");
-      for(let i=0;i<files.length;i++){
-        const f=files[i];if(!String(f.type||"").startsWith("image/"))throw new Error("Seules les images sont acceptées.");
-        const safe=f.name.normalize("NFD").replace(/[\\u0300-\\u036f]/g,"").replace(/[^a-zA-Z0-9._-]/g,"_");
-        const path=`work-orders/${os.id}/reserve-reprise/${Date.now()}-${i}-${safe}`;
-        const {error:uerr}=await supabase.storage.from("setom-files").upload(path,f,{cacheControl:"3600",upsert:false,contentType:f.type});if(uerr)throw uerr;
-        const {error:aerr}=await supabase.from("attachments").insert({work_order_id:os.id,category:"reserve_reprise",file_name:f.name,storage_path:path,mime_type:f.type,captured_at:new Date().toISOString(),created_by:userData.user.id});if(aerr)throw aerr;
-      }
-      alert("✅ Photos de reprise enregistrées.");box.remove();location.reload();
-    }catch(e){alert("Impossible d'enregistrer les photos : "+(e?.message||e));btn.disabled=false;}
-  };
-}
-
-function install(){
-  const scan=()=>{
-    if(!((document.body?.innerText||"").includes("Validé avec réserve")))return;
-    const target=Array.from(document.querySelectorAll("div")).find(x=>x.textContent?.includes("Motif :")&&x.textContent?.includes("Réserve"));
-    if(!target||target.querySelector("[data-setom-reserve-actions]"))return;
-    const host=document.createElement("div");host.dataset.setomReserveActions="1";host.style="display:flex;gap:8px;flex-wrap:wrap;margin-top:10px";
-    host.innerHTML='<button type="button">📸 Photos de reprise</button><button type="button">✏️ Modifier le constat</button>';
-    host.children[0].onclick=()=>addReservePhotos().catch(e=>alert(e?.message||e));
-    host.children[1].onclick=()=>editConstat().catch(e=>alert(e?.message||e));
-    target.appendChild(host);
-  };
-  new MutationObserver(scan).observe(document.body,{subtree:true,childList:true});
-  setTimeout(scan,500);setInterval(scan,1500);
-}
-
-if(document.readyState==="loading")document.addEventListener("DOMContentLoaded",install,{once:true});else install();
+const css=`.sr-modal{position:fixed;inset:0;z-index:999999;background:#0008;display:flex;align-items:center;justify-content:center;padding:16px}.sr-box{background:#fff;border-radius:14px;width:min(900px,96vw);max-height:90vh;overflow:auto;padding:18px}.sr-box table{width:100%;border-collapse:collapse}.sr-box th,.sr-box td{padding:6px;border-bottom:1px solid #ddd}.sr-box input,.sr-box textarea{padding:7px;box-sizing:border-box;width:100%}.sr-actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:12px}.sr-actions button{padding:9px 12px;border-radius:8px;border:1px solid #ccd;background:#fff}.sr-actions button.primary{background:#1565c0;color:#fff}.sr-photos{display:grid;grid-template-columns:repeat(auto-fill,minmax(120px,1fr));gap:8px;margin-top:10px}.sr-photos img{width:100%;height:100px;object-fit:cover;border-radius:8px}`;
+function addStyle(){if(document.getElementById('sr-style'))return;const s=document.createElement('style');s.id='sr-style';s.textContent=css;document.head.appendChild(s)}
+function close(){document.querySelectorAll('.sr-modal').forEach(x=>x.remove())}
+function esc(v){return String(v??'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/\"/g,'&quot;')}
+async function current(){const m=(document.body.innerText||'').match(/OS[- ]\d{4}[- ](\d{3,8})/i);if(!m)throw Error("OS introuvable");const r=await supabase.from('work_orders').select('id,os_number').eq('os_number',Number(m[1])).order('creation_date',{ascending:false}).limit(1).maybeSingle();if(r.error)throw r.error;if(!r.data)throw Error('OS introuvable');return r.data}
+async function data(os){const c=await supabase.from('constats').select('*').eq('work_order_id',os.id).order('created_at',{ascending:false}).limit(1).maybeSingle();if(c.error)throw c.error;if(!c.data||c.data.status!=='Validé avec réserve'||c.data.reserve_resolved_at)throw Error('La réserve doit être active et non levée');const l=await supabase.from('constat_lines').select('*').eq('constat_id',c.data.id).order('id');if(l.error)throw l.error;return{c:c.data,l:l.data||[]}}
+function payload(x){return{bpu_line_id:x.bpu_line_id||'',designation:String(x.designation||'Prestation'),quantity:Number(x.quantity)||0,unit:String(x.unit||''),unit_price:Number(x.unit_price)||0,thickness_cm:x.thickness_cm??'',observations:x.observations||'',actual_quantity:x.actual_quantity??'',billing_coefficient:x.billing_coefficient??'',reference_thickness_cm:x.reference_thickness_cm??'',actual_thickness_cm:x.actual_thickness_cm??''}}
+async function edit(){try{const os=await current(),d=await data(os),st={obs:d.c.observations||'',lines:d.l.map(x=>({...x}))};const w=document.createElement('div');w.className='sr-modal';w.innerHTML=`<div class=sr-box><h3>✏️ Modifier le constat — OS ${os.os_number}</h3><p>Le constat repassera « À vérifier ».</p><textarea id=sr-o rows=3>${esc(st.obs)}</textarea><table><thead><tr><th>Prestation</th><th>Qté</th><th>Unité</th><th>Prix</th><th>Montant</th><th></th></tr></thead><tbody id=sr-l></tbody></table><div class=sr-actions><button id=sr-a>+ Ajouter</button><button class='primary' id=sr-s>💾 Enregistrer</button><button id=sr-x>Annuler</button></div></div>`;document.body.appendChild(w);const body=w.querySelector('#sr-l');const render=()=>{body.innerHTML='';st.lines.forEach((x,i)=>{const tr=document.createElement('tr');tr.innerHTML=`<td><input data-f=d value='${esc(x.designation)}'></td><td><input data-f=q type=number step=.01 value='${x.quantity??0}'></td><td><input data-f=u value='${esc(x.unit)}'></td><td><input data-f=p type=number step=.01 value='${x.unit_price??0}'></td><td>${((Number(x.quantity)||0)*(Number(x.unit_price)||0)).toFixed(2)} €</td><td><button>✕</button></td>`;tr.querySelectorAll('input').forEach(i2=>i2.onchange=()=>{const f=i2.dataset.f;const k={d:'designation',q:'quantity',u:'unit',p:'unit_price'}[f];x[k]=(f==='q'||f==='p')?Number(i2.value):i2.value;render()});tr.querySelector('button').onclick=()=>{st.lines.splice(i,1);render()};body.appendChild(tr)})};render();w.querySelector('#sr-a').onclick=()=>{st.lines.push({designation:'Prestation',quantity:0,unit:'',unit_price:0});render()};w.querySelector('#sr-x').onclick=close;w.querySelector('#sr-s').onclick=async()=>{try{const r=await supabase.rpc('update_constat_after_reserve',{p_work_order_id:os.id,p_constat_id:d.c.id,p_observations:w.querySelector('#sr-o').value||null,p_lines:st.lines.map(payload)});if(r.error)throw r.error;alert('✅ Constat modifié et repassé À vérifier.');close();location.reload()}catch(e){alert('Impossible de modifier le constat : '+(e.message||e))}}}catch(e){alert(e.message||String(e))}}
+function install(){addStyle();const scan=()=>{if(!(document.body.innerText||'').includes('Validé avec réserve'))return;const t=[...document.querySelectorAll('div')].find(x=>x.textContent?.includes('Motif :')&&x.textContent?.includes('Réserve'));if(!t||t.querySelector('[data-sr]'))return;const h=document.createElement('div');h.dataset.sr='1';h.className='sr-actions';h.innerHTML=`<button>📸 Photos de reprise</button><button>✏️ Modifier le constat</button>`;h.querySelectorAll('button')[1].onclick=edit;t.appendChild(h)};new MutationObserver(scan).observe(document.body,{childList:true,subtree:true});setTimeout(scan,500)}
+if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',install,{once:true});else install();
