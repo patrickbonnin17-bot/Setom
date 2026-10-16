@@ -21,12 +21,10 @@ function addStyles() {
     .setom-photo-thumb-wrap.is-empty{display:flex;align-items:center;justify-content:center;background:#eef1f5;color:#98a2b3;font-size:20px}
     .setom-photo-thumb-wrap img{width:100%;height:100%;object-fit:cover;display:block}
     .setom-photo-count{position:absolute;right:4px;bottom:4px;padding:2px 5px;border-radius:8px;background:rgba(17,24,39,.78);color:#fff;font-size:10px;font-weight:700;line-height:1}
-    .os.setom-photo-ready{display:flex!important;align-items:flex-start!important;gap:12px!important}
-    .os.setom-photo-ready > .setom-os-content{min-width:0;flex:1}
-    .planning-os.setom-photo-ready{display:flex!important;align-items:flex-start!important;gap:10px!important}
-    .planning-os.setom-photo-ready > .setom-os-content{min-width:0;flex:1}
+    .os.setom-photo-ready,.setom-plan-order.setom-photo-ready,.setom-map-order.setom-photo-ready{display:flex!important;align-items:flex-start!important;gap:10px!important}
+    .os.setom-photo-ready > .setom-os-content,.setom-plan-order.setom-photo-ready > .setom-os-content,.setom-map-order.setom-photo-ready > .setom-os-content{min-width:0;flex:1}
     .setom-photo-fallback{font-size:22px;line-height:1}
-    @media(max-width:700px){.setom-photo-thumb,.setom-photo-thumb-wrap{width:68px!important;min-width:68px!important;height:54px!important}.os.setom-photo-ready{gap:9px!important}.planning-os.setom-photo-ready{gap:8px!important}}
+    @media(max-width:700px){.setom-photo-thumb,.setom-photo-thumb-wrap{width:68px!important;min-width:68px!important;height:54px!important}.os.setom-photo-ready,.setom-plan-order.setom-photo-ready,.setom-map-order.setom-photo-ready{gap:8px!important}}
   `;
   document.head.appendChild(style);
 }
@@ -105,9 +103,8 @@ function schedule() {
     try {
       addStyles();
       await process(".os");
-      await process(".planning-os");
-      await process(".setom-binder-card");
-      await process(".setom-week-binder-row");
+      await process(".setom-plan-order");
+      await process(".setom-map-order");
     } catch (error) {
       console.warn("SETOM photos visuelles :", error);
     }
