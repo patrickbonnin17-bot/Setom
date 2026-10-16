@@ -102,6 +102,9 @@ async function patch() {
       : "—";
   }
 
+  const signature = `${date}:${daily?.total || 0}:${daily?.hours || 0}:${daily?.rate || 0}:${hoursTotal.toFixed(4)}`;
+  if (table.dataset.teamProfitabilitySignature === signature) return;
+
   const kpis = [...box.querySelectorAll(".pj-kpi")];
   const marginKpi = kpis.find(x=>x.querySelector(".pj-label")?.textContent?.trim()==="Marge");
   if (marginKpi) {
@@ -125,8 +128,7 @@ async function patch() {
     banner.innerHTML = `💶 Coût équipe : <strong>${money(daily.total)}</strong> · <strong>${money(daily.rate)}/h</strong> · ${hoursTotal.toFixed(2)} h réelles sur les OS · ${deltaText}${missingHours ? ` · ⚠ ${missingHours} OS sans arrivée/départ` : ""}<br><span style="font-weight:500;color:#667085">Calcul : heures réelles d'intervention × coût horaire. Les coûts complémentaires hors « Équipe » sont ajoutés séparément ; les matériaux déjà inclus dans le coût équipe ne sont pas redéduits.</span>`;
   }
 
-  table.dataset.teamCostPatched = `${date}:${daily?.rate || 0}:${hoursTotal.toFixed(2)}`;
-
+  table.dataset.teamProfitabilitySignature = signature;
   window.dispatchEvent(new CustomEvent("setom:profitability-metrics", { detail:{ date, revenue:revenueTotal, teamCost:teamCostTotal, otherCost:otherCostTotal, margin:marginTotal, hours:hoursTotal, surface:surfaceTotal, dailyHours:daily?.hours || 0, dailyCost:daily?.total || 0, rate:daily?.rate || 0, missingHours } }));
 }
 
