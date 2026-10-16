@@ -4,43 +4,32 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
     <meta name="theme-color" content="#f6f7f9" />
-    <meta name="setom-build" content="2026-10-16-reserve-reprise-2" />
+    <meta name="setom-build" content="2026-10-16-reserve-reprise-3" />
     <title>SETOM — Gestion des interventions</title>
     <link rel="stylesheet" href="/src/uiPolish.css" />
     <link rel="stylesheet" href="/src/responsive.css" />
-    <script>
-      (function () {
-        function show(type, message) {
-          try { var box=document.getElementById("setom-runtime-error");if(!box){box=document.createElement("div");box.id="setom-runtime-error";box.style="position:fixed;z-index:999999;inset:12px;background:#fff;border:2px solid #c62828;border-radius:14px;padding:18px;font-family:-apple-system,BlinkMacSystemFont,Segoe UI,sans-serif;color:#222;box-shadow:0 8px 30px rgba(0,0,0,.2);overflow:auto";}box.textContent="";var title=document.createElement("h2");title.textContent="SETOM — erreur de démarrage";title.style.color="#c62828";var label=document.createElement("div");label.style.fontWeight="600";label.textContent=type;var details=document.createElement("pre");details.style.whiteSpace="pre-wrap";details.textContent=String(message||"Erreur inconnue");box.append(title,label,details);document.body.appendChild(box);}catch(_){}
-        }
-        window.addEventListener("error",function(e){show("JavaScript ou chargement du module",(e.message||"Erreur inconnue")+"\n"+(e.filename||"")+":"+(e.lineno||""));});
-        window.addEventListener("unhandledrejection",function(e){show("Promesse non gérée",e.reason&&e.reason.stack||e.reason);});
-      })();
-    </script>
-  </head>
-  <body>
-    <div id="root"><div id="setom-boot-check" style="min-height:100vh;display:flex;align-items:center;justify-content:center;padding:24px;background:#f6f7f9;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;color:#17202a"><div style="max-width:520px;width:100%;padding:28px;border-radius:18px;background:#fff;box-shadow:0 8px 30px rgba(0,0,0,.08);text-align:center"><div style="font-size:32px;font-weight:800;margin-bottom:8px">SETOM</div><div style="font-size:17px;font-weight:600">Chargement de l’application…</div><div style="margin-top:10px;font-size:13px;color:#667085">Initialisation</div></div></div></div>
-    <script type="module" src="/src/main.jsx?v=2026-10-16-reserve-reprise-2"></script>
-    <script type="module" src="/src/planningOverlay.jsx?v=2026-10-16-reserve-reprise-2"></script>
-    <script type="module" src="/src/dashboardNavigationFix.js?v=2026-10-16-reserve-reprise-2"></script>
-    <script type="module" src="/src/classeurNavigationFix.js?v=2026-10-16-reserve-reprise-2"></script>
-    <script type="module" src="/src/osModalPortalFix.js?v=2026-10-16-reserve-reprise-2"></script>
-    <script type="module" src="/src/materialsStockWidget.js?v=2026-10-16-reserve-reprise-2"></script>
-    <script type="module" src="/src/materialsFinanceWidget.js?v=2026-10-16-reserve-reprise-2"></script>
-    <script type="module" src="/src/materialsFinanceQualityFix.js?v=2026-10-16-reserve-reprise-2"></script>
-    <script type="module" src="/src/interventionTimesFix.js?v=2026-10-16-reserve-reprise-2"></script>
-    <script type="module" src="/src/dailyTimeSummaryFix.js?v=2026-10-16-reserve-reprise-2"></script>
-    <script type="module" src="/src/dailyLaborCostWidget.js?v=2026-10-16-reserve-reprise-2"></script>
-    <script type="module" src="/src/profitabilityWidget.js?v=2026-10-16-reserve-reprise-2"></script>
-    <script type="module" src="/src/profitabilityDetailWidget.js?v=2026-10-16-reserve-reprise-2"></script>
-    <script type="module" src="/src/workOrderCostsWidget.js?v=2026-10-16-reserve-reprise-2"></script>
-    <script type="module" src="/src/profitabilityComplementaryCostsFix.js?v=2026-10-16-reserve-reprise-2"></script>
-    <script type="module" src="/src/materialPriceSettingsWidget.js?v=2026-10-16-reserve-reprise-2"></script>
-    <script type="module" src="/src/managementToolsDock.js?v=2026-10-16-reserve-reprise-2"></script>
-    <script type="module" src="/src/pilotageNavigation.js?v=2026-10-16-reserve-reprise-2"></script>
-    <script type="module" src="/src/planningMapFix.js?v=2026-10-16-reserve-reprise-2"></script>
-    <script type="module" src="/src/planningMarkersFix.js?v=2026-10-16-reserve-reprise-2"></script>
-    <script type="module" src="/src/reserveRepriseFix.js?v=2026-10-16-reserve-reprise-2"></script>
-    <script type="module" src="/src/reserveReprisePhotos.js?v=2026-10-16-reserve-reprise-2"></script>
+    <script type="module" src="/src/main.jsx?v=2026-10-16-reserve-reprise-3"></script>
+    <script type="module" src="/src/planningOverlay.jsx?v=2026-10-16-reserve-reprise-3"></script>
+    <script type="module" src="/src/dashboardNavigationFix.js?v=2026-10-16-reserve-reprise-3"></script>
+    <script type="module" src="/src/classeurNavigationFix.js?v=2026-10-16-reserve-reprise-3"></script>
+    <script type="module" src="/src/osModalPortalFix.js?v=2026-10-16-reserve-reprise-3"></script>
+    <script type="module" src="/src/materialsStockWidget.js?v=2026-10-16-reserve-reprise-3"></script>
+    <script type="module" src="/src/materialsFinanceWidget.js?v=2026-10-16-reserve-reprise-3"></script>
+    <script type="module" src="/src/materialsFinanceQualityFix.js?v=2026-10-16-reserve-reprise-3"></script>
+    <script type="module" src="/src/interventionTimesFix.js?v=2026-10-16-reserve-reprise-3"></script>
+    <script type="module" src="/src/dailyTimeSummaryFix.js?v=2026-10-16-reserve-reprise-3"></script>
+    <script type="module" src="/src/dailyLaborCostWidget.js?v=2026-10-16-reserve-reprise-3"></script>
+    <script type="module" src="/src/profitabilityWidget.js?v=2026-10-16-reserve-reprise-3"></script>
+    <script type="module" src="/src/profitabilityDetailWidget.js?v=2026-10-16-reserve-reprise-3"></script>
+    <script type="module" src="/src/workOrderCostsWidget.js?v=2026-10-16-reserve-reprise-3"></script>
+    <script type="module" src="/src/profitabilityComplementaryCostsFix.js?v=2026-10-16-reserve-reprise-3"></script>
+    <script type="module" src="/src/materialPriceSettingsWidget.js?v=2026-10-16-reserve-reprise-3"></script>
+    <script type="module" src="/src/managementToolsDock.js?v=2026-10-16-reserve-reprise-3"></script>
+    <script type="module" src="/src/pilotageNavigation.js?v=2026-10-16-reserve-reprise-3"></script>
+    <script type="module" src="/src/planningMapFix.js?v=2026-10-16-reserve-reprise-3"></script>
+    <script type="module" src="/src/planningMarkersFix.js?v=2026-10-16-reserve-reprise-3"></script>
+    <script type="module" src="/src/reserveRepriseFix.js?v=2026-10-16-reserve-reprise-3"></script>
+    <script type="module" src="/src/reserveReprisePhotos.js?v=2026-10-16-reserve-reprise-3"></script>
+    <script type="module" src="/src/reserveRepriseBridge.js?v=2026-10-16-reserve-reprise-3"></script>
   </body>
 </html>
