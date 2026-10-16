@@ -1294,30 +1294,38 @@ function OSModal({ os, onClose, onUpdate, profile }) {
       const {error:deleteRealizationsError}=await supabase.from("work_realizations").delete().eq("intervention_id",intervention.id);if(deleteRealizationsError)throw new Error("Erreur lors du remplacement des travaux réalisés : "+deleteRealizationsError.message);
       if(realizations.length>0){const {error:realizationError}=await supabase.from("work_realizations").insert(realizations);if(realizationError)throw new Error("Erreur lors de l'enregistrement des travaux réalisés : "+realizationError.message);}
       const {error:workOrderError}=await supabase.from("work_orders").update({actual_road_surface_m2:os.rehabilitationZone==="Chaussée"||os.rehabilitationZone==="Chaussée + trottoir"?(roadActual||null):null,actual_sidewalk_surface_m2:os.rehabilitationZone==="Trottoir"||os.rehabilitationZone==="Chaussée + trottoir"?(sidewalkActual||null):null,actual_other_surface_m2:os.rehabilitationZone==="Autre"?(otherActual||null):null,updated_by:user.id}).eq("id",os.dbId);if(workOrderError)throw new Error("Impossible d'enregistrer les surfaces de l'OS : "+workOrderError.message);
-      const {error:prepareInterventionError}=await supabase.from("interventions").update({status:"Travaux réalisés",actual_surface_m2:totalActualSurface>0?totalActualSurface:null}).eq("id",intervention.id);if(prepareInterventionError)throw new Error("Impossible de préparer la transmission des travaux : "+prepareInterventionError.message);
-      const {error:updateInterventionError}=await supabase.from("interventions").update({status:"Travaux réalisés",actual_date:new Date().toISOString().slice(0,10),actual_surface_m2:totalActualSurface>0?totalActualSurface:null}).eq("id",intervention.id);if(updateInterventionError)throw new Error("Impossible de transmettre les travaux : "+updateInterventionError.message);
-      // Synchroniser explicitement le statut de l'OS avec l'intervention.
-      // Cela évite qu'une transmission réussie reste affichée comme "Planifié"
-      // ou "Travaux en cours" lorsque le trigger de synchronisation n'est pas disponible.
-      const {data:currentOrder,error:currentOrderError}=await supabase.from("work_orders").select("status").eq("id",os.dbId).single();
-      if(currentOrderError)throw new Error("Impossible de vérifier le statut de l'OS : "+currentOrderError.message);
-      if(currentOrder?.status === "Planifié"){
-        const {error:moveToInProgressError}=await supabase.from("work_orders").update({status:"Travaux réalisés",updated_by:user.id}).eq("id",os.dbId);
-        if(moveToInProgressError)throw new Error("Impossible de passer l'OS en travaux : "+moveToInProgressError.message);
+      // Le déclencheur SQL attend le statut historique « Travaux effectués ».
+      // Il contrôle les photos, passe l'OS à « À vérifier » et génère le constat depuis le BPU.
+      // Si l'intervention avait déjà ce statut, on provoque une transition afin de relancer le déclencheur.
+      if(intervention.status==="Travaux effectués"){
+        const {error:resetInterventionError}=await supabase.from("interventions").update({status:"Travaux en cours"}).eq("id",intervention.id);
+        if(resetInterventionError)throw new Error("Impossible de relancer le circuit de transmission : "+resetInterventionError.message);
       }
-      const {error:moveToRealizedError}=await supabase.from("work_orders").update({status:"Travaux réalisés",updated_by:user.id}).eq("id",os.dbId);
-      if(moveToRealizedError)throw new Error("Impossible de mettre l'OS en travaux réalisés : "+moveToRealizedError.message);
-      const {error:moveToConstatError}=await supabase.from("work_orders").update({status:"À vérifier",updated_by:user.id}).eq("id",os.dbId);
-      if(moveToConstatError)throw new Error("Impossible de préparer le constat : "+moveToConstatError.message);
+      const localActualDate=(()=>{const d=new Date();return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`;})();
+      const {error:updateInterventionError}=await supabase.from("interventions").update({
+        status:"Travaux effectués",
+        actual_date:localActualDate,
+        actual_surface_m2:totalActualSurface>0?totalActualSurface:null
+      }).eq("id",intervention.id);
+      if(updateInterventionError)throw new Error("Impossible de transmettre les travaux et générer le constat : "+updateInterventionError.message);
       const {data:refreshedOS,error:refreshError}=await supabase.from("work_orders").select("status,actual_road_surface_m2,actual_sidewalk_surface_m2,actual_other_surface_m2").eq("id",os.dbId).single();if(refreshError)throw new Error("Les travaux ont été transmis, mais l'OS n'a pas pu être relu : "+refreshError.message);
+      let constatReady=null;
       if (["admin","bureau"].includes(profile?.role)) {
-        const {data:constatPayload,error:constatReadError}=await supabase.rpc("get_constat_for_work_order",{p_work_order_id:os.dbId});
-        if(!constatReadError){setConstat(constatPayload?.constat||null);setConstatLines(constatPayload?.lines||[]);} else console.error("Constat transmis mais lecture impossible :",constatReadError);
+        let {data:constatPayload,error:constatReadError}=await supabase.rpc("get_constat_for_work_order",{p_work_order_id:os.dbId});
+        if(!constatReadError&&!constatPayload?.constat){
+          // Filet de sécurité pour un ancien OS dont l'intervention était déjà marquée « Travaux effectués ».
+          const {error:generateError}=await supabase.rpc("regenerate_constat_for_work_order",{p_work_order_id:os.dbId,p_user_id:user.id});
+          if(!generateError){
+            const reread=await supabase.rpc("get_constat_for_work_order",{p_work_order_id:os.dbId});
+            if(!reread.error){constatPayload=reread.data;constatReadError=null;}
+          }else console.error("Constat absent et recalcul de secours impossible :",generateError);
+        }
+        if(!constatReadError){setConstat(constatPayload?.constat||null);setConstatLines(constatPayload?.lines||[]);constatReady=Boolean(constatPayload?.constat);} else console.error("Constat transmis mais lecture impossible :",constatReadError);
       }
       const finalStatus=refreshedOS?.status||"À vérifier";
       onUpdate(os.id,{day:os.day||null,plannedDate:os.plannedDate||null,status:finalStatus,actualRoadSurface:refreshedOS?.actual_road_surface_m2??(roadActual||null),actualSidewalkSurface:refreshedOS?.actual_sidewalk_surface_m2??(sidewalkActual||null),actualOtherSurface:refreshedOS?.actual_other_surface_m2??(otherActual||null),interventionId:intervention.id});
       setActiveTab(["admin","bureau"].includes(profile?.role) ? "constat" : "travaux");
-      alert(finalStatus==="À vérifier"?"✅ Travaux transmis. Le constat automatique est prêt à être vérifié.":"✅ Travaux enregistrés. Statut actuel de l'OS : "+finalStatus+".");
+      alert(finalStatus==="À vérifier"?(constatReady===false?"⚠️ Travaux transmis, mais le constat automatique est introuvable. Le bureau doit lancer le recalcul du constat.":"✅ Travaux transmis. Le constat automatique est prêt à être vérifié."):"✅ Travaux enregistrés. Statut actuel de l'OS : "+finalStatus+".");
     }catch(error){console.error("Erreur générale lors de la transmission des travaux :",error);alert("Erreur lors de l'enregistrement :\n\n"+(error?.message||"Erreur inconnue")+(error?.details?"\n\nDétails : "+error.details:"")+(error?.hint?"\n\nAide : "+error.hint:""));}
   }
 
