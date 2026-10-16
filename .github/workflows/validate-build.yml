@@ -1,0 +1,32 @@
+name: Validate SETOM build
+
+on:
+  push:
+    branches:
+      - next-finance-controls
+  pull_request:
+    branches:
+      - main
+      - next-finance-controls
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install dependencies
+        run: npm install
+
+      - name: Validate workflow guards
+        run: python3 scripts/patch_workflow_status.py
+
+      - name: Build production bundle
+        run: npx vite build
