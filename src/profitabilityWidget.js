@@ -17,7 +17,7 @@ function styles(){
  #${ROOT}-panel{position:fixed;inset:14px;z-index:99990;background:#f8fafc;border-radius:18px;box-shadow:0 18px 60px rgba(0,0,0,.3);overflow:auto;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;color:#17202a}
  #${ROOT}-panel .pf-head{position:sticky;top:0;background:#fff;border-bottom:1px solid #e4e7ec;padding:15px 18px;display:flex;justify-content:space-between;align-items:center;z-index:2}
  #${ROOT}-panel .pf-body{max-width:1400px;margin:auto;padding:18px}.pf-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:12px}.pf-card{background:#fff;border:1px solid #e4e7ec;border-radius:14px;padding:14px;margin-bottom:12px}.pf-table{width:100%;border-collapse:collapse;min-width:1050px}.pf-table th,.pf-table td{padding:9px;border-bottom:1px solid #edf0f4;text-align:left;font-size:13px}.pf-input{width:100%;box-sizing:border-box;padding:8px;border:1px solid #d0d5dd;border-radius:8px}.pf-btn{border:1px solid #d0d5dd;border-radius:8px;padding:8px 11px;background:#fff;font-weight:700;cursor:pointer}.pf-good{color:#027a48;font-weight:800}.pf-bad{color:#b42318;font-weight:800}.pf-muted{color:#667085;font-size:12px}.pf-warn{color:#b54708;font-weight:800}
- @media(max-width:700px){#${ROOT}-panel{inset:0;border-radius:0}.pf-body{padding:12px}}
+ @media(max-width:700px){#${ROOT}-panel{inset:0;border-radius:0}#${ROOT}-btn{right:12px;bottom:18px}.pf-body{padding:12px}}
  `; document.head.appendChild(s);
 }
 
