@@ -13,7 +13,7 @@ function ensureStyles() {
   const style = document.createElement("style");
   style.id = STYLE_ID;
   style.textContent = `
-    #${ROOT_ID}-button{position:fixed;right:18px;bottom:18px;z-index:99990;border:0;border-radius:999px;padding:13px 17px;background:#172b4d;color:#fff;font-weight:800;box-shadow:0 8px 26px rgba(0,0,0,.2);cursor:pointer;font-size:14px}
+    #${ROOT_ID}-button{position:fixed;right:190px;bottom:18px;z-index:99990;border:0;border-radius:999px;padding:13px 17px;background:#172b4d;color:#fff;font-weight:800;box-shadow:0 8px 26px rgba(0,0,0,.2);cursor:pointer;font-size:14px}
     #${ROOT_ID}-panel{position:fixed;inset:18px;z-index:99991;background:#f8fafc;border-radius:18px;box-shadow:0 18px 60px rgba(0,0,0,.28);overflow:auto;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;color:#17202a}
     #${ROOT_ID}-panel .ms-head{position:sticky;top:0;background:#fff;border-bottom:1px solid #e4e7ec;padding:16px 18px;display:flex;justify-content:space-between;gap:12px;align-items:center;z-index:2}
     #${ROOT_ID}-panel .ms-body{padding:18px;max-width:1250px;margin:auto}
@@ -27,7 +27,7 @@ function ensureStyles() {
     #${ROOT_ID}-panel .ms-secondary{border:1px solid #d0d5dd;border-radius:8px;padding:9px 12px;background:#fff;color:#344054;font-weight:700;cursor:pointer}
     #${ROOT_ID}-panel .ms-danger{color:#b42318;font-weight:800}
     #${ROOT_ID}-panel .ms-good{color:#027a48;font-weight:800}
-    @media(max-width:700px){#${ROOT_ID}-panel{inset:0;border-radius:0}#${ROOT_ID}-button{right:12px;bottom:12px}.ms-body{padding:12px!important}}
+    @media(max-width:700px){#${ROOT_ID}-panel{inset:0;border-radius:0}#${ROOT_ID}-button{right:12px;bottom:74px}.ms-body{padding:12px!important}}
   `;
   document.head.appendChild(style);
 }
