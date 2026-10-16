@@ -98,6 +98,23 @@ function escapeHtml(value) { return String(value ?? "").replace(/&/g,"&amp;").re
 function escapeAttr(value) { return escapeHtml(value).replace(/'/g,"&#39;"); }
 
 let attempts = 0;
-async function boot() { const ready = await init().catch((error) => { console.error("[SETOM] Import OS:", error); return true; }); if (!ready && attempts++ < 30) setTimeout(boot, 500); }
-if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", boot, { once: true }); else boot();
-window.addEventListener("setom:planning-updated", () => setTimeout(() => { attempts = 0; boot(); }, 200));
+let observerStarted = false;
+async function boot() {
+  const ready = await init().catch((error) => { console.error("[SETOM] Import OS:", error); return true; });
+  if (!ready && attempts++ < 30) setTimeout(boot, 500);
+}
+function startObserver() {
+  if (observerStarted || !document.body) return;
+  observerStarted = true;
+  const observer = new MutationObserver(() => {
+    init().catch((error) => console.error("[SETOM] Import OS:", error));
+  });
+  observer.observe(document.body, { childList: true, subtree: true });
+}
+if (document.readyState === "loading") {
+  document.addEventListener("DOMContentLoaded", () => { startObserver(); boot(); }, { once: true });
+} else {
+  startObserver();
+  boot();
+}
+window.addEventListener("setom:planning-updated", () => { attempts = 0; boot(); });
