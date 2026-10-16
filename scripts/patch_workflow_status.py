@@ -3,14 +3,18 @@ from pathlib import Path
 path = Path("src/main.jsx")
 text = path.read_text(encoding="utf-8")
 
-# Normalize every active-work status guard used by the Travaux workflow.
-# This keeps the build resilient if a guard is added in another part of main.jsx.
-status_variants = [
-    '["Planifié","Travaux en cours","Travaux réalisés"]',
-    '["Planifié", "Travaux en cours", "Travaux réalisés"]',
-]
-for old in status_variants:
-    text = text.replace(old, '["Planifié","En travaux","Travaux en cours","Travaux réalisés"]')
+# Normalize every status guard used by the active OS / Travaux workflow.
+# Keep this build-time safety net until the large main.jsx file is cleaned up
+# into smaller workflow modules.
+replacements = {
+    '["Planifié","Travaux en cours","Travaux réalisés"]': '["Planifié","En travaux","Travaux en cours","Travaux réalisés"]',
+    '["Planifié", "Travaux en cours", "Travaux réalisés"]': '["Planifié", "En travaux", "Travaux en cours", "Travaux réalisés"]',
+    '["Nouveau", "À planifier", "Planifié", "Travaux en cours", "En erreur"]': '["Nouveau", "À planifier", "Planifié", "En travaux", "Travaux en cours", "En erreur"]',
+    '["À planifier", "Planifié", "Travaux en cours", "En erreur"]': '["À planifier", "Planifié", "En travaux", "Travaux en cours", "En erreur"]',
+}
+
+for old, new in replacements.items():
+    text = text.replace(old, new)
 
 path.write_text(text, encoding="utf-8")
-print("SETOM: En travaux is editable/transmittable in Travaux")
+print("SETOM: En travaux enabled across OS editing, issue reporting and work transmission guards")
