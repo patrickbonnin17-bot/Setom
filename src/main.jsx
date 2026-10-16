@@ -16,7 +16,7 @@ const days = [
 ];
 
 const statuses = [
-  "Nouveau OS", "Planifié", "En attente", "Travaux réalisés", "À vérifier", "Validé", "Réserve", "Payé", "Archivé", "En erreur", "Doublon", "Annulé",
+  "Nouveau OS", "Planifié", "En cours", "En attente", "Travaux réalisés", "À vérifier", "Validé", "Réserve", "Payé", "Archivé", "En erreur", "Doublon", "Annulé",
 ];
 
 const initialOS = [];
@@ -109,6 +109,8 @@ function App() {
   const [teamError, setTeamError] = useState("");
   const [osRefreshVersion, setOsRefreshVersion] = useState(0);
   const [selectedOS, setSelectedOS] = useState(null);
+  const [selectedOSTab, setSelectedOSTab] = useState("resume");
+  const [startingOSId, setStartingOSId] = useState("");
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState("Tous");
   const [teamFilter, setTeamFilter] = useState("Toutes");
@@ -689,7 +691,96 @@ function App() {
     setOsList((current) => current.map((os) => os.id === id ? { ...os, ...changes } : os));
     setSelectedOS((current) => current && current.id === id ? { ...current, ...changes } : current);
   }
-  const activeStatuses = new Set(["Nouveau OS", "Planifié", "Travaux réalisés", "À vérifier", "Validé", "Réserve", "Payé"]);
+  function openOS(os, tab = "resume") {
+    setSelectedOSTab(tab);
+    openOS(os, "resume");
+  }
+  async function startWorkOrder(os) {
+    if (!os?.dbId) { alert("Impossible d’identifier cet OS."); return; }
+    if (!["admin", "bureau", "equipe_terrain"].includes(currentProfile?.role)) {
+      alert("Votre profil ne permet pas de démarrer une intervention.");
+      return;
+    }
+    if (["À vérifier", "Validé", "Réserve", "Payé", "Archivé", "Travaux réalisés"].includes(os.status)) {
+      alert("Cet OS a déjà été transmis ou se trouve dans le circuit de validation. Ouvrez sa fiche pour consulter la suite.");
+      return;
+    }
+    if (["En cours", "En travaux", "Travaux en cours"].includes(os.status)) {
+      setPage("travaux");
+      openOS(os, "travaux");
+      return;
+    }
+    if (startingOSId) return;
+    setStartingOSId(os.dbId);
+    try {
+      const { data: authData, error: authError } = await supabase.auth.getUser();
+      const user = authData?.user;
+      if (authError || !user) throw new Error("Connexion requise pour démarrer l’intervention.");
+
+      const now = new Date();
+      const localDate = now.getFullYear() + "-" + String(now.getMonth() + 1).padStart(2, "0") + "-" + String(now.getDate()).padStart(2, "0");
+      const localTime = String(now.getHours()).padStart(2, "0") + ":" + String(now.getMinutes()).padStart(2, "0") + ":" + String(now.getSeconds()).padStart(2, "0");
+      const plannedDate = os.plannedDate || localDate;
+      const plannedSurface = Number(String(os.quantity || "").replace(" m²", "").replace(",", ".")) || null;
+
+      const { data: existing, error: existingError } = await supabase
+        .from("interventions")
+        .select("id, status, arrival_time, team_id, planned_date, planned_surface_m2")
+        .eq("work_order_id", os.dbId)
+        .order("created_at", { ascending: false })
+        .limit(1)
+        .maybeSingle();
+      if (existingError) throw existingError;
+
+      let interventionId = existing?.id || null;
+      if (existing?.id) {
+        const interventionPatch = {
+          status: "En cours",
+          planned_date: existing.planned_date || plannedDate,
+          ...(existing.arrival_time ? {} : { arrival_time: localTime }),
+          ...(!existing.team_id && os.teamId ? { team_id: os.teamId } : {})
+        };
+        const { error } = await supabase.from("interventions").update(interventionPatch).eq("id", existing.id);
+        if (error) throw error;
+      } else {
+        const payload = {
+          work_order_id: os.dbId,
+          type: os.intervention || os.work || "Intervention",
+          status: "En cours",
+          planned_date: plannedDate,
+          planned_surface_m2: plannedSurface,
+          arrival_time: localTime,
+          ...(os.teamId ? { team_id: os.teamId } : {})
+        };
+        const { data: created, error } = await supabase.from("interventions").insert(payload).select("id").single();
+        if (error) throw error;
+        interventionId = created.id;
+      }
+
+      const { error: workOrderError } = await supabase
+        .from("work_orders")
+        .update({ status: "En cours", updated_by: user.id })
+        .eq("id", os.dbId);
+      if (workOrderError) throw workOrderError;
+
+      const label = new Date(plannedDate + "T12:00:00").toLocaleDateString("fr-FR", { weekday: "long" });
+      const day = label.charAt(0).toUpperCase() + label.slice(1);
+      const updatedOS = { ...os, status: "En cours", plannedDate, day, interventionId };
+      updateOS(os.id, { status: "En cours", plannedDate, day, interventionId });
+      window.dispatchEvent(new Event("setom:planning-updated"));
+      setPage("travaux");
+      openOS(updatedOS, "travaux");
+    } catch (error) {
+      console.error("Erreur démarrage intervention :", error);
+      alert("Impossible de démarrer l’intervention :\n\n" + (error?.message || "Erreur inconnue"));
+    } finally {
+      setStartingOSId("");
+    }
+  }
+  const activeStatuses = new Set(["Nouveau OS", "Planifié", "En cours", "Travaux effectués", "Travaux réalisés", "À vérifier", "Validé", "Réserve", "Payé"]);
+  const fieldWorkOrders = osList
+    .filter((os) => ["Nouveau OS", "Planifié", "En cours", "En travaux", "Travaux en cours"].includes(os.status))
+    .sort((a, b) => (a.status === "En cours" ? 0 : 1) - (b.status === "En cours" ? 0 : 1));
   const currentWeekday = new Date().toLocaleDateString("fr-FR", { weekday: "long" });
   const currentDayName = currentWeekday.charAt(0).toUpperCase() + currentWeekday.slice(1);
   const stats = {
@@ -707,16 +798,17 @@ function App() {
     <header className="header"><div><h1>{appSettings?.company_name || "SETOM"}</h1><small>Gestion des travaux routiers</small></div><div style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}><small>{currentProfile.display_name || currentProfile.email} · {ROLE_LABELS[currentProfile.role] || "Accès limité"}</small><button type="button" className="secondary" onClick={handleLogout}>Se déconnecter</button></div></header>
     <main className="container">
       <nav className="nav">
-        {[["dashboard","📊 Tableau de bord"],["os","📋 OS"],["map","🗺️ Carte"],["planning","📅 Planning"],["teams","👷 Équipes"],["reserves","⚠️ Réserves"],["bpu","💶 Bordereau de prix"],["materials","🧱 Matériaux"],["settings","⚙️ Paramètres"],["access","🔐 Accès"]].filter(([id]) => {
+        {[["dashboard","📊 Tableau de bord"],["os","📋 OS"],["travaux","🛠️ Travaux"],["map","🗺️ Carte"],["planning","📅 Planning"],["teams","👷 Équipes"],["reserves","⚠️ Réserves"],["bpu","💶 Bordereau de prix"],["materials","🧱 Matériaux"],["settings","⚙️ Paramètres"],["access","🔐 Accès"]].filter(([id]) => {
           const role = currentProfile?.role;
           if (role === "admin") return true;
-          if (role === "bureau") return ["dashboard","os","map","planning","reserves"].includes(id);
-          if (role === "equipe_terrain") return ["dashboard","os","planning"].includes(id);
+          if (role === "bureau") return ["dashboard","os","travaux","map","planning","reserves"].includes(id);
+          if (role === "equipe_terrain") return ["dashboard","os","travaux","planning"].includes(id);
           if (role === "eau_de_toulouse") return ["dashboard","os","reserves"].includes(id);
           return false;
         }).map(([id,label]) => <button key={id} className={page === id ? "active" : ""} onClick={() => setPage(id)}>{label}</button>)}
       </nav>
-      {page === "dashboard" && <><h2>Tableau de bord</h2><div className="cards"><div className="card"><div>OS actifs</div><div className="number">{stats.total}</div></div><div className="card"><div>Nouveaux OS</div><div className="number">{stats.planning}</div></div><div className="card"><div>Travaux réalisés</div><div className="number">{stats.travaux}</div></div><div className="card"><div>À facturer</div><div className="number">{stats.facturation}</div></div><div className="card"><div>Validation</div><div className="number">{stats.validation}</div></div><div className="card"><div>Réserves</div><div className="number">{stats.reserves}</div></div><div className="card"><div>OS en erreur</div><div className="number">{stats.errors}</div></div></div><h2>OS récents</h2><div className="os-list">{osList.slice(0,5).map((os) => <OSCard key={os.id} os={os} onOpen={() => setSelectedOS(os)} />)}</div></>}
+      {page === "dashboard" && <><h2>Tableau de bord</h2><div className="cards"><div className="card"><div>OS actifs</div><div className="number">{stats.total}</div></div><div className="card"><div>Nouveaux OS</div><div className="number">{stats.planning}</div></div><div className="card"><div>Travaux réalisés</div><div className="number">{stats.travaux}</div></div><div className="card"><div>À facturer</div><div className="number">{stats.facturation}</div></div><div className="card"><div>Validation</div><div className="number">{stats.validation}</div></div><div className="card"><div>Réserves</div><div className="number">{stats.reserves}</div></div><div className="card"><div>OS en erreur</div><div className="number">{stats.errors}</div></div></div><h2>OS récents</h2><div className="os-list">{osList.slice(0,5).map((os) => <OSCard key={os.id} os={os} onOpen={() => openOS(os, "resume")} onStart={() => startWorkOrder(os)} startDisabled={startingOSId === os.dbId} />)}</div></>}
+      {page === "travaux" && <><h2>🛠️ Travaux terrain</h2><p style={{ color: "#667085", marginTop: -6 }}>Démarre une intervention ou reprends les travaux en cours. Les mesures et photos seront saisies dans la fiche terrain de l’OS.</p>{fieldWorkOrders.length === 0 ? <div className="os-empty-state"><strong>Aucun OS à traiter</strong><span>Les OS planifiés apparaîtront ici.</span></div> : <div className="os-list">{fieldWorkOrders.map((os) => <OSCard key={os.id} os={os} onOpen={() => openOS(os, "resume")} onStart={() => startWorkOrder(os)} startDisabled={startingOSId === os.dbId} />)}</div>}</>}
       {page === "os" && <>
         {showNewOS && <div className="modal-overlay"><div className="modal"><div className="modal-header"><h2>Nouvel ordre de service</h2><button className="secondary" type="button" onClick={() => setShowNewOS(false)}>✕</button></div><form onSubmit={handleCreateOS}>
           <label>Adresse *</label><input type="text" value={newOSAddress} onChange={(e) => setNewOSAddress(e.target.value)} placeholder="Ex. 12 rue de la République" required />
@@ -737,10 +829,10 @@ function App() {
           <div className="attachments-section"><label>📎 Photos et documents</label><div className="attachments-buttons"><label className="attachment-button">📷 Prendre une photo<input type="file" accept="image/*" capture="environment" multiple onChange={(e) => {const files=Array.from(e.target.files||[]).filter((file)=>file.type.startsWith("image/"));setNewOSFiles((current)=>[...current,...files]);e.target.value="";}} /></label><label className="attachment-button">🖼️ Choisir une image dans Photos ou Fichiers<input type="file" accept="image/*" multiple onChange={(e) => {const files=Array.from(e.target.files||[]).filter((file)=>file.type.startsWith("image/"));setNewOSFiles((current)=>[...current,...files]);e.target.value="";}} /></label><label className="attachment-button">📄 Ajouter un document<input type="file" accept=".pdf,.doc,.docx,.xls,.xlsx" multiple onChange={(e)=>{const files=Array.from(e.target.files||[]);setNewOSFiles((current)=>[...current,...files]);e.target.value="";}} /></label></div>{newOSFiles.length>0&&<div className="attachments-list">{newOSFiles.map((file,index)=><div className="attachment-item" key={file.name+"-"+index}>{file.type.startsWith("image/")&&<LocalImagePreview file={file}/>}<span>{file.type.startsWith("image/")?"🖼️":"📄"} {file.name}</span><button type="button" aria-label={"Retirer "+file.name} onClick={()=>setNewOSFiles((current)=>current.filter((_,i)=>i!==index))}>×</button></div>)}</div>}</div>
           {newOSError && <p style={{color:"red",marginTop:10}}>{newOSError}</p>}<div className="modal-actions"><button type="button" className="secondary" onClick={()=>setShowNewOS(false)}>Annuler</button><button type="submit" className="primary" disabled={newOSSaving}>{newOSSaving?"Enregistrement...":"Créer l'OS"}</button></div>
         </form></div></div>}
-        <h2>Ordres de service</h2><div className="toolbar">{["admin","bureau"].includes(currentProfile?.role) && <button className="primary" onClick={()=>{setNewOSError("");setShowNewOS(true);}}>+ Nouveau OS</button>}<input placeholder="🔎 Rechercher OS, adresse..." value={search} onChange={(e)=>setSearch(e.target.value)}/><select value={statusFilter} onChange={(e)=>setStatusFilter(e.target.value)}><option>Tous</option>{statuses.map((status)=><option key={status}>{status}</option>)}</select><select value={teamFilter} onChange={(e)=>setTeamFilter(e.target.value)}><option>Toutes</option>{teams.map((team)=><option key={team}>{team}</option>)}</select><select value={sectorFilter} onChange={(e)=>setSectorFilter(e.target.value)}><option value="Tous">Tous les secteurs</option>{dbSectors.map((sector)=><option key={sector.id} value={sector.name}>{sector.name}</option>)}<option value="Non classé">Non classés</option></select></div><StatusLegend /><div className="os-list">{filteredOS.map((os)=><OSCard key={os.id} os={os} onOpen={()=>setSelectedOS(os)}/>)}</div>
+        <h2>Ordres de service</h2><div className="toolbar">{["admin","bureau"].includes(currentProfile?.role) && <button className="primary" onClick={()=>{setNewOSError("");setShowNewOS(true);}}>+ Nouveau OS</button>}<input placeholder="🔎 Rechercher OS, adresse..." value={search} onChange={(e)=>setSearch(e.target.value)}/><select value={statusFilter} onChange={(e)=>setStatusFilter(e.target.value)}><option>Tous</option>{statuses.map((status)=><option key={status}>{status}</option>)}</select><select value={teamFilter} onChange={(e)=>setTeamFilter(e.target.value)}><option>Toutes</option>{teams.map((team)=><option key={team}>{team}</option>)}</select><select value={sectorFilter} onChange={(e)=>setSectorFilter(e.target.value)}><option value="Tous">Tous les secteurs</option>{dbSectors.map((sector)=><option key={sector.id} value={sector.name}>{sector.name}</option>)}<option value="Non classé">Non classés</option></select></div><StatusLegend /><div className="os-list">{filteredOS.map((os)=><OSCard key={os.id} os={os} onOpen={()=>openOS(os, "resume")} onStart={()=>startWorkOrder(os)} startDisabled={startingOSId===os.dbId}/>)}</div>
       </>}
-      {page === "map" && <><h2>Carte des interventions</h2><StatusLegend compact /><div className="toolbar"><button className="secondary">Tous</button><button className="secondary">OS non planifiés</button><button className="secondary">Réserves</button><button className="secondary">À facturer</button></div><div className="map"><div className="map-road"></div>{osList.map((os,index)=>{const positions=[[20,25],[48,18],[72,35],[30,60],[65,68],[82,20]];const [left,top]=positions[index%positions.length];return <button key={os.id} className="marker" title={os.id} onClick={()=>setSelectedOS(os)} style={{left:`${left}%`,top:`${top}%`,background:getOSStatusColors(os.status).accent}}><span>•</span></button>;})}</div></>}
-      {page === "planning" && <><h2>Planning hebdomadaire</h2><StatusLegend compact /><div className="planning"><div className="week">{days.slice(0,5).map((day)=><div className="day" key={day.name}><div className="day-header" style={{background:day.color}}>{day.name}</div>{osList.filter((os)=>os.day===day.name).map((os)=><div className="planning-os" key={os.id} style={{ borderLeft: "4px solid " + getOSStatusColors(os.status).accent, background: getOSStatusColors(os.status).background }} onClick={()=>setSelectedOS(os)}><strong>{os.id}</strong><br/>{os.address}<br/><small>{os.team}</small><div className="setom-status-chip" style={getOSStatusBadgeStyle(os.status)}>{os.status}</div></div>)}</div>)}</div></div><h3>OS non planifiés</h3><div className="os-list">{osList.filter((os)=>!os.day).map((os)=><OSCard key={os.id} os={os} onOpen={()=>setSelectedOS(os)}/>)}</div></>}
+      {page === "map" && <><h2>Carte des interventions</h2><StatusLegend compact /><div className="toolbar"><button className="secondary">Tous</button><button className="secondary">OS non planifiés</button><button className="secondary">Réserves</button><button className="secondary">À facturer</button></div><div className="map"><div className="map-road"></div>{osList.map((os,index)=>{const positions=[[20,25],[48,18],[72,35],[30,60],[65,68],[82,20]];const [left,top]=positions[index%positions.length];return <button key={os.id} className="marker" title={os.id} onClick={()=>openOS(os, "resume")} style={{left:`${left}%`,top:`${top}%`,background:getOSStatusColors(os.status).accent}}><span>•</span></button>;})}</div></>}
+      {page === "planning" && <><h2>Planning hebdomadaire</h2><StatusLegend compact /><div className="planning"><div className="week">{days.slice(0,5).map((day)=><div className="day" key={day.name}><div className="day-header" style={{background:day.color}}>{day.name}</div>{osList.filter((os)=>os.day===day.name).map((os)=><div className="planning-os" key={os.id} style={{ borderLeft: "4px solid " + getOSStatusColors(os.status).accent, background: getOSStatusColors(os.status).background }} onClick={()=>openOS(os, "resume")}><strong>{os.id}</strong><br/>{os.address}<br/><small>{os.team}</small><div className="setom-status-chip" style={getOSStatusBadgeStyle(os.status)}>{os.status}</div></div>)}</div>)}</div></div><h3>OS non planifiés</h3><div className="os-list">{osList.filter((os)=>!os.day).map((os)=><OSCard key={os.id} os={os} onOpen={()=>openOS(os, "resume")} onStart={()=>startWorkOrder(os)} startDisabled={startingOSId===os.dbId}/>)}</div></>}
       {page === "teams" && <><h2>Gestion des équipes</h2>
         <form onSubmit={handleCreateTeam} className="card" style={{ marginBottom: 18, display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(180px,1fr))", gap: 12, alignItems: "end" }}>
           <div><label htmlFor="new-team-name">Nom de l'équipe *</label><input id="new-team-name" value={newTeamName} onChange={(e) => setNewTeamName(e.target.value)} placeholder="Ex. Équipe 1" required style={{ width: "100%", boxSizing: "border-box" }}/></div>
@@ -752,7 +844,7 @@ function App() {
         </form>
         {dbTeams.length === 0 ? <div className="card"><strong>Aucune équipe enregistrée</strong><p>Ajoutez vos équipes ici pour pouvoir les affecter aux OS dans le planning.</p></div> : <div className="cards">{dbTeams.map((team) => { const count = osList.filter((os) => os.teamId === team.id).length; return <div className="card" key={team.id} style={{ opacity: team.active ? 1 : .65 }}><div style={{ display: "flex", justifyContent: "space-between", alignItems: "start", gap: 12 }}><strong>👷 {team.name}</strong><span className="badge">{team.active ? "Active" : "Inactive"}</span></div><div>{team.team_type === "sous-traitant" ? "Sous-traitant" : "Équipe interne"}</div>{team.usual_sector_id && <div style={{ color: "#475467", fontSize: 13 }}>Secteur habituel : {dbSectors.find((sector) => sector.id === team.usual_sector_id)?.name || "Secteur inactif"}</div>}<div className="number">{count}</div><div>OS affecté{count === 1 ? "" : "s"}</div>{team.indicative_capacity && <div style={{ marginTop: 8, color: "#667085", fontSize: 13 }}>Capacité indicative : {team.indicative_capacity} m²/jour</div>}<button className="secondary" disabled={teamSaving} style={{ marginTop: 12 }} onClick={() => toggleTeamActive(team)}>{team.active ? "Désactiver" : "Réactiver"}</button></div>; })}</div>}
       </>}
-      {page === "reserves" && <><h2>Réserves et corrections</h2><div className="os-list">{osList.filter((os)=>os.status==="Réserve"||os.status==="Réserve"||(os.constatStatus==="Validé avec réserve"&&!os.reserveResolvedAt)).map((os)=><OSCard key={os.id} os={os} onOpen={()=>setSelectedOS(os)}/>)}{osList.filter((os)=>os.status==="Réserve"||os.status==="Réserve"||(os.constatStatus==="Validé avec réserve"&&!os.reserveResolvedAt)).length===0&&<div className="card">Aucune réserve en cours.</div>}</div></>}{page === "bpu" && <><h2>Bordereau de prix (BPU)</h2>
+      {page === "reserves" && <><h2>Réserves et corrections</h2><div className="os-list">{osList.filter((os)=>os.status==="Réserve"||os.status==="Réserve"||(os.constatStatus==="Validé avec réserve"&&!os.reserveResolvedAt)).map((os)=><OSCard key={os.id} os={os} onOpen={()=>openOS(os, "resume")} onStart={()=>startWorkOrder(os)} startDisabled={startingOSId===os.dbId}/>)}{osList.filter((os)=>os.status==="Réserve"||os.status==="Réserve"||(os.constatStatus==="Validé avec réserve"&&!os.reserveResolvedAt)).length===0&&<div className="card">Aucune réserve en cours.</div>}</div></>}{page === "bpu" && <><h2>Bordereau de prix (BPU)</h2>
         <p style={{ color: "#667085", marginTop: -6 }}>Modifier les prix, puis créer une nouvelle version datée. Les constats déjà émis conservent leurs prix enregistrés.</p>
         {bpuVersions.length > 0 && <div className="cards" style={{ marginBottom: 16 }}>{bpuVersions.map((version) => <div className="card" key={version.id} style={{ border: version.is_current ? "2px solid #175cd3" : "1px solid #e4e7ec" }}><div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "start" }}><strong>{version.version_name}</strong><span className="badge">{version.is_current ? "En vigueur" : "Historique"}</span></div><div style={{ fontSize: 13, marginTop: 8 }}>Valide du {version.valid_from ? new Date(version.valid_from + "T12:00:00").toLocaleDateString("fr-FR") : "—"}{version.valid_to ? " au " + new Date(version.valid_to + "T12:00:00").toLocaleDateString("fr-FR") : version.is_current ? " · sans date de fin" : ""}</div>{version.notes && <p style={{ fontSize: 12, color: "#667085" }}>{version.notes}</p>}</div>)}</div>}
         {bpuLoading && <div className="card">Chargement du BPU…</div>}
@@ -830,21 +922,33 @@ function App() {
         </form>}
       </>}
     </main>
-    {selectedOS && <OSModal os={selectedOS} onClose={()=>setSelectedOS(null)} onUpdate={updateOS} profile={currentProfile}/>} 
+    {selectedOS && <OSModal key={selectedOS.dbId + "-" + selectedOSTab} os={selectedOS} onClose={()=>setSelectedOS(null)} onUpdate={updateOS} profile={currentProfile} initialTab={selectedOSTab} onStartWork={startWorkOrder}/>} 
   </div>;
 }
 
-function OSCard({ os, onOpen }) {
+function OSCard({ os, onOpen, onStart, startDisabled = false }) {
   const displayStatus = os.constatStatus === "Validé avec réserve" && !os.reserveResolvedAt ? "Réserve" : os.status;
   const statusColors = getOSStatusColors(displayStatus);
-  return <div className="os" style={{ borderLeftColor: statusColors.accent }}><div className="os-top"><div><div className="os-number">{os.id}</div><div className="os-info">📍 {os.address}</div></div><span className="badge os-status-badge" style={getOSStatusBadgeStyle(displayStatus)}>{os.constatStatus === "Validé avec réserve" && !os.reserveResolvedAt ? "Réserve" : os.status}</span></div>{os.constatStatus === "Validé avec réserve" && !os.reserveResolvedAt && os.reserveReason && <div className="os-info" style={{ color: "#9a3412" }}>🚧 Motif de réserve : {os.reserveReason}</div>}{os.problemSuspended && os.suspensionReason && <div className="os-info" style={{ color: os.status === "En attente" ? "#475569" : "#b42318" }}>{os.status === "En attente" ? "⏸️ En attente : " : "⚠️ En erreur : "}{os.suspensionReason}</div>}<div className="os-info">🔧 {os.work}<br/>🧭 Secteur : {os.sector || "Non classé"}<br/>👷 {os.team}<br/>📅 {os.day||"Non planifié"}<br/>📐 {os.quantity}</div><div className="os-actions"><button className="primary" onClick={onOpen}>Ouvrir l'OS</button><button className="secondary" onClick={()=>window.open(`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(os.address)}`,"_blank")}>🧭 Naviguer</button></div></div>;
+  const canStart = typeof onStart === "function" && ["Nouveau OS", "Planifié", "En cours", "En travaux", "Travaux en cours"].includes(os.status);
+  const alreadyStarted = ["En cours", "En travaux", "Travaux en cours"].includes(os.status);
+  return <div className="os" style={{ borderLeftColor: statusColors.accent }}>
+    <div className="os-top"><div><div className="os-number">{os.id}</div><div className="os-info">📍 {os.address}</div></div><span className="badge os-status-badge" style={getOSStatusBadgeStyle(displayStatus)}>{os.constatStatus === "Validé avec réserve" && !os.reserveResolvedAt ? "Réserve" : os.status}</span></div>
+    {os.constatStatus === "Validé avec réserve" && !os.reserveResolvedAt && os.reserveReason && <div className="os-info" style={{ color: "#9a3412" }}>🚧 Motif de réserve : {os.reserveReason}</div>}
+    {os.problemSuspended && os.suspensionReason && <div className="os-info" style={{ color: os.status === "En attente" ? "#475569" : "#b42318" }}>{os.status === "En attente" ? "⏸️ En attente : " : "⚠️ En erreur : "}{os.suspensionReason}</div>}
+    <div className="os-info">🔧 {os.work}<br/>🧭 Secteur : {os.sector || "Non classé"}<br/>👷 {os.team}<br/>📅 {os.day || "Non planifié"}<br/>📐 {os.quantity}</div>
+    <div className="os-actions">
+      <button className={canStart ? "secondary" : "primary"} type="button" onClick={onOpen}>Ouvrir l'OS</button>
+      {canStart && <button className="primary" type="button" disabled={startDisabled} onClick={onStart}>{alreadyStarted ? "↻ CONTINUER LES TRAVAUX" : "▶ DÉMARRER L’INTERVENTION"}</button>}
+      <button className="secondary" type="button" onClick={() => window.open("https://www.google.com/maps/search/?api=1&query=" + encodeURIComponent(os.address), "_blank")}>🧭 Naviguer</button>
+    </div>
+  </div>;
 }
 
-function OSModal({ os, onClose, onUpdate, profile }) {
+function OSModal({ os, onClose, onUpdate, profile, initialTab = "resume", onStartWork }) {
   const [day, setDay] = useState(os?.day || "");
   const [plannedDate, setPlannedDate] = useState(os?.plannedDate || "");
   const [status, setStatus] = useState(os?.status || "");
-  const [activeTab, setActiveTab] = useState("resume");
+  const [activeTab, setActiveTab] = useState(initialTab || "resume");
   const [planningSaving, setPlanningSaving] = useState(false);
   const [attachments, setAttachments] = useState([]);
   const [attachmentsLoading, setAttachmentsLoading] = useState(false);
@@ -1274,7 +1378,7 @@ function OSModal({ os, onClose, onUpdate, profile }) {
     if(!["admin","bureau","equipe_terrain"].includes(profile?.role)){alert("Votre profil ne permet pas de transmettre les travaux réalisés. Demandez à l’administrateur de vérifier votre rôle.");return;}
     if(os?.status === "Nouveau OS"){alert("Cet OS n'est pas encore planifié. Enregistrez d'abord une date dans l'onglet Planning.");setActiveTab("planning");return;}
     if(["À vérifier","Validé","Payé","Archivé"].includes(os?.status)){setActiveTab(["admin","bureau"].includes(profile?.role)?"constat":"resume");alert("Les travaux ont déjà été transmis pour cet OS. Vérifiez le constat depuis le profil bureau.");return;}
-    if(os?.status !== "Planifié" && os?.status !== "Travaux réalisés"){alert("Le statut actuel de cet OS ne permet pas de transmettre les travaux : "+(os?.status||"non renseigné")+". Vérifiez sa planification et son statut.");return;}
+    if(!["Planifié","En cours","En travaux","Travaux en cours","Travaux réalisés"].includes(os?.status)){alert("Le statut actuel de cet OS ne permet pas de transmettre les travaux : "+(os?.status||"non renseigné")+". Démarrez d’abord l’intervention depuis le bouton prévu à cet effet.");return;}
     try {
       const {data:authData,error:userError}=await supabase.auth.getUser();const user=authData?.user;if(userError||!user)throw new Error("Utilisateur non connecté.");
       let {data:intervention,error:interventionError}=await supabase.from("interventions").select("id, work_order_id, type, status, planned_surface_m2, actual_surface_m2").eq("work_order_id",os.dbId).maybeSingle();if(interventionError)throw new Error("Impossible de retrouver l'intervention : "+interventionError.message);
@@ -1507,7 +1611,7 @@ async function markConstatPaid() {
   async function regenerateConstatFromWorks(){if(!constat||constatLocked)return;if(!window.confirm("Recalculer le constat à partir des travaux réalisés ?\n\nLes modifications manuelles actuellement présentes dans le constat seront remplacées."))return;const {data:authData}=await supabase.auth.getUser();const userId=authData?.user?.id||null;const {error}=await supabase.rpc("regenerate_constat_for_work_order",{p_work_order_id:os.dbId,p_user_id:userId});if(error){alert("Impossible de recalculer le constat :\n\n"+error.message);return;}const {data:refreshed,error:refreshError}=await supabase.rpc("get_constat_for_work_order",{p_work_order_id:os.dbId});if(refreshError){alert("Le recalcul est terminé mais le constat n'a pas pu être relu.");return;}setConstat(refreshed?.constat||null);setConstatLines(refreshed?.lines||[]);setConstatEditMode(false);alert("✅ Constat recalculé depuis les travaux.");}
 
   const canManagePlanning = ["admin","bureau"].includes(profile?.role);
-  const canEditWork = ["admin","bureau","equipe_terrain"].includes(profile?.role) && ["Nouveau OS","Planifié","Travaux réalisés"].includes(os?.status);
+  const canEditWork = ["admin","bureau","equipe_terrain"].includes(profile?.role) && ["Nouveau OS","Planifié","En cours","En travaux","Travaux en cours","Travaux réalisés"].includes(os?.status);
   const canManageBilling = ["admin","bureau"].includes(profile?.role);
   const canViewBilling = ["admin","bureau","eau_de_toulouse"].includes(profile?.role);
   const isExternalReadOnly = profile?.role === "eau_de_toulouse";
@@ -1518,10 +1622,12 @@ async function markConstatPaid() {
   });
   const totalSurface= os.rehabilitationZone==="Chaussée + trottoir"?((Number(realRoadSurface)||0)+(Number(realSidewalkSurface)||0)):os.rehabilitationZone==="Chaussée"?(Number(realRoadSurface)||0):os.rehabilitationZone==="Trottoir"?(Number(realSidewalkSurface)||0):os.rehabilitationZone==="Autre"?(Number(realOtherSurface)||0):(Number(realSurface)||0);
 
-  return <div className="modal-bg"><div className="modal os-detail-modal">
-    <div className="modal-header"><div><h2>{os.id}</h2><small>{os.address}</small></div><button className="close" onClick={onClose} type="button">×</button></div>
-    <div className="os-detail-summary"><div className="os-detail-badge"><span>Zone de réfection</span><strong>{os.rehabilitationZone||"—"}</strong></div>{os.rehabilitationZone==="Autre"&&os.rehabilitationOtherDetail&&<div className="os-detail-badge"><span>Précision</span><strong>{os.rehabilitationOtherDetail}</strong></div>}{os.rehabilitationZone==="Chaussée + trottoir"&&<><div className="os-detail-badge"><span>Chaussée</span><strong>{os.roadSurface!=null?`${os.roadSurface} m²`:"—"}</strong></div><div className="os-detail-badge"><span>Trottoir</span><strong>{os.sidewalkSurface!=null?`${os.sidewalkSurface} m²`:"—"}</strong></div></>}{os.rehabilitationZone==="Chaussée"&&<div className="os-detail-badge"><span>Surface chaussée</span><strong>{os.roadSurface!=null?`${os.roadSurface} m²`:"—"}</strong></div>}{os.rehabilitationZone==="Trottoir"&&<div className="os-detail-badge"><span>Surface trottoir</span><strong>{os.sidewalkSurface!=null?`${os.sidewalkSurface} m²`:"—"}</strong></div>}<div className="os-detail-badge"><span>Statut</span><strong>{os.status||"Nouveau OS"}</strong></div><div className="os-detail-badge"><span>Matériau</span><strong>{os.work||"—"}</strong></div><div className="os-detail-badge"><span>Surface</span><strong>{os.quantity||"—"}</strong></div><div className="os-detail-badge"><span>Équipe</span><strong>{os.team||"Non affectée"}</strong></div></div>
-    <div className="os-tabs">{tabs.map((tab)=><button key={tab.id} type="button" className={activeTab===tab.id?"os-tab active":"os-tab"} onClick={()=>setActiveTab(tab.id)}><span>{tab.icon}</span><span>{tab.label}</span></button>)}</div>
+  const isWorkScreen = activeTab === "travaux";
+  const canStartHere = ["admin","bureau","equipe_terrain"].includes(profile?.role) && ["Nouveau OS","Planifié","En cours","En travaux","Travaux en cours"].includes(os?.status);
+  return <div className="modal-bg" style={isWorkScreen ? { position: "fixed", inset: 0, padding: 0, zIndex: 2147483647, alignItems: "stretch", justifyContent: "stretch", overflowY: "auto" } : undefined}><div className="modal os-detail-modal" style={isWorkScreen ? { width: "100%", maxWidth: "none", height: "100dvh", minHeight: "100vh", maxHeight: "none", margin: 0, borderRadius: 0, padding: "max(12px, env(safe-area-inset-top)) 12px max(20px, env(safe-area-inset-bottom))", overflowY: "auto", boxSizing: "border-box" } : undefined}>
+    <div className="modal-header"><div><h2>{isWorkScreen ? "🛠️ Travaux — " + os.id : os.id}</h2><small>{os.address}</small></div><div style={{display:"flex",alignItems:"center",gap:8,flexWrap:"wrap"}}>{isWorkScreen && <button className="secondary" type="button" onClick={() => setActiveTab("resume")}>← Fiche OS</button>}{!isWorkScreen && canStartHere && onStartWork && <button className="primary" type="button" disabled={startingOSId === os.dbId} onClick={() => onStartWork(os)}>{["En cours","En travaux","Travaux en cours"].includes(os.status) ? "↻ Continuer les travaux" : "▶ Démarrer l’intervention"}</button>}<button className="close" onClick={onClose} type="button">×</button></div></div>
+    {!isWorkScreen && <div className="os-detail-summary"><div className="os-detail-badge"><span>Zone de réfection</span><strong>{os.rehabilitationZone||"—"}</strong></div>{os.rehabilitationZone==="Autre"&&os.rehabilitationOtherDetail&&<div className="os-detail-badge"><span>Précision</span><strong>{os.rehabilitationOtherDetail}</strong></div>}{os.rehabilitationZone==="Chaussée + trottoir"&&<><div className="os-detail-badge"><span>Chaussée</span><strong>{os.roadSurface!=null?`${os.roadSurface} m²`:"—"}</strong></div><div className="os-detail-badge"><span>Trottoir</span><strong>{os.sidewalkSurface!=null?`${os.sidewalkSurface} m²`:"—"}</strong></div></>}{os.rehabilitationZone==="Chaussée"&&<div className="os-detail-badge"><span>Surface chaussée</span><strong>{os.roadSurface!=null?`${os.roadSurface} m²`:"—"}</strong></div>}{os.rehabilitationZone==="Trottoir"&&<div className="os-detail-badge"><span>Surface trottoir</span><strong>{os.sidewalkSurface!=null?`${os.sidewalkSurface} m²`:"—"}</strong></div>}<div className="os-detail-badge"><span>Statut</span><strong>{os.status||"Nouveau OS"}</strong></div><div className="os-detail-badge"><span>Matériau</span><strong>{os.work||"—"}</strong></div><div className="os-detail-badge"><span>Surface</span><strong>{os.quantity||"—"}</strong></div><div className="os-detail-badge"><span>Équipe</span><strong>{os.team||"Non affectée"}</strong></div></div>}
+    {!isWorkScreen && <div className="os-tabs">{tabs.map((tab)=><button key={tab.id} type="button" className={activeTab===tab.id?"os-tab active":"os-tab"} onClick={()=>setActiveTab(tab.id)}><span>{tab.icon}</span><span>{tab.label}</span></button>)}</div>}
     <div className="os-tab-content">
       {activeTab==="resume"&&<div className="os-section"><h3>Informations générales</h3><div className="os-info-grid"><div><span>Ordre de service</span><strong>{os.id}</strong></div><div><span>Adresse</span><strong>{os.address||"—"}</strong></div><div><span>Matériau</span><strong>{os.work||"—"}</strong></div><div><span>Métier</span><strong>{os.trade||"—"}</strong></div><div><span>Secteur</span><strong>{os.sector||"—"}</strong></div><div><span>Quantité prévue</span><strong>{os.quantity||"—"}</strong></div><div><span>Équipe</span><strong>{os.team||"Non affectée"}</strong></div><div><span>Jour prévu</span><strong>{os.day||"Non planifié"}</strong></div></div><div className="os-status-box"><span>Échéance</span><strong>{os.deadline?new Date(os.deadline).toLocaleDateString("fr-FR"):"—"}</strong></div><div className="card" style={{ marginTop: 18, border: "1px solid #d9e0e7" }}>
     <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
