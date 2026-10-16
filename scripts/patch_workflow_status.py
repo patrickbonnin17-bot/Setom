@@ -16,6 +16,18 @@ replacements = {
 for old, new in replacements.items():
     text = text.replace(old, new)
 
+# An OS remains editable by the planning office until it reaches a validation
+# state. Once validated, paid, archived or cancelled, the OS is intentionally
+# frozen and subsequent corrections belong to the reserve/constat workflow.
+editable_status_guard = '["Nouveau", "À planifier", "Planifié", "En travaux", "Travaux en cours", "En erreur"]'
+editable_statuses = '["Nouveau", "À planifier", "Planifié", "En travaux", "Travaux en cours", "Travaux réalisés", "Travaux effectués", "Constat à vérifier", "Constat de facturation", "En attente de validation", "En erreur"]'
+text = text.replace(editable_status_guard, 'EDITABLE_OS_STATUSES')
+status_anchor = 'const statuses = ['
+if 'const EDITABLE_OS_STATUSES = ' not in text:
+    if status_anchor not in text:
+        raise SystemExit("SETOM: status declaration anchor not found")
+    text = text.replace(status_anchor, 'const EDITABLE_OS_STATUSES = ' + editable_statuses + ';\n\n' + status_anchor, 1)
+
 # Automatic planning constraints: preserve the material/team m² capacity while
 # limiting the total number of OS assigned to a calendar day. This avoids
 # creating an itinerary with too many stops even when the m² capacity allows it.
@@ -34,10 +46,6 @@ for old, new in planning_replacements.items():
         raise SystemExit("SETOM: automatic planning pattern not found: " + old[:80])
     planning_text = planning_text.replace(old, new, 1)
 
-# Once dates and teams are selected, rebuild each day's stop order with a
-# nearest-neighbour route. The first stop is the most peripheral located OS;
-# subsequent stops are chosen by proximity to the previous stop. OS without
-# coordinates keep the existing priority order and are placed after located stops.
 route_block = '''      const queueById = new Map(queue.map((order) => [order.id, order]));
       const assignmentsByDay = new Map();
       for (const assignment of assignments) {
@@ -76,8 +84,6 @@ if anchor not in planning_text:
 planning_text = planning_text.replace(anchor, route_block + anchor, 1)
 planning_path.write_text(planning_text, encoding="utf-8")
 
-# Treat a reintroduced legacy guard as a build failure instead of silently
-# shipping a UI where "En travaux" becomes read-only again.
 legacy_guards = [
     '["Planifié","Travaux en cours","Travaux réalisés"]',
     '["Planifié", "Travaux en cours", "Travaux réalisés"]',
@@ -90,5 +96,6 @@ if remaining:
 
 path.write_text(text, encoding="utf-8")
 print("SETOM: En travaux enabled across OS editing, issue reporting and work transmission guards")
+print("SETOM: OS remains editable by planning until validation")
 print("SETOM: automatic planning capped at 15 OS per calendar day while preserving m²/team capacity")
 print("SETOM: automatic route order uses peripheral-first then nearest-neighbour ordering")
