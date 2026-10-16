@@ -43,7 +43,7 @@ async function geocodeFallback(address) {
   }
 }
 
-function readOrders(container) {
+function readOrders() {
   return Array.from(document.querySelectorAll(".setom-map-order")).map((article) => {
     const strong = article.querySelector("strong");
     const span = article.querySelector("span");
@@ -59,8 +59,8 @@ function readOrders(container) {
 }
 
 async function createFallbackMap(container) {
-  if (!document.body.contains(container) || instances.has(container)) return;
-  const orders = readOrders(container);
+  if (!document.body.contains(container) || instances.get(container)?.fallback) return;
+  const orders = readOrders();
   if (!orders.length) return;
   try {
     container.innerHTML = "";
@@ -87,7 +87,7 @@ async function createFallbackMap(container) {
     badge.className = "setom-map-fallback-label";
     badge.textContent = "Carte réparée automatiquement";
     container.appendChild(badge);
-    instances.set(container, { map, observer: null, fallback: true });
+    instances.set(container, { map, observer: instances.get(container)?.observer || null, fallback: true });
     setTimeout(() => map.invalidateSize({ pan: false }), 50);
   } catch (error) {
     console.warn("SETOM : impossible d'initialiser le correctif cartographique", error);
