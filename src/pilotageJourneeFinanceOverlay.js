@@ -6,6 +6,8 @@ const n = (v) => {
 const money = (v) => `${n(v).toLocaleString("fr-FR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} €`;
 const dateOf = () => String(document.querySelector("input[type=date][data-setom-selected-date], .planning-date-input")?.value || new Date().toISOString().slice(0, 10)).slice(0, 10);
 
+let latest = null;
+
 function readDailyCost(date) {
   try {
     const d = JSON.parse(localStorage.getItem(`setom-daily-team-costs-v1:${date}`) || "null");
@@ -51,11 +53,17 @@ function patch() {
   style();
   const date = dateOf();
   const daily = readDailyCost(date);
-  const { surface, tonnage } = parseTable(box);
-  const marginKpi = [...box.querySelectorAll(".pj-kpi")].find(x => x.querySelector(".pj-label")?.textContent?.trim() === "Marge");
-  const margin = marginKpi ? n(marginKpi.querySelector(".pj-val")?.textContent) : 0;
+  const parsed = parseTable(box);
+  const data = latest && latest.date === date ? latest : null;
+  const surface = data?.surface || parsed.surface;
+  const tonnage = parsed.tonnage;
+  const teamCost = data?.teamCost ?? daily?.total ?? 0;
+  const hours = data?.hours ?? 0;
+  const rate = data?.rate ?? daily?.rate ?? 0;
+  const margin = data?.margin ?? 0;
   const marginPerM2 = surface > 0 ? margin / surface : 0;
-  const teamPerM2 = daily && surface > 0 ? daily.total / surface : 0;
+  const teamPerM2 = surface > 0 ? teamCost / surface : 0;
+  const marginPct = data?.revenue > 0 ? margin / data.revenue * 100 : null;
 
   let grid = box.querySelector("[data-pilotage-finance]");
   if (!grid) {
@@ -68,11 +76,12 @@ function patch() {
 
   grid.innerHTML = `
     <div class="pj-finance-card"><div class="pj-finance-label">Coût équipe / jour</div><div class="pj-finance-value">${daily ? money(daily.total) : "—"}</div><div class="pj-finance-sub">coût global saisi pour l'équipe</div></div>
-    <div class="pj-finance-card"><div class="pj-finance-label">Coût équipe / heure</div><div class="pj-finance-value">${daily && daily.rate ? `${money(daily.rate)}/h` : "—"}</div><div class="pj-finance-sub">${daily ? `${daily.hours.toFixed(2)} h de journée` : "renseigner les heures"}</div></div>
-    <div class="pj-finance-card"><div class="pj-finance-label">Coût équipe / m²</div><div class="pj-finance-value">${daily && surface ? `${money(teamPerM2)}/m²` : "—"}</div><div class="pj-finance-sub">${surface.toFixed(1)} m² planifiés/réalisés</div></div>
-    <div class="pj-finance-card"><div class="pj-finance-label">Marge / m²</div><div class="pj-finance-value">${surface && margin ? `${money(marginPerM2)}/m²` : "—"}</div><div class="pj-finance-sub">${tonnage.toFixed(2)} t estimées · matériaux équipe inclus</div></div>`;
+    <div class="pj-finance-card"><div class="pj-finance-label">Coût équipe / heure</div><div class="pj-finance-value">${rate ? `${money(rate)}/h` : "—"}</div><div class="pj-finance-sub">${hours ? `${hours.toFixed(2)} h réelles affectées` : daily ? `${daily.hours.toFixed(2)} h saisies` : "renseigner les heures"}</div></div>
+    <div class="pj-finance-card"><div class="pj-finance-label">Coût équipe / m²</div><div class="pj-finance-value">${surface && teamCost ? `${money(teamPerM2)}/m²` : "—"}</div><div class="pj-finance-sub">${surface.toFixed(1)} m² · coût selon heures réelles</div></div>
+    <div class="pj-finance-card"><div class="pj-finance-label">Marge / m²</div><div class="pj-finance-value">${surface && data ? `${money(marginPerM2)}/m²` : "—"}</div><div class="pj-finance-sub">${marginPct === null ? `${tonnage.toFixed(2)} t estimées` : `${marginPct.toFixed(1)} % de marge · matériaux équipe inclus`}</div></div>`;
 }
 
+window.addEventListener("setom:profitability-metrics", (e) => { latest = e.detail || null; patch(); });
 let timer;
 function schedule() { clearTimeout(timer); timer = setTimeout(patch, 500); }
 new MutationObserver(schedule).observe(document.body, { childList: true, subtree: true });
