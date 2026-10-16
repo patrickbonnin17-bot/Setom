@@ -74,6 +74,7 @@ async function patch() {
   if (wo.error) throw wo.error;
   const osToId = new Map((wo.data || []).map(x=>[String(Number(x.os_number)),x.id]));
   const trs = [...table.querySelectorAll("tbody tr")];
+  const updates = [];
   let revenueTotal = 0, marginTotal = 0, teamCostTotal = 0, otherCostTotal = 0, hoursTotal = 0, missingHours = 0, surfaceTotal = 0;
 
   for (const tr of trs) {
@@ -95,15 +96,18 @@ async function patch() {
     otherCostTotal += other;
     marginTotal += margin;
     surfaceTotal += surface;
-
-    if (tr.children[9]) tr.children[9].innerHTML = `<strong>${money(totalCost)}</strong><div style="font-size:10px;color:#667085">équipe ${money(team)} · autres ${money(other)} · ${data.hours.toFixed(2)} h</div>`;
-    if (tr.children[10]) tr.children[10].innerHTML = revenue
-      ? `<strong class="${margin < 0 ? "pj-bad" : "pj-good"}">${money(margin)}</strong> · ${(margin / revenue * 100).toFixed(1)} %<div style="font-size:10px;color:#667085">${surface > 0 ? `${money(team / surface)}/m² équipe · ${money(margin / surface)}/m² marge` : ""}</div>`
-      : "—";
+    updates.push({ tr, totalCost, team, other, hours:data.hours, revenue, margin, surface });
   }
 
-  const signature = `${date}:${daily?.total || 0}:${daily?.hours || 0}:${daily?.rate || 0}:${hoursTotal.toFixed(4)}`;
+  const signature = `${date}:${daily?.total || 0}:${daily?.hours || 0}:${daily?.rate || 0}:${hoursTotal.toFixed(4)}:${marginTotal.toFixed(2)}`;
   if (table.dataset.teamProfitabilitySignature === signature) return;
+
+  for (const u of updates) {
+    if (u.tr.children[9]) u.tr.children[9].innerHTML = `<strong>${money(u.totalCost)}</strong><div style="font-size:10px;color:#667085">équipe ${money(u.team)} · autres ${money(u.other)} · ${u.hours.toFixed(2)} h</div>`;
+    if (u.tr.children[10]) u.tr.children[10].innerHTML = u.revenue
+      ? `<strong class="${u.margin < 0 ? "pj-bad" : "pj-good"}">${money(u.margin)}</strong> · ${(u.margin / u.revenue * 100).toFixed(1)} %<div style="font-size:10px;color:#667085">${u.surface > 0 ? `${money(u.team / u.surface)}/m² équipe · ${money(u.margin / u.surface)}/m² marge` : ""}</div>`
+      : "—";
+  }
 
   const kpis = [...box.querySelectorAll(".pj-kpi")];
   const marginKpi = kpis.find(x=>x.querySelector(".pj-label")?.textContent?.trim()==="Marge");
