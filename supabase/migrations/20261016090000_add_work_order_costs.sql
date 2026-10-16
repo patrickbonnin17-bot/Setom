@@ -19,6 +19,10 @@ create index if not exists work_order_costs_work_order_date_idx
 
 alter table public.work_order_costs enable row level security;
 
+drop policy if exists "authenticated users can read work order costs" on public.work_order_costs;
+drop policy if exists "authenticated users can insert work order costs" on public.work_order_costs;
+drop policy if exists "authenticated users can update work order costs" on public.work_order_costs;
+
 create policy "authenticated users can read work order costs"
   on public.work_order_costs for select to authenticated using (true);
 
