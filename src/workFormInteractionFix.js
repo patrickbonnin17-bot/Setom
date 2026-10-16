@@ -1,16 +1,21 @@
-const WORKABLE_STATUS_SET = ["Planifié", "Travaux en cours", "Travaux réalisés"];
+const STATUS_GUARD_SETS = [
+  ["Planifié", "Travaux en cours", "Travaux réalisés"],
+  ["Nouveau", "À planifier", "Planifié", "Travaux en cours", "En erreur"],
+  ["À planifier", "Planifié", "Travaux en cours", "En erreur"],
+];
 const originalIncludes = Array.prototype.includes;
 
-// The main OS component contains the work workflow guards. Keep the existing
+// The main OS component contains several workflow guards. Keep the existing
 // component unchanged while allowing the explicit "En travaux" state to use
-// the same work-entry/transmission path as the other active work states.
+// the same edit, issue-reporting and work-transmission paths as the other
+// active states. This runtime fallback also protects non-Vite deployments.
 Array.prototype.includes = function patchedIncludes(searchElement, fromIndex) {
-  if (
-    searchElement === "En travaux" &&
-    this.length === WORKABLE_STATUS_SET.length &&
-    WORKABLE_STATUS_SET.every((status, index) => this[index] === status)
-  ) {
-    return true;
+  if (searchElement === "En travaux") {
+    for (const statuses of STATUS_GUARD_SETS) {
+      if (this.length === statuses.length && statuses.every((status, index) => this[index] === status)) {
+        return true;
+      }
+    }
   }
   return originalIncludes.call(this, searchElement, fromIndex);
 };
