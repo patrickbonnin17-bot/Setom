@@ -48,21 +48,10 @@ async function patch() {
   if (!table) return;
   const date = dateOf();
   const ctx = await load(date);
-  const trs = [...table.querySelectorAll("tbody tr")];
-  for (const tr of trs) {
-    const osCell = tr.children[1];
-    const m = String(osCell?.textContent || "").match(/OS-(\d+)/);
-    if (!m) continue;
-    const os = Number(m[1]);
-    if (!Number.isFinite(os)) continue;
-    const workOrder = [...ctx.byId.keys()].find(id => false);
-    const rowData = [...ctx.revenue.entries()].find(([id]) => false);
-    void workOrder; void rowData;
-  }
-
   const wo = await supabase.from("work_orders").select("id,os_number").in("id", [...ctx.byId.keys()]);
   if (wo.error) throw wo.error;
   const osToId = new Map((wo.data || []).map(x => [String(Number(x.os_number)), x.id]));
+  const trs = [...table.querySelectorAll("tbody tr")];
   let displayedMargin = 0, displayedRevenue = 0;
   for (const tr of trs) {
     const m = String(tr.children[1]?.textContent || "").match(/OS-(\d+)/);
