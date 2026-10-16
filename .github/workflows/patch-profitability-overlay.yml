@@ -1,0 +1,37 @@
+name: Wire profitability overlay
+
+on:
+  push:
+    paths:
+      - '.github/workflows/patch-profitability-overlay.yml'
+      - 'src/profitabilityOverlay.js'
+
+jobs:
+  wire:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - name: Import profitability overlay
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          p = Path('src/main.jsx')
+          s = p.read_text(encoding='utf-8')
+          marker = 'import "./profitabilityOverlay";'
+          if marker not in s:
+              s = marker + '\n' + s
+              p.write_text(s, encoding='utf-8')
+          PY
+      - name: Commit wiring
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          if git diff --quiet -- src/main.jsx; then
+            echo 'Already wired'
+          else
+            git add src/main.jsx
+            git commit -m 'feat: wire profitability overlay'
+            git push
+          fi
