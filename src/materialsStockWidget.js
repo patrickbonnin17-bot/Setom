@@ -32,7 +32,7 @@ function ensureStyles() {
   document.head.appendChild(style);
 }
 
-function getDateValue() { return new Date().toISOString().slice(0, 10); }
+function getDateValue() { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`; }
 
 async function loadData(date) {
   const [ordersResult, interventionsResult, materialsResult, loadsResult] = await Promise.all([
@@ -112,9 +112,16 @@ async function renderPanel(date) {
         const id = button.getAttribute("data-save-load");
         const input = document.getElementById(`setom-load-${id}`);
         const quantity = num(input?.value);
-        const { data: authData } = await supabase.auth.getUser();
-        const { error } = await supabase.from("truck_daily_loads").upsert({ load_date: date, material_id: id, loaded_quantity: quantity, unit: "t", created_by: authData?.user?.id || null, updated_at: new Date().toISOString() }, { onConflict: "load_date,material_id" });
-        if (error) alert("Impossible d'enregistrer le chargement : " + error.message); else renderPanel(date);
+        if (!Number.isFinite(quantity) || quantity < 0) { alert("La quantité chargée doit être positive ou nulle."); return; }
+        const { data: authData, error: authError } = await supabase.auth.getUser();
+        if (authError) { alert("Impossible de vérifier la connexion : " + authError.message); return; }
+        const payload = { load_date: date, material_id: id, loaded_quantity: quantity, unit: "t", created_by: authData?.user?.id || null, updated_at: new Date().toISOString() };
+        const { data: existing, error: lookupError } = await supabase.from("truck_daily_loads").select("id").eq("load_date", date).eq("material_id", id).order("created_at", { ascending: false }).limit(1).maybeSingle();
+        if (lookupError) { alert("Impossible de vérifier le chargement existant : " + lookupError.message); return; }
+        const result = existing?.id
+          ? await supabase.from("truck_daily_loads").update(payload).eq("id", existing.id)
+          : await supabase.from("truck_daily_loads").insert(payload);
+        if (result.error) alert("Impossible d'enregistrer le chargement : " + result.error.message); else renderPanel(date);
       };
     });
     root.querySelectorAll("[data-save-material]").forEach((button) => {
