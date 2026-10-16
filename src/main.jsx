@@ -693,7 +693,7 @@ function App() {
   }
   function openOS(os, tab = "resume") {
     setSelectedOSTab(tab);
-    openOS(os, "resume");
+    setSelectedOS(os);
   }
   async function startWorkOrder(os) {
     if (!os?.dbId) { alert("Impossible d’identifier cet OS."); return; }
@@ -922,7 +922,7 @@ function App() {
         </form>}
       </>}
     </main>
-    {selectedOS && <OSModal key={selectedOS.dbId + "-" + selectedOSTab} os={selectedOS} onClose={()=>setSelectedOS(null)} onUpdate={updateOS} profile={currentProfile} initialTab={selectedOSTab} onStartWork={startWorkOrder}/>} 
+    {selectedOS && <OSModal key={selectedOS.dbId + "-" + selectedOSTab} os={selectedOS} onClose={()=>setSelectedOS(null)} onUpdate={updateOS} profile={currentProfile} initialTab={selectedOSTab} onStartWork={startWorkOrder} startingOSId={startingOSId}/>} 
   </div>;
 }
 
@@ -944,7 +944,7 @@ function OSCard({ os, onOpen, onStart, startDisabled = false }) {
   </div>;
 }
 
-function OSModal({ os, onClose, onUpdate, profile, initialTab = "resume", onStartWork }) {
+function OSModal({ os, onClose, onUpdate, profile, initialTab = "resume", onStartWork, startingOSId = "" }) {
   const [day, setDay] = useState(os?.day || "");
   const [plannedDate, setPlannedDate] = useState(os?.plannedDate || "");
   const [status, setStatus] = useState(os?.status || "");
