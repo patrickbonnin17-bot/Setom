@@ -10,7 +10,7 @@ async function load(date) {
   const ir = await supabase.from("interventions").select("id,work_order_id,planned_order").eq("planned_date", date).order("planned_order", { ascending:true });
   if (ir.error) throw ir.error;
   const ids = [...new Set((ir.data || []).map(x => x.work_order_id).filter(Boolean))];
-  if (!ids.length) return { byId:new Map(), revenue:new Map(), teamTotal:0, otherTotal:0 };
+  if (!ids.length) return { byId:new Map(), revenue:new Map() };
   const [cr, wr] = await Promise.all([
     supabase.from("work_order_costs").select("work_order_id,amount,description,category").eq("cost_date", date).in("work_order_id", ids),
     supabase.from("constats").select("work_order_id,total_amount").in("work_order_id", ids)
@@ -18,18 +18,16 @@ async function load(date) {
   if (cr.error) throw cr.error;
   if (wr.error) throw wr.error;
   const byId = new Map();
-  let teamTotal = 0, otherTotal = 0;
   for (const c of cr.data || []) {
     const amount = n(c.amount);
     const isTeam = String(c.description || "").startsWith(COST_PREFIX);
     const row = byId.get(c.work_order_id) || { team:0, other:0 };
-    if (isTeam) { row.team += amount; teamTotal += amount; }
-    else { row.other += amount; otherTotal += amount; }
+    if (isTeam) row.team += amount; else row.other += amount;
     byId.set(c.work_order_id, row);
   }
   const revenue = new Map();
   for (const c of wr.data || []) revenue.set(c.work_order_id, Math.max(n(revenue.get(c.work_order_id)), n(c.total_amount)));
-  return { byId, revenue, teamTotal, otherTotal };
+  return { byId, revenue };
 }
 
 function readDailyRate(date) {
@@ -45,9 +43,10 @@ function readDailyRate(date) {
 async function patch() {
   const box = document.getElementById(ROOT);
   const table = box?.querySelector(".pj-table table");
-  if (!table) return;
+  if (!table || table.dataset.teamCostPatched === dateOf()) return;
   const date = dateOf();
   const ctx = await load(date);
+  if (!ctx.byId.size) return;
   const wo = await supabase.from("work_orders").select("id,os_number").in("id", [...ctx.byId.keys()]);
   if (wo.error) throw wo.error;
   const osToId = new Map((wo.data || []).map(x => [String(Number(x.os_number)), x.id]));
@@ -77,7 +76,8 @@ async function patch() {
   let banner = box.querySelector("[data-team-profitability]");
   if (!banner) { banner = document.createElement("div"); banner.dataset.teamProfitability = "1"; banner.style.cssText = "margin:10px 0;padding:10px 12px;border-radius:12px;background:#eef5ff;border:1px solid #d5e4fb;color:#102a56;font-size:12px;font-weight:700"; box.querySelector(".pj-kpis")?.after(banner); }
   const daily = readDailyRate(date);
-  banner.innerHTML = daily ? `💶 Coût équipe intégré : <strong>${money(daily.total)}</strong> · ${daily.hours.toFixed(2)} h · <strong>${money(daily.rate)}/h</strong> · les matériaux saisis dans le coût équipe ne sont pas redéduits séparément.` : `💶 Coût équipe : les coûts répartis sur les OS sont intégrés à la marge. Saisis/sauvegarde le coût journalier pour afficher le coût horaire.`;
+  banner.innerHTML = daily ? `💶 Coût équipe intégré : <strong>${money(daily.total)}</strong> · ${daily.hours.toFixed(2)} h · <strong>${money(daily.rate)}/h</strong> · les matériaux saisis dans le coût équipe ne sont pas redéduits séparément.` : `💶 Coût équipe : les coûts répartis sur les OS sont intégrés à la marge. Sauvegarde le coût journalier pour afficher le coût horaire.`;
+  table.dataset.teamCostPatched = date;
 }
 
 let timer;
