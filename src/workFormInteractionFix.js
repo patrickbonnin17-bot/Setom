@@ -43,11 +43,20 @@ function schedule() {
   timer = setTimeout(unlockWorkForm, 40);
 }
 
-new MutationObserver(schedule).observe(document.body, {
-  childList: true,
-  subtree: true,
-  attributes: true,
-  attributeFilter: ["disabled"]
-});
-window.addEventListener("setom:planning-updated", schedule);
-setTimeout(unlockWorkForm, 200);
+function initWorkFormInteractionFix() {
+  if (!document.body) return;
+  new MutationObserver(schedule).observe(document.body, {
+    childList: true,
+    subtree: true,
+    attributes: true,
+    attributeFilter: ["disabled"]
+  });
+  window.addEventListener("setom:planning-updated", schedule);
+  setTimeout(unlockWorkForm, 200);
+}
+
+if (document.readyState === "loading") {
+  document.addEventListener("DOMContentLoaded", initWorkFormInteractionFix, { once: true });
+} else {
+  initWorkFormInteractionFix();
+}
