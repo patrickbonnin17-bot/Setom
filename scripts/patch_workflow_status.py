@@ -28,6 +28,27 @@ if 'const EDITABLE_OS_STATUSES = ' not in text:
         raise SystemExit("SETOM: status declaration anchor not found")
     text = text.replace(status_anchor, 'const EDITABLE_OS_STATUSES = ' + editable_statuses + ';\n\n' + status_anchor, 1)
 
+# When an OS address is changed, invalidate its stored coordinates. The safe
+# startup geocoder will then resolve the new address and save fresh coordinates.
+address_edit_anchor = '''    setOsEditSaving(true);\n    try {\n      const payload = {'''
+address_edit_replacement = '''    setOsEditSaving(true);\n    try {\n      const currentAddress = String(os?.address || "").trim();\n      const nextAddress = [address, String(osEditDraft.postal_code || "").trim(), String(osEditDraft.city || "").trim()].filter(Boolean).join(", ");\n      const addressChanged = currentAddress !== nextAddress;\n      const payload = {'''
+if address_edit_anchor not in text:
+    raise SystemExit("SETOM: OS edit payload anchor not found")
+text = text.replace(address_edit_anchor, address_edit_replacement, 1)
+
+payload_anchor = '''        particularities: String(osEditDraft.particularities || "").trim() || null,\n        updated_by: user.id,'''
+payload_replacement = '''        particularities: String(osEditDraft.particularities || "").trim() || null,\n        ...(addressChanged ? { latitude: null, longitude: null } : {}),\n        updated_by: user.id,'''
+if payload_anchor not in text:
+    raise SystemExit("SETOM: OS edit payload fields anchor not found")
+text = text.replace(payload_anchor, payload_replacement, 1)
+
+# Notify the automatic geocoder after a newly-created OS as well as after edits.
+create_end_anchor = '''    setNewOSRehabilitationZone(""); setNewOSRehabilitationOtherDetail(""); setNewOSRoadSurface(""); setNewOSSidewalkSurface(""); setNewOSParticularities(""); setNewOSFiles([]); setNewOSError(""); setNewOSSaving(false);\n  }'''
+create_end_replacement = '''    setNewOSRehabilitationZone(""); setNewOSRehabilitationOtherDetail(""); setNewOSRoadSurface(""); setNewOSSidewalkSurface(""); setNewOSParticularities(""); setNewOSFiles([]); setNewOSError(""); setNewOSSaving(false);\n    window.dispatchEvent(new CustomEvent("setom:os-created", { detail: { workOrderId: data.id } }));\n  }'''
+if create_end_anchor not in text:
+    raise SystemExit("SETOM: OS creation completion anchor not found")
+text = text.replace(create_end_anchor, create_end_replacement, 1)
+
 # Automatic planning constraints: preserve the material/team m² capacity while
 # limiting the total number of OS assigned to a calendar day. This avoids
 # creating an itinerary with too many stops even when the m² capacity allows it.
@@ -46,38 +67,7 @@ for old, new in planning_replacements.items():
         raise SystemExit("SETOM: automatic planning pattern not found: " + old[:80])
     planning_text = planning_text.replace(old, new, 1)
 
-route_block = '''      const queueById = new Map(queue.map((order) => [order.id, order]));
-      const assignmentsByDay = new Map();
-      for (const assignment of assignments) {
-        if (!assignmentsByDay.has(assignment.planned_date)) assignmentsByDay.set(assignment.planned_date, []);
-        assignmentsByDay.get(assignment.planned_date).push(assignment);
-      }
-      for (const [date, dayAssignments] of assignmentsByDay) {
-        const remaining = [...dayAssignments];
-        const ordered = [];
-        while (remaining.length) {
-          let nextIndex = 0;
-          if (ordered.length === 0) {
-            let bestScore = Number.NEGATIVE_INFINITY;
-            remaining.forEach((assignment, index) => {
-              const order = queueById.get(assignment.work_order_id);
-              const score = distanceFromCityCenter(order);
-              if (score > bestScore) { bestScore = score; nextIndex = index; }
-            });
-          } else {
-            const previous = queueById.get(ordered[ordered.length - 1].work_order_id);
-            let bestDistance = Number.POSITIVE_INFINITY;
-            remaining.forEach((assignment, index) => {
-              const order = queueById.get(assignment.work_order_id);
-              const distance = distanceKm(previous, order);
-              if (distance < bestDistance) { bestDistance = distance; nextIndex = index; }
-            });
-          }
-          ordered.push(remaining.splice(nextIndex, 1)[0]);
-        }
-        ordered.forEach((assignment, index) => { assignment.planned_order = index + 1; });
-      }
-'''
+route_block = '''      const queueById = new Map(queue.map((order) => [order.id, order]));\n      const assignmentsByDay = new Map();\n      for (const assignment of assignments) {\n        if (!assignmentsByDay.has(assignment.planned_date)) assignmentsByDay.set(assignment.planned_date, []);\n        assignmentsByDay.get(assignment.planned_date).push(assignment);\n      }\n      for (const [date, dayAssignments] of assignmentsByDay) {\n        const remaining = [...dayAssignments];\n        const ordered = [];\n        while (remaining.length) {\n          let nextIndex = 0;\n          if (ordered.length === 0) {\n            let bestScore = Number.NEGATIVE_INFINITY;\n            remaining.forEach((assignment, index) => {\n              const order = queueById.get(assignment.work_order_id);\n              const score = distanceFromCityCenter(order);\n              if (score > bestScore) { bestScore = score; nextIndex = index; }\n            });\n          } else {\n            const previous = queueById.get(ordered[ordered.length - 1].work_order_id);\n            let bestDistance = Number.POSITIVE_INFINITY;\n            remaining.forEach((assignment, index) => {\n              const order = queueById.get(assignment.work_order_id);\n              const distance = distanceKm(previous, order);\n              if (distance < bestDistance) { bestDistance = distance; nextIndex = index; }\n            });\n          }\n          ordered.push(remaining.splice(nextIndex, 1)[0]);\n        }\n        ordered.forEach((assignment, index) => { assignment.planned_order = index + 1; });\n      }\n'''
 anchor = '      const lateAssignments = assignments.filter((assignment) => {'
 if anchor not in planning_text:
     raise SystemExit("SETOM: late-assignment anchor not found")
@@ -97,5 +87,6 @@ if remaining:
 path.write_text(text, encoding="utf-8")
 print("SETOM: En travaux enabled across OS editing, issue reporting and work transmission guards")
 print("SETOM: OS remains editable by planning until validation")
+print("SETOM: address edits invalidate coordinates and trigger automatic re-geocoding")
 print("SETOM: automatic planning capped at 15 OS per calendar day while preserving m²/team capacity")
 print("SETOM: automatic route order uses peripheral-first then nearest-neighbour ordering")
