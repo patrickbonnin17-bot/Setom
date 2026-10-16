@@ -1,6 +1,6 @@
 import { supabase } from "./supabase";
 
-const BUILD = "2026-10-16-daily-time-summary";
+const BUILD = "2026-10-16-functional-fixes-1";
 const PAUSE_MINUTES = 60;
 
 function minutesFromTime(value) {
@@ -107,7 +107,9 @@ async function refresh() {
       }
       const groups = [...groupsMap.values()].map((group) => {
         const first = Math.min(...group.rows.map((row) => row.arrival));
-        const last = Math.max(...group.rows.map((row) => row.departure));
+        const normalizedEnds = group.rows.map((row) => row.departure < row.arrival ? row.departure + 1440 : row.departure);
+        let last = Math.max(...normalizedEnds);
+        if (last < first) last += 1440;
         const amplitude = Math.max(0, last - first);
         const work = group.rows.reduce((sum, row) => sum + row.work, 0);
         const travel = Math.max(0, amplitude - PAUSE_MINUTES - work);
