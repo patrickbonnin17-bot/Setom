@@ -39,7 +39,7 @@ begin
     v_amount := round(coalesce((v_line->>'quantity')::numeric,0)*coalesce((v_line->>'unit_price')::numeric,0),2);
     v_total := v_total + v_amount;
     insert into public.constat_lines(constat_id,bpu_line_id,designation,quantity,unit,unit_price,thickness_cm,observations,actual_quantity,billing_coefficient,reference_thickness_cm,actual_thickness_cm)
-    values(p_constat_id,nullif(v_line->>'bpu_line_id','')::uuid,coalesce(v_line->>'designation','Prestation'),coalesce((v_line->>'quantity')::numeric,0),coalesce(v_line->>'unit',''),coalesce((v_line->>'unit_price')::numeric,0),nullif(v_line->>'thickness_cm','')::numeric,nullif(v_line->>'observations',''),nullif(v_line->>'actual_quantity','')::numeric,nullif(v_line->>'billing_coefficient','')::numeric,nullif(v_line->>'reference_thickness_cm','')::numeric,nullif(v_line->>'actual_thickness_cm')::numeric);
+    values(p_constat_id,nullif(v_line->>'bpu_line_id','')::uuid,coalesce(v_line->>'designation','Prestation'),coalesce((v_line->>'quantity')::numeric,0),coalesce(v_line->>'unit',''),coalesce((v_line->>'unit_price')::numeric,0),nullif(v_line->>'thickness_cm','')::numeric,nullif(v_line->>'observations',''),nullif(v_line->>'actual_quantity','')::numeric,nullif(v_line->>'billing_coefficient','')::numeric,nullif(v_line->>'reference_thickness_cm','')::numeric,nullif(v_line->>'actual_thickness_cm','')::numeric);
   end loop;
   update public.constats set observations=p_observations,total_amount=round(v_total,2),status='À vérifier',validated_at=null,validated_by=null,reserve_resolved_at=null,reserve_resolved_by=null,updated_at=now() where id=p_constat_id;
   update public.work_orders set status='À vérifier',updated_at=now() where id=p_work_order_id;
