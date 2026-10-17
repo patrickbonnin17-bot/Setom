@@ -92,6 +92,42 @@ if assignment_anchor not in planning_text:
     raise SystemExit("SETOM: planning assignment anchor not found")
 planning_text = planning_text.replace(assignment_anchor, assignment_replacement, 1)
 
+route_block = '''      const queueById = new Map(queue.map((order) => [order.id, order]));
+      const assignmentsByDay = new Map();
+      for (const assignment of assignments) {
+        if (!assignmentsByDay.has(assignment.planned_date)) assignmentsByDay.set(assignment.planned_date, []);
+        assignmentsByDay.get(assignment.planned_date).push(assignment);
+      }
+      for (const [, dayAssignments] of assignmentsByDay) {
+        const remaining = [...dayAssignments];
+        const ordered = [];
+        while (remaining.length) {
+          let nextIndex = 0;
+          if (ordered.length === 0) {
+            let bestScore = Number.NEGATIVE_INFINITY;
+            remaining.forEach((assignment, index) => {
+              const order = queueById.get(assignment.work_order_id);
+              const score = distanceFromCityCenter(order);
+              if (score > bestScore) { bestScore = score; nextIndex = index; }
+            });
+          } else {
+            const previous = queueById.get(ordered[ordered.length - 1].work_order_id);
+            let bestDistance = Number.POSITIVE_INFINITY;
+            remaining.forEach((assignment, index) => {
+              const order = queueById.get(assignment.work_order_id);
+              const distance = distanceKm(previous, order);
+              if (distance < bestDistance) { bestDistance = distance; nextIndex = index; }
+            });
+          }
+          ordered.push(remaining.splice(nextIndex, 1)[0]);
+        }
+        ordered.forEach((assignment, index) => { assignment.planned_order = index + 1; });
+      }'''
+anchor = '      const lateAssignments = assignments.filter((assignment) => {'
+if anchor not in planning_text:
+    raise SystemExit("SETOM: late-assignment anchor not found")
+planning_text = planning_text.replace(anchor, route_block + anchor, 1)
+
 # Manual planning must respect the selected precise material of the destination day.
 plan_order_anchor = '''      const dateKey = date || null;\n      const destinationOrders = dateKey ? (byDate.get(dateKey) || []) : [];'''
 plan_order_replacement = '''      const dateKey = date || null;\n      const destinationOrders = dateKey ? (byDate.get(dateKey) || []) : [];\n      const existingMaterial = dateKey ? (destinationOrders.find((item) => item.id !== order.id)?.material_detail || "") : "";\n      const selectedMaterial = dateKey ? String(dayMaterialPlan[dateKey] || materialNameForOrder({ material_detail: existingMaterial }) || "").trim() : "";\n      if (dateKey && selectedMaterial && materialNameForOrder(order) !== selectedMaterial) {\n        setError("Cet OS est « " + materialNameForOrder(order) + " » alors que la journée est dédiée au matériau « " + selectedMaterial + " ». Choisissez une autre journée.");\n        return;\n      }'''
