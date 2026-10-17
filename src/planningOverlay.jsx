@@ -43,6 +43,7 @@ function Planner({ onClose, initialView = "mois" }) {
   const mapInstanceRef = useRef(null);
   const markerLayerRef = useRef(null);
   const routeLayerRef = useRef(null);
+  const mapResizeObserverRef = useRef(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -299,8 +300,23 @@ function Planner({ onClose, initialView = "mois" }) {
     const markers = L.layerGroup().addTo(map);
     mapInstanceRef.current = map;
     markerLayerRef.current = markers;
-    map.whenReady(() => map.invalidateSize());
+    const invalidate = () => { if (mapInstanceRef.current === map) map.invalidateSize({ animate: false, pan: false }); };
+    map.whenReady(() => {
+      invalidate();
+      requestAnimationFrame(invalidate);
+      window.setTimeout(invalidate, 80);
+      window.setTimeout(invalidate, 250);
+      window.setTimeout(invalidate, 600);
+    });
+    if (typeof ResizeObserver !== "undefined") {
+      const observer = new ResizeObserver(() => invalidate());
+      observer.observe(mapElementRef.current);
+      mapResizeObserverRef.current = observer;
+    }
+    window.addEventListener("resize", invalidate);
     return () => {
+      window.removeEventListener("resize", invalidate);
+      if (mapResizeObserverRef.current) { mapResizeObserverRef.current.disconnect(); mapResizeObserverRef.current = null; }
       map.remove();
       mapInstanceRef.current = null;
       markerLayerRef.current = null;
@@ -440,78 +456,33 @@ function Planner({ onClose, initialView = "mois" }) {
   function renderOrder(order) {
     const dayOrders = byDate.get(order.planned_date) || [];
     const index = dayOrders.findIndex((x) => x.id === order.id);
-    const statusColors = getOSStatusColors(order.status);
-    return <div key={order.id} className="setom-plan-order" style={{ borderLeftColor: statusColors.accent, background: statusColors.background }}>
-      <strong>{fullOsNumber(order)}</strong>
-      <span className="setom-status-chip" style={getOSStatusBadgeStyle(order.status)}>{order.status}</span>
-      <span>{order.address}{order.city ? `, ${order.city}` : ""}</span>
-      <small>{order.material_detail || "Intervention"} · {order.planned_surface_m2 ? `${order.planned_surface_m2} m²` : "surface non renseignée"}</small>
-      {STATUS_PLANIFIABLE.includes(order.status) ? <div className="setom-plan-order-actions">
-        <button disabled={savingId === order.id || index === 0 || !STATUS_PLANIFIABLE.includes(dayOrders[index - 1]?.status)} title="Monter dans l'itinéraire" onClick={() => reorderOrder(order, -1)}>↑</button>
-        <button disabled={savingId === order.id || index === dayOrders.length - 1 || !STATUS_PLANIFIABLE.includes(dayOrders[index + 1]?.status)} title="Descendre dans l'itinéraire" onClick={() => reorderOrder(order, 1)}>↓</button>
-        <button disabled={savingId === order.id} title="Jour précédent" onClick={() => moveOrder(order, -1)}>←</button>
-        <button disabled={savingId === order.id} title="Jour suivant" onClick={() => moveOrder(order, 1)}>→</button>
-        <select value={order.team_id || ""} onChange={(e) => changeOrderTeam(order, e.target.value || null)} disabled={savingId === order.id}>
-          <option value="">Équipe</option>{order.team_id && !teams.some((t) => t.id === order.team_id) && <option value={order.team_id} disabled>Inactive — {order.team_name || "Équipe"}</option>}{teams.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}
-        </select>
-      </div> : <small className="setom-order-status-readonly">Statut conservé : {order.status}</small>}
-    </div>;
+    const statusStyle = getOSStatusBadgeStyle(order.status);
+    const dayColor = DAY_COLORS[Math.max(0, dayNames.indexOf(new Date(order.planned_date + "T12:00:00").toLocaleDateString("fr-FR", { weekday: "long" })))] || DAY_COLORS[0];
+    return <article key={order.id} className="setom-plan-order" style={{ borderLeftColor: getOSStatusColors(order.status).accent }}><strong>{fullOsNumber(order)}</strong><span>{order.address || "Adresse non renseignée"}</span><small>{order.sector_name} · {order.material_detail || "Matériau non renseigné"} · {Number(order.planned_surface_m2 || 0).toLocaleString("fr-FR")} m²</small><span className="setom-status-chip" style={statusStyle}>{order.status}</span>{isOffice && <div className="setom-plan-order-actions"><button type="button" onClick={() => reorderOrder(order, -1)} disabled={index <= 0 || savingId === order.id}>↑</button><button type="button" onClick={() => reorderOrder(order, 1)} disabled={index < 0 || index >= dayOrders.length - 1 || savingId === order.id}>↓</button><button type="button" onClick={() => moveOrder(order, -1)} disabled={savingId === order.id}>−1 j</button><button type="button" onClick={() => moveOrder(order, 1)} disabled={savingId === order.id}>+1 j</button></div>}</article>;
   }
 
-  if (profileLoading) return <div className="setom-planner-overlay"><div className="setom-planner"><header className="setom-planner-header"><div><h2>📅 SETOM</h2><p>Vérification de vos accès…</p></div><button onClick={onClose}>✕</button></header><div className="setom-plan-loading">Chargement des droits…</div></div></div>;
-  if (profileError || !profile) return <div className="setom-planner-overlay"><div className="setom-planner"><header className="setom-planner-header"><div><h2>📅 SETOM</h2><p>Classeur indisponible</p></div><button onClick={onClose}>✕</button></header><div className="setom-plan-error">{profileError || "Accès non autorisé."}</div></div></div>;
-
-  return <div className="setom-planner-overlay">
-    <div className="setom-planner">
-      <header className="setom-planner-header"><div><h2>📅 {isFieldUser ? "Mon classeur SETOM" : isExternalReadOnly ? "Classeur SETOM" : "Planning SETOM"}</h2><p>{isFieldUser ? "Les interventions affectées à votre équipe" : isExternalReadOnly ? "Consultation des interventions autorisées" : "Planification, itinéraires et classeurs quotidiens"}</p></div><button onClick={onClose}>✕</button></header>
-      {error && <div className="setom-plan-error">⚠️ {error}</div>}
-      <div className="setom-plan-toolbar">
-        <div className="setom-plan-tabs">{plannerViewTabs.map(([id,label]) => <button key={id} className={view === id ? "active" : ""} onClick={() => setView(id)}>{label}</button>)}</div>
-        <div className="setom-plan-nav"><button onClick={() => navigateDate(-1)}>‹</button><strong>{view === "mois" ? monthLabel(cursor) : new Date(selectedDate + "T12:00:00").toLocaleDateString("fr-FR", { weekday: "long", day: "numeric", month: "long", year: "numeric" })}</strong><button onClick={() => navigateDate(1)}>›</button><button onClick={() => { const now = new Date(); setCursor(now); setSelectedDate(iso(now)); }}>Aujourd'hui</button>{isOffice && <button disabled={autoPlanSaving || loading} onClick={autoPlanUnplanned}>{autoPlanSaving ? "Planification…" : "✨ Planifier automatiquement"}</button>}</div>
-      </div>
-      <StatusLegend compact />
-      {loading ? <div className="setom-plan-loading">Chargement du planning…</div> : <>
-        {view === "carte" && <div className="setom-map-layout">
-          <div className="setom-map-main">
-            <div className="setom-map-route-summary"><div><strong>Itinéraire par équipe — {new Date(selectedDate + "T12:00:00").toLocaleDateString("fr-FR", { weekday: "long", day: "numeric", month: "long" })}</strong><label style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 6, fontSize: 12, color: "#475569" }}>Équipe<select value={routeTeamId} onChange={(e) => setRouteTeamId(e.target.value)} style={{ maxWidth: 240 }}><option value="">Choisir une équipe…</option>{teams.map((team) => <option key={team.id} value={team.id}>{team.name}</option>)}</select></label><span>{routeSummary}</span></div><span className="setom-map-legend"><i className="unplanned"></i> À planifier <i className="planned"></i> Planifié</span></div>
-            <div ref={mapElementRef} className="setom-map-canvas" aria-label="Carte interactive des OS planifiables"></div>
-            <small className="setom-map-attribution">{mapStatus} · Fond cartographique © OpenStreetMap contributors · Géocodage IGN Géoplateforme · calcul routier OSRM (service public de démonstration).</small>
-          </div>
-          <aside className="setom-map-order-list"><header style={{ display: "flex", flexDirection: "column", alignItems: "stretch", gap: 8 }}><div style={{ display: "flex", justifyContent: "space-between", gap: 8 }}><strong>OS planifiables</strong><span>{mapOrders.length} OS</span></div><label style={{ fontSize: 12, color: "#475569" }}>Secteur<select value={sectorFilter} onChange={(e) => setSectorFilter(e.target.value)}><option value="Tous">Tous les secteurs</option>{sectors.map((sector) => <option key={sector.id} value={sector.name}>{sector.name}</option>)}<option value="Non classé">Non classés</option></select></label></header>
-            {mapOrders.map((o) => <article className="setom-map-order" key={o.id}>
-              <strong>{fullOsNumber(o)}</strong><span>{o.address}{o.city ? `, ${o.city}` : ""}</span>
-              <small>{o.sector_name || "Non classé"} · {o.material_detail || "Intervention"} · {o.planned_surface_m2 ? `${o.planned_surface_m2} m²` : "surface non renseignée"}{o.is_night ? " · Nuit" : ""}</small>
-              <label>Date de passage<input type="date" value={o.planned_date || selectedDate} disabled={savingId === o.id} onChange={(e) => planOrder(o, e.target.value || null, o.team_id)} /></label>
-              <label>Équipe<select value={o.team_id || ""} onChange={(e) => changeOrderTeam(o, e.target.value || null)} disabled={savingId === o.id}><option value="">Non affectée</option>{o.team_id && !teams.some((t) => t.id === o.team_id) && <option value={o.team_id} disabled>Inactive — {o.team_name || "Équipe"}</option>}{teams.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}</select></label>
-              <button disabled={savingId === o.id || o.planned_date === selectedDate} onClick={() => planOrder(o, selectedDate, o.team_id)}>{o.planned_date ? "Déplacer vers cette journée" : "Ajouter à cette journée"}</button>
-              {o.planned_date && <button className="setom-map-remove" disabled={savingId === o.id} onClick={() => planOrder(o, null, o.team_id)}>Retirer du planning</button>}
-            </article>)}
-            {mapOrders.length === 0 && <p className="setom-week-binder-empty">Aucun OS dans la file « À planifier / Planifié ».</p>}
-          </aside>
-        </div>}
-        {view === "mois" && <div className="setom-month-grid">{monthCells.map((date) => { const key = iso(date); const items = byDate.get(key) || []; const inMonth = date.getMonth() === cursor.getMonth(); return <button key={key} className={`setom-month-cell ${inMonth ? "" : "muted"} ${key === selectedDate ? "selected" : ""}`} onClick={() => { setSelectedDate(key); setCursor(new Date(date.getFullYear(), date.getMonth(), 1, 12)); }}><div className="setom-month-day"><span>{date.getDate()}</span>{items.length > 0 && <b>{items.length}</b>}</div>{items.slice(0, 3).map((o) => <div className="setom-mini-order" key={o.id} style={{ borderLeft: "3px solid " + getOSStatusColors(o.status).accent, background: getOSStatusColors(o.status).background, color: getOSStatusColors(o.status).text }}>{String(o.os_number).padStart(5, "0")} · {o.address}</div>)}{items.length > 3 && <small>+ {items.length - 3} autre(s)</small>}</button>; })}</div>}
-        {view === "semaine" && <div className="setom-week-grid">{weekCells.map((date, i) => { const key = iso(date); return <div className="setom-week-col" key={key}><div className="setom-week-head" style={{ borderTopColor: DAY_COLORS[i] }}><strong>{dayNames[i]}</strong><span>{date.getDate()}/{date.getMonth() + 1}</span></div><div className="setom-week-body">{(byDate.get(key) || []).map(renderOrder)}{(byDate.get(key) || []).length === 0 && <button className="setom-drop-empty" onClick={() => { setSelectedDate(key); setView("jour"); }}>+ Ajouter un OS</button>}</div></div>; })}</div>}
-        {view === "jour" && <div className="setom-day-view"><div className="setom-day-title"><strong>{new Date(selectedDate + "T12:00:00").toLocaleDateString("fr-FR", { weekday: "long", day: "numeric", month: "long", year: "numeric" })}</strong><span>{selectedOrders.length} OS planifié(s)</span></div>{selectedOrders.map(renderOrder)}<div className="setom-add-row"><select defaultValue="" onChange={(e) => { const o = orders.find((x) => String(x.id) === e.target.value); if (o) planOrder(o, selectedDate, o.team_id); e.target.value = ""; }}><option value="">+ Ajouter un OS à cette journée…</option>{orders.filter((o) => STATUS_PLANIFIABLE.includes(o.status) && !o.planned_date).map((o) => <option key={o.id} value={o.id}>{fullOsNumber(o)} · {o.address}</option>)}</select></div></div>}
-        {view === "classeur" && <div className="setom-binder"><div className="setom-binder-head"><div><strong>Classeur journalier</strong><span>{new Date(selectedDate + "T12:00:00").toLocaleDateString("fr-FR", { weekday: "long", day: "numeric", month: "long", year: "numeric" })}</span></div><button onClick={() => window.print()}>🖨️ Imprimer</button></div>{selectedOrders.map((o, i) => <div className="setom-binder-card" key={o.id}><div className="setom-binder-number" style={{ background: DAY_COLORS[(new Date(selectedDate + "T12:00:00").getDay() + 6) % 7] }}>{i + 1}</div><div><strong>{fullOsNumber(o)}</strong><span>{o.address}{o.city ? `, ${o.city}` : ""}</span><span>{o.material_detail || "Intervention"} · {o.planned_surface_m2 ? `${o.planned_surface_m2} m²` : "—"}</span><span>Équipe : {o.team_name}</span><span className="setom-status-chip" style={getOSStatusBadgeStyle(o.status)}>{o.status}</span></div><div className="setom-binder-actions">{isOffice && STATUS_PLANIFIABLE.includes(o.status) ? <><button onClick={() => reorderOrder(o, -1)}>↑</button><button onClick={() => reorderOrder(o, 1)}>↓</button></> : <span>{o.status}</span>}</div></div>)}{selectedOrders.length === 0 && <p>Aucun OS planifié ce jour.</p>}</div>}
-        {view === "classeur-semaine" && <div className="setom-week-binder">{weekCells.map((date, i) => { const key = iso(date); const items = byDate.get(key) || []; return <section className="setom-week-binder-day" key={key}><header style={{ borderLeftColor: DAY_COLORS[i] }}><strong>{dayNames[i]}</strong><span>{date.toLocaleDateString("fr-FR", { day: "2-digit", month: "2-digit", year: "numeric" })} · {items.length} OS</span></header>{items.map((o, index) => <div className="setom-week-binder-row" key={o.id}><b>{index + 1}</b><strong>{fullOsNumber(o)}</strong><span>{o.address}{o.city ? `, ${o.city}` : ""}</span><span>{o.material_detail || "Intervention"}</span><span>{o.team_name}</span><span className="setom-status-chip" style={getOSStatusBadgeStyle(o.status)}>{o.status}</span></div>)}{items.length === 0 && <div className="setom-week-binder-empty">Aucun OS planifié</div>}</section>; })}<button className="primary setom-print-week" onClick={() => window.print()}>🖨️ Imprimer le classeur hebdomadaire</button></div>}
-      </>}
-      <footer className="setom-plan-footer">{isOffice ? <><strong>OS non planifiés : {orders.filter((o) => STATUS_PLANIFIABLE.includes(o.status) && !o.planned_date).length}</strong><span>Date, équipe, secteur et capacité sont pris en compte. La planification automatique ne déplace pas les OS déjà planifiés.</span></> : <><strong>Interventions prévues : {orders.filter((o) => !!o.planned_date).length}</strong><span>Ce classeur affiche uniquement les interventions accessibles à votre compte.</span></>}</footer>
-    </div>
-  </div>;
+  if (profileLoading) return <div className="setom-planner-loading">Vérification des accès…</div>;
+  if (profileError) return <div className="setom-plan-error">{profileError}</div>;
+  if (loading) return <div className="setom-planner-loading">Chargement du planning…</div>;
+  return <div className="setom-planner-overlay" id="setom-planner-host"><div className="setom-planner"><header className="setom-planner-header"><div><h2>📅 Planning SETOM</h2><p>Planification, itinéraires et classeurs quotidiens</p></div><button type="button" onClick={onClose} aria-label="Fermer">×</button></header>{error && <div className="setom-plan-error">{error}</div>}
+    <div className="setom-plan-toolbar"><div className="setom-plan-tabs">{plannerViewTabs.map(([value,label]) => <button key={value} type="button" className={view === value ? "active" : ""} onClick={() => setView(value)}>{label}</button>)}</div><div className="setom-plan-nav"><button type="button" onClick={() => navigateDate(-1)}>‹</button><strong>{view === "mois" ? monthLabel(cursor) : new Date(selectedDate + "T12:00:00").toLocaleDateString("fr-FR", { weekday: "long", day: "2-digit", month: "long", year: "numeric" })}</strong><button type="button" onClick={() => navigateDate(1)}>›</button><button type="button" onClick={() => { const today = new Date(); setSelectedDate(iso(today)); setCursor(today); }}>Aujourd'hui</button>{isOffice && <button type="button" onClick={autoPlanUnplanned} disabled={autoPlanSaving}>{autoPlanSaving ? "Planification…" : "✨ Planifier automatiquement"}</button>}</div></div>
+    <div className="setom-day-material-strip"><div className="setom-day-material-title"><strong>🧱 Matériau de la journée</strong><span>La planification automatique respecte un matériau par jour. Un ajout manuel différent demande confirmation.</span></div><div className="setom-day-material-grid">{dayNames.slice(0,5).map((day, index) => <div key={day} className="setom-day-material-cell" style={{borderTopColor:DAY_COLORS[index]}}><strong>{day}</strong><select value={localStorage.getItem("setom-day-material-plan-v1") ? JSON.parse(localStorage.getItem("setom-day-material-plan-v1"))[index] || "" : ""} onChange={(e) => { let values={}; try { values=JSON.parse(localStorage.getItem("setom-day-material-plan-v1")||"{}"); } catch {} values[index]=e.target.value; localStorage.setItem("setom-day-material-plan-v1",JSON.stringify(values)); window.dispatchEvent(new Event("setom:planning-updated")); }}>{[<option key="" value="">Tous / à définir</option>, ...plannerMaterials.map((m)=><option key={m.id} value={m.name}>{m.name}</option>)]}</select></div>)}</div></div>
+    <StatusLegend />
+    {view === "carte" ? <div className="setom-map-layout"><div className="setom-map-main"><div className="setom-map-route-summary"><div><strong>Itinéraire — {new Date(selectedDate + "T12:00:00").toLocaleDateString("fr-FR", { weekday: "long", day: "numeric", month: "long" })}</strong><span>{routeSummary}</span></div><div className="setom-map-legend"><i className="unplanned"></i>À planifier<i className="planned"></i>Planifié</div></div><div ref={mapElementRef} className="setom-map-canvas" aria-label="Carte des interventions"></div><div className="setom-map-attribution">{mapStatus} · Fond cartographique © OpenStreetMap contributeurs · Géocodage IGN Géoplateforme · calcul routier OSRM (service public de démonstration).</div></div><aside className="setom-map-order-list"><header><strong>OS planifiables</strong><span>{mapOrders.length} OS</span></header>{mapOrders.map((order) => <div key={order.id} className="setom-map-order"><strong>{fullOsNumber(order)}</strong><span>{order.address || "Adresse non renseignée"}</span><small>{order.sector_name} · {order.material_detail || "Matériau non renseigné"} · {Number(order.planned_surface_m2 || 0).toLocaleString("fr-FR")} m²</small>{isOffice && <><label>Date de passage<input type="date" value={order.planned_date || ""} onChange={(e) => planOrder(order, e.target.value || null, order.team_id)} /></label><label>Équipe<select value={order.team_id || ""} onChange={(e) => changeOrderTeam(order, e.target.value)}><option value="">Non affectée</option>{teams.map((team)=><option key={team.id} value={team.id}>{team.name}</option>)}</select></label><button type="button" disabled={savingId === order.id} onClick={() => planOrder(order, selectedDate, order.team_id)}>{savingId === order.id ? "Enregistrement…" : "Déplacer vers cette journée"}</button><button type="button" className="setom-map-remove" disabled={savingId === order.id} onClick={() => planOrder(order, null, null)}>Retirer du planning</button></>}</div>)}</aside></div>
+    : view === "mois" ? <div className="setom-month-grid">{monthCells.map((date) => { const key = iso(date); const list = byDate.get(key) || []; return <button key={key} type="button" className={`setom-month-cell ${date.getMonth() !== cursor.getMonth() ? "muted" : ""} ${key === selectedDate ? "selected" : ""}`} onClick={() => { setSelectedDate(key); setCursor(date); setView("jour"); }}><div className="setom-month-day"><strong>{date.getDate()}</strong>{list.length > 0 && <b>{list.length}</b>}</div>{list.slice(0,4).map(renderOrder)}</button>; })}</div>
+    : view === "semaine" ? <div className="setom-week-grid">{weekCells.map((date,index) => { const key = iso(date); const list = byDate.get(key) || []; return <section key={key} className="setom-week-col"><header className="setom-week-head" style={{borderTopColor:DAY_COLORS[index]}}><strong>{dayNames[index]} {date.getDate()}/{date.getMonth()+1}</strong><span>{list.length} OS</span></header><div className="setom-week-body">{list.length ? list.map(renderOrder) : <div className="setom-drop-empty">Aucun OS planifié</div>}</div></section>; })}</div>
+    : view === "jour" ? <div className="setom-day-view"><div className="setom-day-title"><strong>{new Date(selectedDate + "T12:00:00").toLocaleDateString("fr-FR", { weekday: "long", day: "numeric", month: "long", year: "numeric" })}</strong><span>{selectedOrders.length} OS</span></div>{selectedOrders.map(renderOrder)}{!selectedOrders.length && <div className="setom-drop-empty">Aucun OS planifié pour cette journée.</div>}<div className="setom-add-row"><select defaultValue="" onChange={(e) => { const order = orders.find((item) => item.id === e.target.value); if (order) planOrder(order, selectedDate, routeTeamId || teams[0]?.id || null); e.target.value=""; }}><option value="">＋ Ajouter un OS à cette journée…</option>{orders.filter((order) => STATUS_PLANIFIABLE.includes(order.status)).map((order) => <option key={order.id} value={order.id}>{fullOsNumber(order)} · {order.address}</option>)}</select></div></div>
+    : view === "classeur" ? <div className="setom-binder"><div className="setom-binder-head"><div><strong>Classeur du jour</strong><span>{new Date(selectedDate + "T12:00:00").toLocaleDateString("fr-FR", { weekday: "long", day: "numeric", month: "long", year: "numeric" })}</span></div><button type="button" onClick={() => window.print()}>🖨️ Imprimer</button></div>{selectedOrders.map((order,index)=><article key={order.id} className="setom-binder-card"><span className="setom-binder-number" style={{background:DAY_COLORS[index % DAY_COLORS.length]}}>{index+1}</span><div><strong>{fullOsNumber(order)}</strong><span>{order.address}</span><span>{order.material_detail || "Matériau non renseigné"} · {Number(order.planned_surface_m2 || 0).toLocaleString("fr-FR")} m²</span><span className="setom-status-chip" style={getOSStatusBadgeStyle(order.status)}>{order.status}</span></div><div className="setom-binder-actions"><button type="button" onClick={() => moveOrder(order,-1)}>‹</button><button type="button" onClick={() => moveOrder(order,1)}>›</button></div></article>)}{!selectedOrders.length && <div className="setom-drop-empty">Aucun OS planifié pour cette journée.</div>}</div>
+    : <div className="setom-week-binder"><button type="button" className="secondary setom-print-week" onClick={() => window.print()}>🖨️ Imprimer la semaine</button>{weekCells.map((date,index)=>{const key=iso(date);const list=byDate.get(key)||[];return <section key={key} className="setom-week-binder-day"><header style={{borderLeftColor:DAY_COLORS[index]}}><strong>{dayNames[index]} {date.getDate()}/{date.getMonth()+1}</strong><span>{list.length} OS</span></header>{list.map((order,i)=><div key={order.id} className="setom-week-binder-row"><b>{i+1}</b><strong>{fullOsNumber(order)}</strong><span>{order.address}</span><span>{order.team_name}</span><span className="setom-status-chip" style={getOSStatusBadgeStyle(order.status)}>{order.status}</span></div>)}{!list.length&&<div className="setom-week-binder-empty">Aucun OS planifié</div>}</section>})}</div>}
+  </div></div>;
 }
 
-let root = null;
-function openPlanner(event) {
-  const button = event.target.closest("button");
-  const mainNavButton = button && button.closest(".nav");
-  if (!button || !mainNavButton) return;
-  const wantsMap = button.textContent.includes("Carte");
-  const wantsPlanning = button.textContent.includes("Planning");
-  if (!wantsMap && !wantsPlanning) return;
-  event.preventDefault(); event.stopPropagation(); event.stopImmediatePropagation();
-  if (root) return;
-  const host = document.createElement("div"); host.id = "setom-planner-host"; document.body.appendChild(host);
-  root = createRoot(host);
-  root.render(<Planner initialView={wantsMap ? "carte" : "mois"} onClose={() => { root?.unmount(); root = null; host.remove(); }} />);
+export default Planner;
+
+if (typeof document !== "undefined" && !document.getElementById("setom-planner-root")) {
+  const host = document.createElement("div");
+  host.id = "setom-planner-root";
+  document.body.appendChild(host);
+  const root = createRoot(host);
+  window.__setomPlannerMount = (props) => root.render(<Planner {...props} />);
 }
-document.addEventListener("click", openPlanner, true);
