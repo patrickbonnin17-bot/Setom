@@ -37,13 +37,14 @@ function OSDossierPilotage({ os, attachments = [], constat = null, constatLines 
 }
 
 '''
-    marker = "function OSModal({ os, onClose, onUpdate, profile }) {"
-    if marker not in text:
-        raise SystemExit("SETOM: OSModal marker not found")
-    text = text.replace(marker, component + marker, 1)
+    # The workflow patcher may add props to OSModal, so anchor on the function name only.
+    marker_start = text.find("function OSModal(")
+    if marker_start == -1:
+        raise SystemExit("SETOM: OSModal function not found")
+    text = text[:marker_start] + component + text[marker_start:]
 
-start = text.find("function OSModal({ os, onClose, onUpdate, profile }) {")
-end = text.find("function OSCard({ os, onOpen })", start)
+start = text.find("function OSModal(")
+end = text.find("function OSCard(", start)
 if start == -1 or end == -1:
     raise SystemExit("SETOM: OSModal section boundaries not found")
 section = text[start:end]
