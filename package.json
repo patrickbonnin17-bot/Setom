@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "python3 scripts/patch_workflow_status.py && python3 scripts/patch_travaux_editability.py && python3 scripts/patch_travaux_draft.py && python3 scripts/patch_travaux_draft_safety.py && python3 scripts/patch_travaux_visual.py && python3 scripts/patch_chargement_enrobe_reference.py && python3 scripts/patch_runtime_workflow_fixes.py && python3 scripts/patch_map_stability.py && python3 scripts/patch_mobile_interactions.py && python3 scripts/patch_dbsectors_prop.py && python3 scripts/patch_chargement_navigation.py && python3 scripts/patch_setom_os_visual.py && vite build",
+    "build": "python3 scripts/patch_workflow_status.py && python3 scripts/patch_travaux_editability.py && python3 scripts/patch_travaux_draft.py && python3 scripts/patch_travaux_draft_safety.py && python3 scripts/patch_travaux_visual.py && python3 scripts/patch_chargement_enrobe_reference.py && python3 scripts/patch_runtime_workflow_fixes.py && python3 scripts/patch_map_stability.py && python3 scripts/patch_mobile_interactions.py && python3 scripts/patch_dbsectors_prop.py && python3 scripts/patch_chargement_navigation.py && python3 scripts/patch_setom_os_visual.py && python3 scripts/patch_material_consumption_upsert.py && python3 scripts/patch_constat_validation_status.py && vite build",
     "preview": "vite preview"
   },
   "dependencies": {
