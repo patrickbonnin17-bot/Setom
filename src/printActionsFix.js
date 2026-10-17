@@ -36,7 +36,9 @@
     };
     window.addEventListener("afterprint", afterPrint);
 
-    window.setTimeout(() => window.print(), 60);
+    // Keep window.print() synchronous: iOS/Safari can block print dialogs when
+    // the call is delayed with setTimeout and the user-activation is lost.
+    window.print();
     cleanupTimer = window.setTimeout(afterPrint, 15000);
   }
 
@@ -45,6 +47,7 @@
     if (!target) return;
     event.preventDefault();
     event.stopPropagation();
+    event.stopImmediatePropagation();
     printBinder(target.mode);
   }, true);
 })();
