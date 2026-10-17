@@ -26,9 +26,7 @@
   font-size: 13px;
 }
 
-.os-detail-modal .os-work-card > hr {
-  display: none;
-}
+.os-detail-modal .os-work-card > hr { display: none; }
 
 .os-detail-modal .os-work-card > h4 {
   margin: 0;
@@ -60,9 +58,7 @@
   gap: 12px;
 }
 
-.os-detail-modal .work-grid > div {
-  min-width: 0;
-}
+.os-detail-modal .work-grid > div { min-width: 0; }
 
 .os-detail-modal .work-grid label,
 .os-detail-modal .attachments-section > label {
@@ -108,10 +104,7 @@
   color: #536775;
 }
 
-.os-detail-modal .work-result strong {
-  color: #10243a;
-  font-size: 17px;
-}
+.os-detail-modal .work-result strong { color: #10243a; font-size: 17px; }
 
 .os-detail-modal .attachments-section {
   margin: 16px 20px 4px !important;
@@ -199,34 +192,28 @@
   backdrop-filter: blur(8px);
 }
 
-.os-detail-modal .work-actions .primary {
-  width: 100%;
+.os-detail-modal .work-action-row {
+  display: grid;
+  grid-template-columns: minmax(190px,.7fr) minmax(240px,1.3fr);
+  gap: 10px;
+}
+
+.os-detail-modal .work-action-row button {
   min-height: 48px;
-  font-size: 15px;
+  font-size: 14px;
   font-weight: 800;
 }
 
+.os-detail-modal .work-action-row .primary { width: 100%; }
+
 @media (max-width: 700px) {
   .os-detail-modal .work-grid,
-  .os-detail-modal .attachments-buttons {
-    grid-template-columns: 1fr;
-  }
-
+  .os-detail-modal .attachments-buttons,
+  .os-detail-modal .work-action-row { grid-template-columns: 1fr; }
   .os-detail-modal .work-subsection,
-  .os-detail-modal .attachments-section {
-    margin-left: 12px !important;
-    margin-right: 12px !important;
-  }
-
-  .os-detail-modal .os-work-card > h4 {
-    padding-left: 12px;
-    padding-right: 12px;
-  }
-
+  .os-detail-modal .attachments-section { margin-left: 12px !important; margin-right: 12px !important; }
+  .os-detail-modal .os-work-card > h4 { padding-left: 12px; padding-right: 12px; }
   .os-detail-modal .work-grid input,
   .os-detail-modal .work-grid select,
-  .os-detail-modal .os-work-card textarea {
-    min-height: 48px;
-    font-size: 16px;
-  }
+  .os-detail-modal .os-work-card textarea { min-height: 48px; font-size: 16px; }
 }
