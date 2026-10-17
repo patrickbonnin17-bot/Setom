@@ -7,7 +7,6 @@ if "async function saveWorkDraft()" not in text:
     anchor = "  async function save() {"
     if anchor not in text:
         raise SystemExit("SETOM: save() anchor not found")
-
     draft = r'''  async function saveWorkDraft() {
     if (!os?.dbId) return;
     if (!["admin", "bureau", "equipe_terrain"].includes(profile?.role)) {
@@ -73,19 +72,15 @@ if "async function saveWorkDraft()" not in text:
     text = text.replace(anchor, draft + anchor, 1)
 
 if "onClick={saveWorkDraft}" not in text:
-    start = '<div className="work-actions">'
-    pos = text.find(start)
-    if pos == -1:
-        raise SystemExit("SETOM: work-actions anchor not found")
-    button_start = text.find('<button className="primary" type="button" onClick={save}>', pos)
-    if button_start == -1:
-        raise SystemExit("SETOM: Travaux transmission button not found")
-    button = '<button className="secondary" type="button" onClick={saveWorkDraft}>💾 Enregistrer les mesures</button><button className="primary" type="button" onClick={save}>'
-    text = text[:button_start] + button + text[button_start + len('<button className="primary" type="button" onClick={save}>'):]
-    text = text.replace('<div className="work-actions">', '<div className="work-actions"><div className="work-action-row">', 1)
-    closing = '</button>}{!["Planifié","En travaux","Travaux en cours","Travaux réalisés"].includes(os?.status)}'
-    if closing in text:
-        text = text.replace(closing, '</button></div>}{!["Planifié","En travaux","Travaux en cours","Travaux réalisés"].includes(os?.status)}', 1)
+    prefix_old = '<div className="work-actions">{["admin","bureau","equipe_terrain"].includes(profile?.role) && ["Nouveau","À planifier","Planifié","En travaux","Travaux en cours","Travaux réalisés"].includes(os?.status) && <button className="primary" type="button" onClick={save}>'
+    prefix_new = '<div className="work-actions">{["admin","bureau","equipe_terrain"].includes(profile?.role) && ["Nouveau","À planifier","Planifié","En travaux","Travaux en cours","Travaux réalisés"].includes(os?.status) && <div className="work-action-row"><button className="secondary" type="button" onClick={saveWorkDraft}>💾 Enregistrer les mesures</button><button className="primary" type="button" onClick={save}>'
+    if prefix_old not in text:
+        raise SystemExit("SETOM: Travaux transmission prefix not found")
+    text = text.replace(prefix_old, prefix_new, 1)
+    closing = '</button>}{!["Planifié","En travaux","Travaux en cours","Travaux réalisés"].includes(os?.status)'
+    if closing not in text:
+        raise SystemExit("SETOM: Travaux action closing not found")
+    text = text.replace(closing, '</button></div>}{!["Planifié","En travaux","Travaux en cours","Travaux réalisés"].includes(os?.status)', 1)
 
 path.write_text(text, encoding="utf-8")
 print("SETOM: Travaux draft save added")
