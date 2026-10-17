@@ -1,0 +1,18 @@
+/* SETOM Travaux - same professional dossier language as OS */
+.os-work-card{background:#fff!important;border:1px solid #d9e1e6!important;border-radius:10px!important;box-shadow:0 7px 20px rgba(16,36,58,.07)!important;overflow:hidden}
+.os-work-card>h3,.os-work-card>h4{margin:0!important;padding:13px 16px!important;background:#eef4f7!important;border-bottom:1px solid #d9e2e7!important;color:#10243a!important;font-size:13px!important;text-transform:uppercase;letter-spacing:.07em}
+.os-work-card .form-grid,.os-work-card .grid{gap:12px!important}
+.os-work-card label{font-size:11px!important;font-weight:800!important;text-transform:uppercase;letter-spacing:.045em;color:#627383!important}
+.os-work-card input,.os-work-card select,.os-work-card textarea{border:1px solid #cbd8df!important;border-radius:7px!important;background:#fff!important;color:#172033!important;min-height:42px!important;box-shadow:inset 0 1px 2px rgba(16,36,58,.03)!important}
+.os-work-card textarea{min-height:88px!important;padding:10px 11px!important}
+.os-work-card input:focus,.os-work-card select:focus,.os-work-card textarea:focus{border-color:#2a9dca!important;outline:3px solid rgba(42,157,202,.14)!important}
+.os-work-card button{border-radius:7px!important;font-weight:750!important;min-height:40px}
+.os-work-card button.primary,.os-work-card button[type=submit]{background:#1769aa!important;color:#fff!important;border-color:#1769aa!important}
+.os-work-card table{border-collapse:separate!important;border-spacing:0!important;border:1px solid #d9e1e6!important;border-radius:8px!important;overflow:hidden}
+.os-work-card th{background:#eef4f7!important;color:#10243a!important;font-size:10px!important;text-transform:uppercase;letter-spacing:.06em}
+.os-work-card td,.os-work-card th{padding:9px 10px!important;border-bottom:1px solid #e5ebee!important}
+.os-work-card tr:last-child td{border-bottom:0!important}
+.os-work-card .attachments-section{background:#f7fafb!important;border:1px dashed #9fb7c5!important;border-radius:8px!important;padding:14px!important}
+.os-work-card .attachment-button{background:#fff!important;border:1px solid #b8ccd7!important;border-radius:7px!important}
+.os-work-card .attachment-button:hover{border-color:#1769aa!important;background:#eef7fb!important}
+@media(max-width:700px){.os-work-card{border-radius:8px!important}.os-work-card input,.os-work-card select,.os-work-card textarea{font-size:16px!important}.os-work-card td,.os-work-card th{padding:8px 7px!important}.os-work-card table{display:block;overflow-x:auto;white-space:nowrap}}
