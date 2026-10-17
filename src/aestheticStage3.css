@@ -1,0 +1,148 @@
+/* SETOM — Étape esthétique 3
+   Priorité : écrans métier (Travaux / Constat / Finance) + formulaires.
+   Aucun changement métier. */
+
+/* ===== Surface générale des écrans métier ===== */
+.container > section,
+.container > form,
+.container > fieldset,
+.container > .card {
+  border-radius:16px;
+}
+
+.container h3 {
+  color:#18324d;
+  letter-spacing:-.01em;
+}
+
+/* ===== Formulaires ===== */
+form,
+fieldset {
+  border-color:#dce5ef !important;
+}
+
+label {
+  color:#40566e;
+  font-weight:650;
+}
+
+input,
+select,
+textarea {
+  border:1px solid #d5e0eb !important;
+  border-radius:10px !important;
+  background:#fff;
+  color:#1c3046;
+  box-shadow:0 1px 2px rgba(23,42,68,.035);
+  transition:border-color .15s ease, box-shadow .15s ease, background .15s ease;
+}
+
+input:focus,
+select:focus,
+textarea:focus {
+  outline:none;
+  border-color:#6da7d2 !important;
+  box-shadow:0 0 0 3px rgba(55,126,181,.12) !important;
+}
+
+textarea { min-height:88px; }
+
+/* ===== Boutons ===== */
+button {
+  border-radius:10px !important;
+  font-weight:650;
+  transition:transform .12s ease, box-shadow .12s ease, filter .12s ease;
+}
+
+button:hover {
+  filter:brightness(1.015);
+}
+
+button:active {
+  transform:translateY(1px);
+}
+
+.primary {
+  box-shadow:0 3px 10px rgba(26,91,139,.14);
+}
+
+/* ===== Photos / pièces jointes ===== */
+input[type="file"] {
+  padding:9px !important;
+  background:#f8fafc;
+}
+
+img {
+  max-width:100%;
+}
+
+/* ===== Tableaux métier ===== */
+table {
+  border-collapse:separate !important;
+  border-spacing:0;
+  overflow:hidden;
+  border:1px solid #e0e7ef;
+  border-radius:12px;
+}
+
+thead th {
+  background:#f4f7fb;
+  color:#496077;
+  font-size:11px;
+  font-weight:760;
+  letter-spacing:.035em;
+  text-transform:uppercase;
+}
+
+tbody tr:last-child td:first-child { border-bottom-left-radius:12px; }
+tbody tr:last-child td:last-child { border-bottom-right-radius:12px; }
+
+/* ===== Cartes de suivi / finance ===== */
+.card {
+  box-shadow:0 5px 18px rgba(28,52,78,.055);
+}
+
+.card strong,
+.card b {
+  color:#203b57;
+}
+
+/* ===== Messages d'état ===== */
+.success,
+.message {
+  border-radius:10px !important;
+}
+
+.error,
+.alert {
+  border-radius:10px !important;
+}
+
+/* ===== Mobile ===== */
+@media (max-width:800px) {
+  .container { padding-left:12px; padding-right:12px; }
+
+  form,
+  fieldset,
+  .card {
+    border-radius:13px;
+  }
+
+  input,
+  select,
+  textarea,
+  button {
+    min-height:42px;
+  }
+
+  table {
+    font-size:13px;
+  }
+}
+
+@media (prefers-reduced-motion:reduce) {
+  button,
+  input,
+  select,
+  textarea { transition:none; }
+}
