@@ -7,7 +7,9 @@ component = r'''
 function OSDossierPilotage({ os, attachments = [], constat = null, constatLines = [], actualRoadSurface, actualSidewalkSurface, actualOtherSurface }) {
   const imageAttachments = attachments.filter((item) => String(item?.mime_type || "").startsWith("image/") && item?.url);
   const hero = imageAttachments[0];
-  const planned = Number(String(os?.quantity || "").replace(" m²", "").replace(",", ".")) || 0;
+  const plannedFromQuantity = Number(String(os?.quantity || "").replace(" m²", "").replace(",", ".")) || 0;
+  const plannedByZone = (Number(os?.roadSurface) || 0) + (Number(os?.sidewalkSurface) || 0) + (Number(os?.otherSurface) || 0);
+  const planned = plannedFromQuantity || plannedByZone;
   const actual = (Number(actualRoadSurface) || 0) + (Number(actualSidewalkSurface) || 0) + (Number(actualOtherSurface) || 0);
   const extension = Math.max(0, actual - planned);
   const constatAmount = Number(constat?.total_amount) || 0;
