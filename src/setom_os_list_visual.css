@@ -1,0 +1,19 @@
+/* SETOM OS list - brochure-inspired dossier cards */
+.os-list{display:grid;grid-template-columns:repeat(auto-fill,minmax(320px,1fr));align-items:stretch}
+.os{position:relative;background:#fff;transition:transform .16s ease,box-shadow .16s ease,border-color .16s ease;min-height:170px}
+.os:hover{transform:translateY(-2px);box-shadow:0 12px 28px rgba(16,36,58,.13);border-color:#b9cbd5}
+.os:focus-within{outline:3px solid rgba(42,157,202,.18);outline-offset:2px}
+.os-top{display:flex;align-items:flex-start;justify-content:space-between;gap:12px;min-height:58px}
+.os-top>div:first-child{min-width:0}
+.os-number{font-weight:850;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.os-info{display:grid;grid-template-columns:1fr 1fr;gap:7px 14px;font-size:13px;line-height:1.35}
+.os-info>div{min-width:0;overflow:hidden;text-overflow:ellipsis}
+.os-info strong{display:block;color:#263b4d;font-size:11px;text-transform:uppercase;letter-spacing:.06em;margin-bottom:2px}
+.os-info span{display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.os-actions{display:flex;flex-wrap:wrap;align-items:center;gap:8px}
+.os-actions button{min-height:38px;border-radius:7px;font-weight:750}
+.os-actions button:first-child{background:#1769aa;color:#fff;border-color:#1769aa}
+.os-actions button:hover{filter:brightness(.97)}
+.os .status-badge,.os .badge{font-weight:800;border-radius:999px;padding:5px 9px;white-space:nowrap}
+@media(max-width:700px){.os-list{grid-template-columns:1fr}.os-info{grid-template-columns:1fr 1fr}.os-actions{gap:7px}.os-actions button{flex:1 1 120px}}
+@media(max-width:480px){.os-info{grid-template-columns:1fr}.os-top{padding:13px 14px 9px}.os-info{padding:0 14px 9px}.os-actions{padding:0 14px 13px}.os-actions button{flex-basis:100%}}
