@@ -3,12 +3,11 @@ from pathlib import Path
 path = Path("src/main.jsx")
 text = path.read_text(encoding="utf-8")
 
-if "function OSDossierPilotage(" not in text:
-    component = r'''
+component = r'''
 function OSDossierPilotage({ os, attachments = [], constat = null, constatLines = [], actualRoadSurface, actualSidewalkSurface, actualOtherSurface }) {
   const imageAttachments = attachments.filter((item) => String(item?.mime_type || "").startsWith("image/") && item?.url);
   const hero = imageAttachments[0];
-  const planned = Number(os?.quantity?.replace?.(" m²", "")) || 0;
+  const planned = Number(String(os?.quantity || "").replace(" m²", "").replace(",", ".")) || 0;
   const actual = (Number(actualRoadSurface) || 0) + (Number(actualSidewalkSurface) || 0) + (Number(actualOtherSurface) || 0);
   const constatAmount = Number(constat?.total_amount) || 0;
   const constatStatus = constat?.status || os?.constatStatus || "Non généré";
@@ -37,25 +36,27 @@ function OSDossierPilotage({ os, attachments = [], constat = null, constatLines 
 }
 
 '''
+
+if "function OSDossierPilotage(" not in text:
     marker_start = text.find("function OSModal(")
     if marker_start == -1:
         raise SystemExit("SETOM: OSModal function not found")
     text = text[:marker_start] + component + text[marker_start:]
 
 start = text.find("function OSModal(")
-end = text.find("function OSCard(", start)
-if start == -1 or end == -1:
-    raise SystemExit("SETOM: OSModal section boundaries not found")
-section = text[start:end]
+if start == -1:
+    raise SystemExit("SETOM: OSModal function not found")
+
+# Locate the first stable JSX tab marker inside OSModal. Do not depend on OSCard,
+# whose location/signature can change as the dossier evolves.
 needle = '    <div className="os-tabs">'
-if "<OSDossierPilotage" not in section:
-    if needle not in section:
-        raise SystemExit("SETOM: OS tabs marker not found")
-    # Keep the live dossier safe: these optional values are derived from the OS object,
-    # so the injected component never references variables outside OSModal scope.
+needle_index = text.find(needle, start)
+if needle_index == -1:
+    raise SystemExit("SETOM: OS tabs marker not found")
+
+if "<OSDossierPilotage" not in text[start:needle_index]:
     injection = '''    <OSDossierPilotage os={os} attachments={os?.attachments || []} constat={os?.constat || null} constatLines={os?.constatLines || []} actualRoadSurface={os?.actualRoadSurface} actualSidewalkSurface={os?.actualSidewalkSurface} actualOtherSurface={os?.actualOtherSurface} />\n'''
-    section = section.replace(needle, injection + needle, 1)
-    text = text[:start] + section + text[end:]
+    text = text[:needle_index] + injection + text[needle_index:]
 
 path.write_text(text, encoding="utf-8")
 print("SETOM: OS dossier live summary connected safely")
