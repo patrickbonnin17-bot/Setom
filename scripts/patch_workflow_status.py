@@ -50,10 +50,10 @@ planning_text = planning_path.read_text(encoding="utf-8")
 
 # Keep the automatic planner's hard stop-count and daily-capacity safeguards.
 planning_safety_replacements = {
-    '      const dayOrders = new Map();': '      const dayOrders = new Map();\\n      const dayCounts = new Map();',
-    '        if (!order.planned_date) continue;\\n        const nextOrder = Math.max(Number(dayOrders.get(order.planned_date) || 0), Number(order.planned_order || 0));': '        if (!order.planned_date) continue;\\n        dayCounts.set(order.planned_date, Number(dayCounts.get(order.planned_date) || 0) + 1);\\n        const nextOrder = Math.max(Number(dayOrders.get(order.planned_date) || 0), Number(order.planned_order || 0));',
-    '            const used = Number(loads.get(key) || 0);\\n            const fits = effortShare <= 1 && used + effortShare <= 1;': '            const used = Number(loads.get(key) || 0);\\n            const dayCount = Number(dayCounts.get(candidateDate) || 0);\\n            const fits = dayCount < 15 && effortShare <= 1 && used + effortShare <= 1;',
-    '          dayOrders.set(candidateDate, position);\\n        }': '          dayOrders.set(candidateDate, position);\\n          dayCounts.set(candidateDate, Number(dayCounts.get(candidateDate) || 0) + 1);\\n        }',
+    '      const dayOrders = new Map();': '      const dayOrders = new Map();\n      const dayCounts = new Map();',
+    '        if (!order.planned_date) continue;\n        const nextOrder = Math.max(Number(dayOrders.get(order.planned_date) || 0), Number(order.planned_order || 0));': '        if (!order.planned_date) continue;\n        dayCounts.set(order.planned_date, Number(dayCounts.get(order.planned_date) || 0) + 1);\n        const nextOrder = Math.max(Number(dayOrders.get(order.planned_date) || 0), Number(order.planned_order || 0));',
+    '            const used = Number(loads.get(key) || 0);\n            const fits = effortShare <= 1 && used + effortShare <= 1;': '            const used = Number(loads.get(key) || 0);\n            const dayCount = Number(dayCounts.get(candidateDate) || 0);\n            const fits = dayCount < 15 && effortShare <= 1 && used + effortShare <= 1;',
+    '          dayOrders.set(candidateDate, position);\n        }': '          dayOrders.set(candidateDate, position);\n          dayCounts.set(candidateDate, Number(dayCounts.get(candidateDate) || 0) + 1);\n        }',
 }
 for old, new in planning_safety_replacements.items():
     if old not in planning_text:
