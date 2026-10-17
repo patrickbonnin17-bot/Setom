@@ -104,6 +104,11 @@ function App() {
   const [statusFilter, setStatusFilter] = useState("Tous");
   const [teamFilter, setTeamFilter] = useState("Toutes");
   const [sectorFilter, setSectorFilter] = useState("Tous");
+  const [showOsFilters, setShowOsFilters] = useState(false);
+  const [selectedMaterialFilters, setSelectedMaterialFilters] = useState([]);
+  const [selectedStatusFilters, setSelectedStatusFilters] = useState([]);
+  const [selectedTeamFilters, setSelectedTeamFilters] = useState([]);
+  const [selectedSectorFilters, setSelectedSectorFilters] = useState([]);
   const [newOSFiles, setNewOSFiles] = useState([]);
   const [showNewOS, setShowNewOS] = useState(false);
   const [newOSAddress, setNewOSAddress] = useState("");
@@ -671,11 +676,49 @@ function App() {
   if (profileLoading || !currentProfile) return <div style={{ padding: 40, maxWidth: 520, margin: "auto", textAlign: "center" }}><h1>SETOM</h1><p>{profileError ? "Accès indisponible" : "Vérification des droits…"}</p>{profileError && <p style={{ color: "#b42318" }}>{profileError}</p>}<button className="secondary" type="button" onClick={handleLogout}>Se déconnecter</button></div>;
   if (currentProfile.must_set_password) return <div style={{ padding: 24, maxWidth: 480, margin: "40px auto" }}><h1>SETOM</h1><h2>Activer votre compte</h2><p>Pour terminer l’activation de votre compte, choisissez un mot de passe personnel.</p><form onSubmit={finishPasswordSetup} className="card" style={{ display: "grid", gap: 12 }}><label>Nouveau mot de passe<input type="password" value={passwordSetup} onChange={(e) => setPasswordSetup(e.target.value)} minLength={8} autoComplete="new-password" required style={{ width: "100%", boxSizing: "border-box" }}/></label><label>Confirmer le mot de passe<input type="password" value={passwordSetupConfirm} onChange={(e) => setPasswordSetupConfirm(e.target.value)} minLength={8} autoComplete="new-password" required style={{ width: "100%", boxSizing: "border-box" }}/></label>{passwordSetupError && <p style={{ color: "#b42318" }}>{passwordSetupError}</p>}<button className="primary" type="submit" disabled={passwordSetupSaving}>{passwordSetupSaving ? "Enregistrement…" : "Activer mon compte"}</button></form></div>;
 
+  const normalizeFilterValue = (value) => String(value ?? "").trim().toLocaleLowerCase("fr-FR");
+  const teams = [...new Set([...osList.map((os) => os.team), ...dbTeams.map((team) => team.name)])].filter(Boolean).sort((a, b) => a.localeCompare(b, "fr"));
+  const osMaterialCategories = [...new Set(dbMaterials.filter((material) => material.active !== false).map((material) => String(material.category || "").trim()).filter(Boolean))].sort((a, b) => a.localeCompare(b, "fr"));
+  const osMaterialTypes = [...new Set([
+    ...dbMaterials.filter((material) => material.active !== false).map((material) => String(material.name || "").trim()),
+    ...osList.map((os) => String(os.work || os.trade || "").trim()).filter((value) => value && value !== "Intervention")
+  ])].filter((value) => value && !osMaterialCategories.some((category) => normalizeFilterValue(category) === normalizeFilterValue(value))).sort((a, b) => a.localeCompare(b, "fr"));
+  const getOsMaterialTokens = (os) => {
+    const rawValues = [os.work, os.trade, os.materialDetail].map((value) => String(value || "").trim()).filter(Boolean);
+    const tokens = new Set(rawValues.map(normalizeFilterValue));
+    for (const rawValue of rawValues) {
+      const catalogItem = dbMaterials.find((material) => normalizeFilterValue(material.name) === normalizeFilterValue(rawValue));
+      if (catalogItem?.category) tokens.add(normalizeFilterValue(catalogItem.category));
+    }
+    return tokens;
+  };
+  const activeOsFilterCount = selectedMaterialFilters.length + selectedStatusFilters.length + selectedTeamFilters.length + selectedSectorFilters.length;
   const filteredOS = osList.filter((os) => {
-    const text = `${os.id} ${os.address} ${os.work} ${os.sector}`.toLowerCase();
-    return text.includes(search.toLowerCase()) && (statusFilter === "Tous" || os.status === statusFilter) && (teamFilter === "Toutes" || os.team === teamFilter) && (sectorFilter === "Tous" || os.sector === sectorFilter);
+    const text = `${os.id} ${os.address} ${os.work} ${os.sector} ${os.team} ${os.status}`.toLocaleLowerCase("fr-FR");
+    const materialTokens = getOsMaterialTokens(os);
+    const matchesMaterials = selectedMaterialFilters.length === 0 || selectedMaterialFilters.some((value) => materialTokens.has(normalizeFilterValue(value)));
+    const matchesStatus = selectedStatusFilters.length === 0 || selectedStatusFilters.includes(os.status);
+    const matchesTeam = selectedTeamFilters.length === 0 || selectedTeamFilters.includes(os.team || "Non affectée");
+    const matchesSector = selectedSectorFilters.length === 0 || selectedSectorFilters.includes(os.sector || "Non classé");
+    return text.includes(search.toLocaleLowerCase("fr-FR")) && matchesMaterials && matchesStatus && matchesTeam && matchesSector;
   });
-  const teams = [...new Set([...osList.map((os) => os.team), ...dbTeams.map((team) => team.name)])].filter(Boolean);
+  function toggleOsFilter(setter, value, checked) {
+    setter((current) => checked
+      ? (current.includes(value) ? current : [...current, value])
+      : current.filter((item) => item !== value));
+  }
+  function clearOsFilters() {
+    setSelectedMaterialFilters([]);
+    setSelectedStatusFilters([]);
+    setSelectedTeamFilters([]);
+    setSelectedSectorFilters([]);
+  }
+  function renderOsFilterOptions(values, selected, setter) {
+    return values.map((value) => <label className="os-filter-option" key={value}>
+      <input type="checkbox" checked={selected.includes(value)} onChange={(event) => toggleOsFilter(setter, value, event.target.checked)} />
+      <span>{value}</span>
+    </label>);
+  }
   function updateOS(id, changes) {
     setOsList((current) => current.map((os) => os.id === id ? { ...os, ...changes } : os));
     setSelectedOS((current) => current && current.id === id ? { ...current, ...changes } : current);
@@ -728,7 +771,19 @@ function App() {
           <div className="attachments-section"><label>📎 Photos et documents</label><div className="attachments-buttons"><label className="attachment-button">📷 Prendre une photo<input type="file" accept="image/*" capture="environment" multiple onChange={(e) => {const files=Array.from(e.target.files||[]).filter((file)=>file.type.startsWith("image/"));setNewOSFiles((current)=>[...current,...files]);e.target.value="";}} /></label><label className="attachment-button">🖼️ Choisir une image dans Photos ou Fichiers<input type="file" accept="image/*" multiple onChange={(e) => {const files=Array.from(e.target.files||[]).filter((file)=>file.type.startsWith("image/"));setNewOSFiles((current)=>[...current,...files]);e.target.value="";}} /></label><label className="attachment-button">📄 Ajouter un document<input type="file" accept=".pdf,.doc,.docx,.xls,.xlsx" multiple onChange={(e)=>{const files=Array.from(e.target.files||[]);setNewOSFiles((current)=>[...current,...files]);e.target.value="";}} /></label></div>{newOSFiles.length>0&&<div className="attachments-list">{newOSFiles.map((file,index)=><div className="attachment-item" key={file.name+"-"+index}>{file.type.startsWith("image/")&&<LocalImagePreview file={file}/>}<span>{file.type.startsWith("image/")?"🖼️":"📄"} {file.name}</span><button type="button" aria-label={"Retirer "+file.name} onClick={()=>setNewOSFiles((current)=>current.filter((_,i)=>i!==index))}>×</button></div>)}</div>}</div>
           {newOSError && <p style={{color:"red",marginTop:10}}>{newOSError}</p>}<div className="modal-actions"><button type="button" className="secondary" onClick={()=>setShowNewOS(false)}>Annuler</button><button type="submit" className="primary" disabled={newOSSaving}>{newOSSaving?"Enregistrement...":"Créer l'OS"}</button></div>
         </form></div></div>}
-        <h2>Ordres de service</h2><div className="toolbar">{["admin","bureau"].includes(currentProfile?.role) && <button className="primary" onClick={()=>{setNewOSError("");setShowNewOS(true);}}>+ Nouveau OS</button>}<input placeholder="🔎 Rechercher OS, adresse..." value={search} onChange={(e)=>setSearch(e.target.value)}/><select value={statusFilter} onChange={(e)=>setStatusFilter(e.target.value)}><option>Tous</option>{statuses.map((status)=><option key={status}>{status}</option>)}</select><select value={teamFilter} onChange={(e)=>setTeamFilter(e.target.value)}><option>Toutes</option>{teams.map((team)=><option key={team}>{team}</option>)}</select><select value={sectorFilter} onChange={(e)=>setSectorFilter(e.target.value)}><option value="Tous">Tous les secteurs</option>{dbSectors.map((sector)=><option key={sector.id} value={sector.name}>{sector.name}</option>)}<option value="Non classé">Non classés</option></select></div><StatusLegend /><div className="os-list">{filteredOS.map((os)=><OSCard key={os.id} os={os} onOpen={()=>setSelectedOS(os)}/>)}</div>
+        <h2>Ordres de service</h2><div className="toolbar">{["admin","bureau"].includes(currentProfile?.role) && <button className="primary" onClick={()=>{setNewOSError("");setShowNewOS(true);}}>+ Nouveau OS</button>}<input placeholder="🔎 Rechercher OS, adresse..." value={search} onChange={(e)=>setSearch(e.target.value)}/><button type="button" className={showOsFilters ? "secondary os-filter-toggle active" : "secondary os-filter-toggle"} aria-expanded={showOsFilters} onClick={() => setShowOsFilters((open) => !open)}>☷ Filtres{activeOsFilterCount ? ` (${activeOsFilterCount})` : ""}</button></div>
+        {showOsFilters && <section className="card os-filter-panel" aria-label="Filtres des ordres de service">
+          <div className="os-filter-panel-header"><div><strong>Filtrer les ordres de service</strong><span>{activeOsFilterCount ? activeOsFilterCount + " choix actifs" : "Coche un ou plusieurs critères ; ils se cumulent."}</span></div><button type="button" className="secondary" onClick={clearOsFilters} disabled={activeOsFilterCount === 0}>Tout effacer</button></div>
+          <div className="os-filter-groups">
+            <section className="os-filter-group"><h3>Matériaux</h3><div className="os-filter-options">{renderOsFilterOptions(osMaterialCategories, selectedMaterialFilters, setSelectedMaterialFilters)}</div>
+              <h4>Types précis</h4><div className="os-filter-options">{renderOsFilterOptions(osMaterialTypes, selectedMaterialFilters, setSelectedMaterialFilters)}</div>
+            </section>
+            <section className="os-filter-group"><h3>Statut</h3><div className="os-filter-options">{renderOsFilterOptions(statuses, selectedStatusFilters, setSelectedStatusFilters)}</div></section>
+            <section className="os-filter-group"><h3>Équipe</h3><div className="os-filter-options">{renderOsFilterOptions(teams, selectedTeamFilters, setSelectedTeamFilters)}</div></section>
+            <section className="os-filter-group"><h3>Secteur</h3><div className="os-filter-options">{renderOsFilterOptions([...dbSectors.map((sector) => sector.name), "Non classé"], selectedSectorFilters, setSelectedSectorFilters)}</div></section>
+          </div>
+        </section>}
+        <StatusLegend /><div className="os-list">{filteredOS.map((os)=><OSCard key={os.id} os={os} onOpen={()=>setSelectedOS(os)}/>)}</div>
       </>}
       {page === "map" && <><h2>Carte des interventions</h2><StatusLegend compact /><div className="toolbar"><button className="secondary">Tous</button><button className="secondary">OS non planifiés</button><button className="secondary">Réserves</button><button className="secondary">À facturer</button></div><div className="map"><div className="map-road"></div>{osList.map((os,index)=>{const positions=[[20,25],[48,18],[72,35],[30,60],[65,68],[82,20]];const [left,top]=positions[index%positions.length];return <button key={os.id} className="marker" title={os.id} onClick={()=>setSelectedOS(os)} style={{left:`${left}%`,top:`${top}%`,background:getOSStatusColors(os.status).accent}}><span>•</span></button>;})}</div></>}
       {page === "planning" && <><h2>Planning hebdomadaire</h2><StatusLegend compact /><div className="planning"><div className="week">{days.slice(0,5).map((day)=><div className="day" key={day.name}><div className="day-header" style={{background:day.color}}>{day.name}</div>{osList.filter((os)=>os.day===day.name).map((os)=><div className="planning-os" key={os.id} style={{ borderLeft: "4px solid " + getOSStatusColors(os.status).accent, background: getOSStatusColors(os.status).background }} onClick={()=>setSelectedOS(os)}><strong>{os.id}</strong><br/>{os.address}<br/><small>{os.team}</small><div className="setom-status-chip" style={getOSStatusBadgeStyle(os.status)}>{os.status}</div></div>)}</div>)}</div></div><h3>OS non planifiés</h3><div className="os-list">{osList.filter((os)=>!os.day).map((os)=><OSCard key={os.id} os={os} onOpen={()=>setSelectedOS(os)}/>)}</div></>}
