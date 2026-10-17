@@ -1,0 +1,16 @@
+:root{--setom-navy:#10243a;--setom-blue:#1769aa;--setom-cyan:#2a9dca;--setom-line:#d9e1e6;--setom-muted:#657384;--setom-bg:#eef4f7}
+.setom-constat-modal{border:1px solid #cbd8df!important;box-shadow:0 26px 70px rgba(7,25,40,.28)!important;background:#f7fafb!important;overflow:hidden!important}
+.setom-constat-modal .modal-header{margin:-20px -20px 20px!important;padding:18px 22px!important;background:linear-gradient(100deg,var(--setom-navy),#1d506f)!important;color:#fff!important;border-bottom:4px solid var(--setom-cyan)!important}
+.setom-constat-modal .modal-header h2{color:#fff!important;font-size:21px!important;letter-spacing:.04em!important;text-transform:uppercase!important}
+.setom-constat-modal .close{background:rgba(255,255,255,.14)!important;color:#fff!important;border:1px solid rgba(255,255,255,.2)!important}
+.setom-constat-modal .card,.setom-constat-modal .intervention,.setom-constat-modal section{border:1px solid var(--setom-line)!important;border-radius:12px!important;background:#fff!important;box-shadow:0 5px 16px rgba(16,36,58,.05)!important}
+.setom-constat-modal table{width:100%;border-collapse:separate;border-spacing:0;overflow:hidden;border:1px solid var(--setom-line);border-radius:10px;background:#fff}
+.setom-constat-modal th{background:#eef4f7;color:var(--setom-navy);font-size:12px;text-transform:uppercase;letter-spacing:.05em;padding:11px 12px;text-align:left}
+.setom-constat-modal td{padding:11px 12px;border-top:1px solid #e8eef1;color:#263746}
+.setom-constat-modal .primary{background:var(--setom-blue)!important;box-shadow:0 5px 14px rgba(23,105,170,.2)}
+.setom-constat-modal .secondary{background:#fff!important;border:1px solid #d2dce2!important}
+.setom-constat-modal input,.setom-constat-modal select,.setom-constat-modal textarea{background:#fff!important;border-color:#d5e0e6!important}
+.setom-constat-modal input:focus,.setom-constat-modal select:focus,.setom-constat-modal textarea:focus{border-color:var(--setom-blue)!important;box-shadow:0 0 0 3px rgba(23,105,170,.11)!important}
+.setom-constat-modal img{border-radius:10px;object-fit:cover}
+.setom-constat-modal .modal-actions{background:#f1f5f7!important;border-top:1px solid var(--setom-line)!important}
+@media(max-width:700px){.setom-constat-modal .modal-header{margin:-18px -18px 16px!important;padding:16px 18px!important}.setom-constat-modal table{font-size:13px}.setom-constat-modal th,.setom-constat-modal td{padding:9px 8px}}
