@@ -1,0 +1,23 @@
+/* SETOM brochure visual language */
+:root{--setom-navy:#10243a;--setom-blue:#1769aa;--setom-cyan:#2a9dca;--setom-line:#d9e1e6;--setom-muted:#657384}
+body{background:#eef2f3;color:#172033;font-family:Inter,Arial,Helvetica,sans-serif}
+.header{background:linear-gradient(110deg,#10243a,#173b59);border-bottom:4px solid var(--setom-cyan);box-shadow:0 5px 20px rgba(16,36,58,.16)}
+.header h1{font-size:25px;letter-spacing:.08em;text-transform:uppercase}.header small{color:#d9e9f2;opacity:.9}
+.nav{padding:7px;background:rgba(255,255,255,.78);border:1px solid var(--setom-line);border-radius:14px;box-shadow:0 6px 20px rgba(16,36,58,.06)}
+.nav button{border:1px solid transparent;border-radius:9px;box-shadow:none;color:#314456;font-weight:700}.nav button:hover{border-color:#c8d8e2;background:#f7fafb}.nav button.active{background:var(--setom-blue);box-shadow:0 4px 12px rgba(23,105,170,.25)}
+.toolbar{border:1px solid var(--setom-line);border-left:5px solid var(--setom-blue);border-radius:10px;box-shadow:0 5px 16px rgba(16,36,58,.06)}
+.os-list{gap:14px}.os{border:1px solid var(--setom-line);border-left:6px solid var(--setom-blue);border-radius:8px;padding:0;overflow:hidden;box-shadow:0 7px 20px rgba(16,36,58,.08)}.os-top{padding:16px 18px 10px;background:linear-gradient(90deg,#fff,#f4f8fa)}.os-number{font-size:19px;color:var(--setom-navy);letter-spacing:.02em}.os-info{padding:0 18px 10px;color:var(--setom-muted)}.os-actions{padding:0 18px 16px}
+.card{border:1px solid var(--setom-line);border-radius:10px;box-shadow:0 6px 18px rgba(16,36,58,.07)}
+/* Photo-led OS dossier. These hooks are also ready for the brochure-style detail layout. */
+.os-detail-modal{background:rgba(8,25,40,.72)!important;backdrop-filter:blur(5px)}
+.os-detail-modal .modal{max-width:1180px!important;padding:0!important;border-radius:14px!important;overflow:hidden!important;border:1px solid #cbd8df;box-shadow:0 28px 80px rgba(7,25,40,.3)!important}
+.os-detail-modal .modal-header{margin:0!important;padding:18px 22px!important;background:linear-gradient(100deg,#10243a,#1d506f);color:white;border-bottom:4px solid var(--setom-cyan)}
+.os-detail-modal .modal-header h2{color:white!important;text-transform:uppercase;letter-spacing:.04em;font-size:21px}
+.os-detail-modal .modal-body,.os-detail-modal form{padding:22px!important}
+.os-detail-modal .os-photo-hero{display:grid;grid-template-columns:minmax(0,1.35fr) minmax(300px,.65fr);background:#10243a;border-bottom:1px solid #d3dee4}
+.os-detail-modal .os-photo-hero img{width:100%;height:330px;object-fit:cover;display:block}.os-detail-modal .os-photo-meta{padding:24px;color:white;display:flex;flex-direction:column;justify-content:center;gap:12px}.os-detail-modal .os-kicker{font-size:11px;text-transform:uppercase;letter-spacing:.16em;color:#8fd1e8;font-weight:800}.os-detail-modal .os-title{font-size:28px;font-weight:800;line-height:1.08}.os-detail-modal .os-address{font-size:15px;color:#d8e5eb}
+.os-detail-modal .os-info-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px;margin:0 0 20px}.os-detail-modal .os-info-tile{background:#f5f8fa;border:1px solid #dce5e9;border-top:3px solid var(--setom-blue);padding:12px 14px}.os-detail-modal .os-info-tile small{display:block;text-transform:uppercase;font-size:10px;letter-spacing:.1em;color:#73818d;font-weight:800}.os-detail-modal .os-info-tile strong{display:block;margin-top:5px;color:#10243a;font-size:15px}
+.os-detail-modal .os-section{margin-top:18px;border:1px solid #d9e2e7;background:#fff}.os-detail-modal .os-section-title{padding:11px 14px;background:#eef4f7;border-bottom:1px solid #d9e2e7;color:#10243a;font-weight:800;text-transform:uppercase;font-size:12px;letter-spacing:.08em}.os-detail-modal .os-section-content{padding:15px}
+.os-detail-modal .attachments-section{background:#f7fafb;border:1px solid #d9e2e7;padding:16px;border-radius:0}.os-detail-modal .attachment-button{border-color:#8fb2c4;background:white}.os-detail-modal .attachment-button:hover{border-color:var(--setom-blue);background:#eef7fb}.os-detail-modal .modal-actions{background:#f4f7f8;padding:15px 22px!important;margin:0!important;border-top:1px solid #d8e1e6}.os-detail-modal .primary{background:var(--setom-blue);border-radius:7px}.os-detail-modal .secondary{border:1px solid #d2dce2;background:white;border-radius:7px}
+@media(max-width:800px){.os-detail-modal .os-photo-hero{grid-template-columns:1fr}.os-detail-modal .os-photo-hero img{height:240px}.os-detail-modal .os-info-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.os-detail-modal .os-title{font-size:23px}}
+@media(max-width:520px){.nav button{padding:10px 12px}.os-detail-modal .os-info-grid{grid-template-columns:1fr 1fr}.os-detail-modal .modal-body,.os-detail-modal form{padding:14px!important}}
