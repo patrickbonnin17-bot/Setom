@@ -46,7 +46,10 @@ if old_latest in text:
     new_latest = '          const latestConstat = constatByOS.get(row.id) || null;\n        const latestConstatLines = latestConstat ? (constatLinesByConstat.get(latestConstat.id) || []) : [];\n        const osAttachments = attachmentsByOS.get(row.id) || [];'
     text = text.replace(old_latest, new_latest)
 else:
-    raise SystemExit("SETOM: latest constat line not found")
+    # The relations patch may already have been applied by an earlier build.
+    # Do not fail the build merely because the exact pre-patch line is absent.
+    if 'const latestConstatLines = latestConstat ?' not in text or 'const osAttachments = attachmentsByOS.get(row.id)' not in text:
+        raise SystemExit("SETOM: OS dossier latest constat context not found")
 
 old_tail = '          problemSuspended: !!row.problem_suspended, suspensionReason: row.suspension_reason || "", suspensionComment: row.suspension_comment || "", suspensionStartedAt: row.suspension_started_at || null, suspensionRestartedAt: row.suspension_restarted_at || null,\n'
 new_tail = old_tail + '          attachments: osAttachments, constat: latestConstat ? { ...latestConstat, total_amount: latestConstat.total_amount } : null, constatLines: latestConstatLines,\n'
@@ -54,4 +57,4 @@ if old_tail in text and 'attachments: osAttachments' not in text:
     text = text.replace(old_tail, new_tail)
 
 path.write_text(text, encoding="utf-8")
-print("SETOM: OS dossier relations loaded")
+print("SETOM: OS dossier relations loaded (idempotent)")
