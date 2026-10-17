@@ -22,27 +22,13 @@ if "async function saveWorkDraft()" not in text:
       const { data: authData, error: userError } = await supabase.auth.getUser();
       const user = authData?.user;
       if (userError || !user) throw new Error("Utilisateur non connecté.");
-
-      let { data: intervention, error: interventionError } = await supabase
-        .from("interventions")
-        .select("id, work_order_id, type, status, planned_surface_m2, actual_surface_m2")
-        .eq("work_order_id", os.dbId)
-        .maybeSingle();
+      let { data: intervention, error: interventionError } = await supabase.from("interventions").select("id, work_order_id, type, status, planned_surface_m2, actual_surface_m2").eq("work_order_id", os.dbId).maybeSingle();
       if (interventionError) throw interventionError;
-
       if (!intervention) {
-        const { data: created, error: createError } = await supabase.from("interventions").insert({
-          work_order_id: os.dbId,
-          type: os.intervention || os.work || "Intervention",
-          status: os.status || "Planifié",
-          planned_surface_m2: Number(String(os.quantity || "").replace(" m²", "").replace(",", ".")) || null,
-          planned_date: os.plannedDate || null,
-          actual_surface_m2: null,
-        }).select("id, work_order_id, type, status, planned_surface_m2, actual_surface_m2").single();
+        const { data: created, error: createError } = await supabase.from("interventions").insert({ work_order_id: os.dbId, type: os.intervention || os.work || "Intervention", status: os.status || "Planifié", planned_surface_m2: Number(String(os.quantity || "").replace(" m²", "").replace(",", ".")) || null, planned_date: os.plannedDate || null, actual_surface_m2: null }).select("id, work_order_id, type, status, planned_surface_m2, actual_surface_m2").single();
         if (createError) throw createError;
         intervention = created;
       }
-
       const roadActual = realRoadSurface !== "" && !isNaN(Number(realRoadSurface)) ? Number(realRoadSurface) : 0;
       const sidewalkActual = realSidewalkSurface !== "" && !isNaN(Number(realSidewalkSurface)) ? Number(realSidewalkSurface) : 0;
       const otherActual = realOtherSurface !== "" && !isNaN(Number(realOtherSurface)) ? Number(realOtherSurface) : 0;
@@ -51,7 +37,6 @@ if "async function saveWorkDraft()" not in text:
       const plannedSurface = Number(String(os.quantity || "").replace(" m²", "").replace(",", ".")) || 0;
       const automaticDemolition = Math.max(0, totalActualSurface - plannedSurface);
       const realizations = [];
-
       if (totalActualSurface > 0) realizations.push({ intervention_id: intervention.id, designation: os.intervention || os.work || "Travaux réalisés", quantity: totalActualSurface, unit: "m²", surface_m2: totalActualSurface, thickness_cm: thickness !== "" && !isNaN(Number(thickness)) ? Number(thickness) : null, observations: workComment || null });
       if (sciage !== "" && !isNaN(Number(sciage))) realizations.push({ intervention_id: intervention.id, designation: "Sciage", quantity: Number(sciage), unit: "ml", length_ml: Number(sciage) });
       if (joints !== "" && !isNaN(Number(joints))) realizations.push({ intervention_id: intervention.id, designation: "Joints", quantity: Number(joints), unit: "ml", length_ml: Number(joints) });
@@ -62,30 +47,20 @@ if "async function saveWorkDraft()" not in text:
         realizations.push({ intervention_id: intervention.id, designation, quantity: Number(circulationHours) / 4, unit: "1/2 j", observations: Number(circulationHours) + " h" });
       }
       if (marquageSurface !== "" && !isNaN(Number(marquageSurface)) && Number(marquageSurface) > 0) realizations.push({ intervention_id: intervention.id, designation: "Marquage", quantity: Number(marquageSurface), unit: "m²", surface_m2: Number(marquageSurface) });
-
       const { error: deleteError } = await supabase.from("work_realizations").delete().eq("intervention_id", intervention.id);
       if (deleteError) throw deleteError;
       if (realizations.length) {
         const { error: insertError } = await supabase.from("work_realizations").insert(realizations);
         if (insertError) throw insertError;
       }
-
-      const { error: workOrderError } = await supabase.from("work_orders").update({
-        actual_road_surface_m2: os.rehabilitationZone === "Chaussée" || os.rehabilitationZone === "Chaussée + trottoir" ? (roadActual || null) : null,
-        actual_sidewalk_surface_m2: os.rehabilitationZone === "Trottoir" || os.rehabilitationZone === "Chaussée + trottoir" ? (sidewalkActual || null) : null,
-        actual_other_surface_m2: os.rehabilitationZone === "Autre" ? (otherActual || null) : null,
-        updated_by: user.id,
-      }).eq("id", os.dbId);
+      const { error: workOrderError } = await supabase.from("work_orders").update({ actual_road_surface_m2: os.rehabilitationZone === "Chaussée" || os.rehabilitationZone === "Chaussée + trottoir" ? (roadActual || null) : null, actual_sidewalk_surface_m2: os.rehabilitationZone === "Trottoir" || os.rehabilitationZone === "Chaussée + trottoir" ? (sidewalkActual || null) : null, actual_other_surface_m2: os.rehabilitationZone === "Autre" ? (otherActual || null) : null, updated_by: user.id }).eq("id", os.dbId);
       if (workOrderError) throw workOrderError;
-
       const { error: interventionUpdateError } = await supabase.from("interventions").update({ actual_surface_m2: totalActualSurface > 0 ? totalActualSurface : null }).eq("id", intervention.id);
       if (interventionUpdateError) throw interventionUpdateError;
-
       if (workPhotoFiles.length > 0) {
         const photosSaved = await uploadWorkPhotos(intervention.id, true);
         if (!photosSaved) return;
       }
-
       onUpdate(os.id, { actualRoadSurface: roadActual || null, actualSidewalkSurface: sidewalkActual || null, actualOtherSurface: otherActual || null, interventionId: intervention.id });
       alert("✅ Brouillon des travaux enregistré. Le statut de l'OS n'a pas été modifié.");
     } catch (error) {
@@ -97,11 +72,20 @@ if "async function saveWorkDraft()" not in text:
 '''
     text = text.replace(anchor, draft + anchor, 1)
 
-# Add a dedicated save-draft action before the transmission action.
-old = '<div className="work-actions">{["admin","bureau","equipe_terrain"].includes(profile?.role) && ["Planifié","En travaux","Travaux en cours","Travaux réalisés"].includes(os?.status) && <button className="primary" type="button" onClick={save}>✅ Transmettre les travaux réalisés</button>}'
-new = '<div className="work-actions">{["admin","bureau","equipe_terrain"].includes(profile?.role) && ["Nouveau","À planifier","Planifié","En travaux","Travaux en cours","Travaux réalisés"].includes(os?.status) && <div className="work-action-row"><button className="secondary" type="button" onClick={saveWorkDraft}>💾 Enregistrer les mesures</button><button className="primary" type="button" onClick={save}>✅ Transmettre les travaux réalisés</button></div>}'
-if old in text and "onClick={saveWorkDraft}" not in text:
-    text = text.replace(old, new, 1)
+if "onClick={saveWorkDraft}" not in text:
+    start = '<div className="work-actions">'
+    pos = text.find(start)
+    if pos == -1:
+        raise SystemExit("SETOM: work-actions anchor not found")
+    button_start = text.find('<button className="primary" type="button" onClick={save}>', pos)
+    if button_start == -1:
+        raise SystemExit("SETOM: Travaux transmission button not found")
+    button = '<button className="secondary" type="button" onClick={saveWorkDraft}>💾 Enregistrer les mesures</button><button className="primary" type="button" onClick={save}>'
+    text = text[:button_start] + button + text[button_start + len('<button className="primary" type="button" onClick={save}>'):]
+    text = text.replace('<div className="work-actions">', '<div className="work-actions"><div className="work-action-row">', 1)
+    closing = '</button>}{!["Planifié","En travaux","Travaux en cours","Travaux réalisés"].includes(os?.status)}'
+    if closing in text:
+        text = text.replace(closing, '</button></div>}{!["Planifié","En travaux","Travaux en cours","Travaux réalisés"].includes(os?.status)}', 1)
 
 path.write_text(text, encoding="utf-8")
 print("SETOM: Travaux draft save added")
