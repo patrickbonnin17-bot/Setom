@@ -3,6 +3,21 @@ from pathlib import Path
 path = Path("src/main.jsx")
 text = path.read_text(encoding="utf-8")
 
+# SETOM: harmonize planned surface before the dossier reads it.
+harmonization_marker = "// SETOM: planned surface harmonization"
+if harmonization_marker not in text:
+    needle = '        const day = plannedDay ? plannedDay.charAt(0).toUpperCase() + plannedDay.slice(1) : null;\n'
+    if needle in text:
+        replacement = needle + '''        const plannedSurfaceM2 = row.planned_surface_m2 != null\n          ? Number(row.planned_surface_m2)\n          : ((Number(row.planned_road_surface_m2) || 0) + (Number(row.planned_sidewalk_surface_m2) || 0) + (Number(row.planned_other_surface_m2) || 0));\n        const normalizedPlannedSurfaceM2 = Number.isFinite(plannedSurfaceM2) && plannedSurfaceM2 > 0 ? plannedSurfaceM2 : null;\n'''
+        text = text.replace(needle, replacement, 1)
+        return_needle = '          trade: row.material_detail || "Intervention", sector: sectorById.get(row.sector_id) || "Non classé", sectorId: row.sector_id || "", status: row.status || "Nouveau",\n'
+        if return_needle in text:
+            text = text.replace(return_needle, return_needle + '          plannedSurfaceM2: normalizedPlannedSurfaceM2,\n', 1)
+        quantity_needle = '          quantity: row.planned_surface_m2 == null ? "" : row.planned_surface_m2 + " m²",\n'
+        if quantity_needle in text:
+            text = text.replace(quantity_needle, '          quantity: normalizedPlannedSurfaceM2 == null ? "" : normalizedPlannedSurfaceM2 + " m²",\n', 1)
+        text = text.replace('function App() {', harmonization_marker + '\n\nfunction App() {', 1)
+
 component = r'''
 function OSDossierPilotage({ os, attachments = [], constat = null, constatLines = [], actualRoadSurface, actualSidewalkSurface, actualOtherSurface }) {
   const imageAttachments = attachments.filter((item) => String(item?.mime_type || "").startsWith("image/") && item?.url);
