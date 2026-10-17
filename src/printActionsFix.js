@@ -1,53 +1,71 @@
-// Reliable, targeted print actions for the daily and weekly binders.
+// Reliable, targeted printing for the daily and weekly binders.
 (function installPrintActions() {
   const PRINT_LABEL = /\bimprimer\b/i;
-  const DAILY_CLASS = "setom-printing-daily-binder";
-  const WEEK_CLASS = "setom-printing-week-binder";
-  let cleanupTimer = null;
 
   function getPrintTarget(target) {
     const element = target?.closest?.('button, a, [role="button"], input[type="button"], input[type="submit"]');
     if (!element) return null;
     const label = String(element.textContent || element.value || element.getAttribute("aria-label") || "").trim();
     if (!PRINT_LABEL.test(label)) return null;
-    const dailyBinder = element.closest(".setom-binder");
-    const weekBinder = element.closest(".setom-week-binder");
-    if (dailyBinder) return { element, mode: "daily" };
-    if (weekBinder) return { element, mode: "week" };
+    if (element.closest(".setom-binder")) return { mode: "daily", binder: element.closest(".setom-binder") };
+    if (element.closest(".setom-week-binder")) return { mode: "week", binder: element.closest(".setom-week-binder") };
     return null;
   }
 
-  function clearPrintMode() {
-    document.body.classList.remove(DAILY_CLASS, WEEK_CLASS);
-    if (cleanupTimer) window.clearTimeout(cleanupTimer);
-    cleanupTimer = null;
-  }
+  function openPrintWindow(mode, binder) {
+    // Open synchronously from the user's click. This avoids iOS/Safari losing
+    // the user gesture before the print document is created.
+    const printWindow = window.open("", "_blank");
+    if (!printWindow) {
+      // Popup blocked: fall back to the native print API while still inside
+      // the original click event.
+      window.print();
+      return;
+    }
 
-  function printBinder(mode) {
-    clearPrintMode();
-    document.body.classList.add(mode === "week" ? WEEK_CLASS : DAILY_CLASS);
-    const previousTitle = document.title;
-    document.title = mode === "week" ? "SETOM — Classeur hebdomadaire" : "SETOM — Classeur journalier";
+    const title = mode === "week" ? "SETOM — Classeur hebdomadaire" : "SETOM — Classeur journalier";
+    const styles = Array.from(document.querySelectorAll('link[rel="stylesheet"], style'))
+      .map((node) => node.outerHTML)
+      .join("\n");
+    const content = binder.cloneNode(true);
 
-    const afterPrint = () => {
-      document.title = previousTitle;
-      clearPrintMode();
-      window.removeEventListener("afterprint", afterPrint);
+    // Remove interactive controls from the printed copy.
+    content.querySelectorAll("button, input, select, textarea").forEach((node) => node.remove());
+
+    printWindow.document.open();
+    printWindow.document.write(`<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${title}</title>${styles}<style>
+      @page { margin: 12mm; size: A4 portrait; }
+      html, body { margin: 0; padding: 0; background: #fff !important; color: #172033; }
+      body { font-family: Inter, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }
+      .setom-binder, .setom-week-binder { max-width: none !important; width: 100% !important; margin: 0 !important; padding: 0 !important; overflow: visible !important; }
+      .setom-binder-card, .setom-week-binder-day { break-inside: avoid; page-break-inside: avoid; }
+      .setom-binder-head { margin-bottom: 10px !important; }
+      @media print { .setom-binder-head button { display:none !important; } }
+    </style></head><body></body></html>`);
+    printWindow.document.body.appendChild(content);
+    printWindow.document.close();
+
+    let printed = false;
+    const doPrint = () => {
+      if (printed) return;
+      printed = true;
+      printWindow.focus();
+      printWindow.print();
     };
-    window.addEventListener("afterprint", afterPrint);
 
-    // Keep window.print() synchronous: iOS/Safari can block print dialogs when
-    // the call is delayed with setTimeout and the user-activation is lost.
-    window.print();
-    cleanupTimer = window.setTimeout(afterPrint, 15000);
+    printWindow.addEventListener("afterprint", () => {
+      window.setTimeout(() => printWindow.close(), 300);
+    });
+    printWindow.addEventListener("load", doPrint, { once: true });
+    // WebKit can finish a document.write without firing load reliably.
+    window.setTimeout(doPrint, 250);
   }
 
   document.addEventListener("click", (event) => {
     const target = getPrintTarget(event.target);
     if (!target) return;
     event.preventDefault();
-    event.stopPropagation();
     event.stopImmediatePropagation();
-    printBinder(target.mode);
+    openPrintWindow(target.mode, target.binder);
   }, true);
 })();
