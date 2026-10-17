@@ -8,6 +8,7 @@ for line in [
     'import "./setom_planning_visual.css";\n',
     'import "./setom_travaux_visual.css";\n',
     'import "./setom_visual_polish.css";\n',
+    'import "./setom_chargement_visual.css";\n',
 ]:
     if line not in s:
         s = line + s
