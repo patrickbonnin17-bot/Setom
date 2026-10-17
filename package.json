@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "python3 scripts/patch_workflow_status.py && python3 scripts/patch_travaux_editability.py && python3 scripts/patch_map_stability.py && python3 scripts/patch_mobile_interactions.py && vite build",
+    "build": "python3 scripts/patch_workflow_status.py && python3 scripts/patch_travaux_editability.py && python3 scripts/patch_runtime_workflow_fixes.py && python3 scripts/patch_map_stability.py && python3 scripts/patch_mobile_interactions.py && vite build",
     "preview": "vite preview"
   },
   "dependencies": {
