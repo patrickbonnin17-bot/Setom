@@ -19,25 +19,19 @@ text, n_sig = re.subn(
     count=1,
 )
 
-# 2) The field sheet must be editable while the OS is operational. Keep the
-# permission check by role, but do not lock the form merely because the OS is
-# still in an early planning status.
+# 2) Travaux must remain editable for every internal SETOM profile during the
+# operational lifecycle. The external validation account remains read-only.
+# Only genuinely closed workflow statuses lock the work sheet.
 work_guard = (
-    'const canEditWork = ["admin","bureau","equipe_terrain"].includes(profile?.role) '
+    'const canEditWork = !!profile?.role && profile?.role !== "eau_de_toulouse" '
     '&& !["Validé","Validé avec réserve","Réserve","Correction à réaliser","Payé","Archivé","Annulé","Doublon"].includes(os?.status);'
 )
 text, n_guard = re.subn(
-    r'const canEditWork\s*=\s*\["admin"\s*,?\s*"bureau"\s*,?\s*"equipe_terrain"\]\.(?:includes)\(profile\?\.role\)\s*&&\s*\[[^\]]+\]\.includes\(os\?\.status\);',
+    r'const canEditWork\s*=\s*[^;]+;',
     work_guard,
     text,
     count=1,
 )
 
-# 3) Prevent a stale disabled fieldset from surviving an old guard. The
-# canEditWork expression above remains the single source of truth.
-if 'fieldset disabled={!canEditWork}' not in text:
-    # Do not rewrite if the source has already been changed by a future version.
-    pass
-
 path.write_text(text, encoding="utf-8")
-print(f"SETOM: runtime fixes applied (OSModal prop={n_call}, signature={n_sig}, work guard={n_guard})")
+print(f"SETOM: Travaux editable for internal profiles (OSModal prop={n_call}, signature={n_sig}, work guard={n_guard})")
