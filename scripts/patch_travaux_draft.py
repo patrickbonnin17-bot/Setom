@@ -9,14 +9,8 @@ if "async function saveWorkDraft()" not in text:
         raise SystemExit("SETOM: save() anchor not found")
     draft = r'''  async function saveWorkDraft() {
     if (!os?.dbId) return;
-    if (!["admin", "bureau", "equipe_terrain"].includes(profile?.role)) {
-      alert("Vous n'avez pas les droits pour enregistrer les travaux.");
-      return;
-    }
-    if (!["Nouveau", "À planifier", "Planifié", "En travaux", "Travaux en cours", "Travaux réalisés"].includes(os?.status)) {
-      alert("Cet OS est verrouillé pour la saisie des travaux.");
-      return;
-    }
+    if (!["admin", "bureau", "equipe_terrain"].includes(profile?.role)) { alert("Vous n'avez pas les droits pour enregistrer les travaux."); return; }
+    if (!["Nouveau", "À planifier", "Planifié", "En travaux", "Travaux en cours", "Travaux réalisés"].includes(os?.status)) { alert("Cet OS est verrouillé pour la saisie des travaux."); return; }
     try {
       const { data: authData, error: userError } = await supabase.auth.getUser();
       const user = authData?.user;
@@ -41,31 +35,19 @@ if "async function saveWorkDraft()" not in text:
       if (joints !== "" && !isNaN(Number(joints))) realizations.push({ intervention_id: intervention.id, designation: "Joints", quantity: Number(joints), unit: "ml", length_ml: Number(joints) });
       if (boucheAcle !== "" && !isNaN(Number(boucheAcle))) realizations.push({ intervention_id: intervention.id, designation: "Bouché à clé", quantity: Number(boucheAcle), unit: "U" });
       if (automaticDemolition > 0) realizations.push({ intervention_id: intervention.id, designation: "Démolition", quantity: automaticDemolition, unit: "m²", surface_m2: automaticDemolition });
-      if (circulationType && circulationHours !== "" && !isNaN(Number(circulationHours)) && Number(circulationHours) > 0) {
-        const designation = circulationType === "K10" ? "Circulation alternée manuelle par 2 agents munis de panneaux K10" : "Circulation alternée par 2 feux tricolores à batterie synchronisés, y compris la présignalisation, l'entretien et la surveillance des feux";
-        realizations.push({ intervention_id: intervention.id, designation, quantity: Number(circulationHours) / 4, unit: "1/2 j", observations: Number(circulationHours) + " h" });
-      }
+      if (circulationType && circulationHours !== "" && !isNaN(Number(circulationHours)) && Number(circulationHours) > 0) { const designation = circulationType === "K10" ? "Circulation alternée manuelle par 2 agents munis de panneaux K10" : "Circulation alternée par 2 feux tricolores à batterie synchronisés, y compris la présignalisation, l'entretien et la surveillance des feux"; realizations.push({ intervention_id: intervention.id, designation, quantity: Number(circulationHours) / 4, unit: "1/2 j", observations: Number(circulationHours) + " h" }); }
       if (marquageSurface !== "" && !isNaN(Number(marquageSurface)) && Number(marquageSurface) > 0) realizations.push({ intervention_id: intervention.id, designation: "Marquage", quantity: Number(marquageSurface), unit: "m²", surface_m2: Number(marquageSurface) });
       const { error: deleteError } = await supabase.from("work_realizations").delete().eq("intervention_id", intervention.id);
       if (deleteError) throw deleteError;
-      if (realizations.length) {
-        const { error: insertError } = await supabase.from("work_realizations").insert(realizations);
-        if (insertError) throw insertError;
-      }
+      if (realizations.length) { const { error: insertError } = await supabase.from("work_realizations").insert(realizations); if (insertError) throw insertError; }
       const { error: workOrderError } = await supabase.from("work_orders").update({ actual_road_surface_m2: os.rehabilitationZone === "Chaussée" || os.rehabilitationZone === "Chaussée + trottoir" ? (roadActual || null) : null, actual_sidewalk_surface_m2: os.rehabilitationZone === "Trottoir" || os.rehabilitationZone === "Chaussée + trottoir" ? (sidewalkActual || null) : null, actual_other_surface_m2: os.rehabilitationZone === "Autre" ? (otherActual || null) : null, updated_by: user.id }).eq("id", os.dbId);
       if (workOrderError) throw workOrderError;
       const { error: interventionUpdateError } = await supabase.from("interventions").update({ actual_surface_m2: totalActualSurface > 0 ? totalActualSurface : null }).eq("id", intervention.id);
       if (interventionUpdateError) throw interventionUpdateError;
-      if (workPhotoFiles.length > 0) {
-        const photosSaved = await uploadWorkPhotos(intervention.id, true);
-        if (!photosSaved) return;
-      }
+      if (workPhotoFiles.length > 0) { const photosSaved = await uploadWorkPhotos(intervention.id, true); if (!photosSaved) return; }
       onUpdate(os.id, { actualRoadSurface: roadActual || null, actualSidewalkSurface: sidewalkActual || null, actualOtherSurface: otherActual || null, interventionId: intervention.id });
       alert("✅ Brouillon des travaux enregistré. Le statut de l'OS n'a pas été modifié.");
-    } catch (error) {
-      console.error("Erreur enregistrement brouillon travaux :", error);
-      alert("Impossible d'enregistrer le brouillon des travaux :\n\n" + (error?.message || "Erreur inconnue"));
-    }
+    } catch (error) { console.error("Erreur enregistrement brouillon travaux :", error); alert("Impossible d'enregistrer le brouillon des travaux :\n\n" + (error?.message || "Erreur inconnue")); }
   }
 
 '''
@@ -74,13 +56,12 @@ if "async function saveWorkDraft()" not in text:
 if "onClick={saveWorkDraft}" not in text:
     prefix_old = '<div className="work-actions">{["admin","bureau","equipe_terrain"].includes(profile?.role) && ["Nouveau","À planifier","Planifié","En travaux","Travaux en cours","Travaux réalisés"].includes(os?.status) && <button className="primary" type="button" onClick={save}>'
     prefix_new = '<div className="work-actions">{["admin","bureau","equipe_terrain"].includes(profile?.role) && ["Nouveau","À planifier","Planifié","En travaux","Travaux en cours","Travaux réalisés"].includes(os?.status) && <div className="work-action-row"><button className="secondary" type="button" onClick={saveWorkDraft}>💾 Enregistrer les mesures</button><button className="primary" type="button" onClick={save}>'
-    if prefix_old not in text:
-        raise SystemExit("SETOM: Travaux transmission prefix not found")
+    if prefix_old not in text: raise SystemExit("SETOM: Travaux transmission prefix not found")
     text = text.replace(prefix_old, prefix_new, 1)
-    closing = '</button>}{!["Planifié","En travaux","Travaux en cours","Travaux réalisés"].includes(os?.status)'
-    if closing not in text:
-        raise SystemExit("SETOM: Travaux action closing not found")
-    text = text.replace(closing, '</button></div>}{!["Planifié","En travaux","Travaux en cours","Travaux réalisés"].includes(os?.status)', 1)
+    pos = text.find('<div className="work-actions">')
+    closing_pos = text.find('</button>}{![', pos)
+    if closing_pos == -1: raise SystemExit("SETOM: Travaux action closing not found")
+    text = text[:closing_pos] + '</button></div>}' + text[closing_pos + len('</button>}{'):]
 
 path.write_text(text, encoding="utf-8")
 print("SETOM: Travaux draft save added")
