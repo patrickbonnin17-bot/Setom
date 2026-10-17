@@ -13,12 +13,11 @@
   }
 
   function openPrintWindow(mode, binder) {
-    // Open synchronously from the user's click. This avoids iOS/Safari losing
-    // the user gesture before the print document is created.
+    // Open synchronously from the user's click so iOS/Safari sees this as a
+    // user-initiated tab rather than a delayed popup.
     const printWindow = window.open("", "_blank");
     if (!printWindow) {
-      // Popup blocked: fall back to the native print API while still inside
-      // the original click event.
+      // If the browser blocks the new tab, stay in the original user gesture.
       window.print();
       return;
     }
@@ -29,7 +28,8 @@
       .join("\n");
     const content = binder.cloneNode(true);
 
-    // Remove interactive controls from the printed copy.
+    // Remove controls from the printed document; the print page itself has
+    // its own explicit fallback button below.
     content.querySelectorAll("button, input, select, textarea").forEach((node) => node.remove());
 
     printWindow.document.open();
@@ -39,26 +39,39 @@
       body { font-family: Inter, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }
       .setom-binder, .setom-week-binder { max-width: none !important; width: 100% !important; margin: 0 !important; padding: 0 !important; overflow: visible !important; }
       .setom-binder-card, .setom-week-binder-day { break-inside: avoid; page-break-inside: avoid; }
-      .setom-binder-head { margin-bottom: 10px !important; }
-      @media print { .setom-binder-head button { display:none !important; } }
-    </style></head><body></body></html>`);
+      .setom-print-fallback { position: sticky; top: 0; z-index: 10; display: flex; gap: 10px; align-items: center; padding: 12px; margin: 0 0 14px; background: #172033; color: #fff; font: 600 15px/1.35 system-ui, sans-serif; border-radius: 10px; }
+      .setom-print-fallback button { border: 0; border-radius: 8px; padding: 10px 14px; background: #fff; color: #172033; font: inherit; cursor: pointer; }
+      .setom-print-fallback span { opacity: .9; font-weight: 500; }
+      @media print { .setom-print-fallback { display: none !important; } }
+    </style></head><body>
+      <div class="setom-print-fallback"><button id="setom-launch-print">🖨️ Lancer l’impression</button><span>Si la fenêtre d’impression ne s’est pas ouverte automatiquement, appuie ici.</span></div>
+    </body></html>`);
     printWindow.document.body.appendChild(content);
     printWindow.document.close();
 
     let printed = false;
     const doPrint = () => {
-      if (printed) return;
+      if (printed || printWindow.closed) return;
+      printed = true;
+      printWindow.focus();
+      try { printWindow.print(); } catch (_) { printed = false; }
+    };
+
+    const fallbackButton = printWindow.document.getElementById("setom-launch-print");
+    fallbackButton?.addEventListener("click", () => {
       printed = true;
       printWindow.focus();
       printWindow.print();
-    };
+    });
 
     printWindow.addEventListener("afterprint", () => {
       window.setTimeout(() => printWindow.close(), 300);
     });
+
+    // Try automatically once the print document is ready. The visible button
+    // remains available as a direct user-gesture fallback on iPhone/iPad.
     printWindow.addEventListener("load", doPrint, { once: true });
-    // WebKit can finish a document.write without firing load reliably.
-    window.setTimeout(doPrint, 250);
+    window.setTimeout(doPrint, 400);
   }
 
   document.addEventListener("click", (event) => {
