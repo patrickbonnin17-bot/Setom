@@ -1,3 +1,154 @@
+/* SETOM — Étape esthétique 1
+   Habillage uniquement : aucune règle métier ou donnée modifiée. */
+:root {
+  --setom-ink: #17253d;
+  --setom-muted: #65748b;
+  --setom-blue: #1769aa;
+  --setom-blue-dark: #14517e;
+  --setom-line: #dfe7f0;
+  --setom-page: #f4f7fb;
+}
+
+/* Planificateur */
+.setom-planner-overlay {
+  background: rgba(10,24,43,.68) !important;
+  backdrop-filter: blur(7px);
+  -webkit-backdrop-filter: blur(7px);
+}
+.setom-planner {
+  background: var(--setom-page) !important;
+  border: 1px solid #e3ebf5;
+  box-shadow: 0 28px 90px rgba(5,20,40,.34) !important;
+}
+.setom-planner-header {
+  color: #fff !important;
+  background: linear-gradient(112deg,#14243b 0%,#183d63 62%,#1c5b88 100%) !important;
+  padding: 17px 22px !important;
+  border-bottom: 0 !important;
+}
+.setom-planner-header h2 { color:#fff !important; font-weight:780; letter-spacing:-.025em; }
+.setom-planner-header p { color:#d7e7f8 !important; line-height:1.45; }
+.setom-planner-header > button {
+  color:#fff !important;
+  background:rgba(255,255,255,.12) !important;
+  border:1px solid rgba(255,255,255,.23) !important;
+  transition:background .16s ease,transform .16s ease;
+}
+.setom-planner-header > button:hover { background:rgba(255,255,255,.22) !important; transform:translateY(-1px); }
+.setom-plan-toolbar {
+  gap:12px !important;
+  padding:12px 18px !important;
+  background:rgba(255,255,255,.97) !important;
+  border-bottom:1px solid #e0e8f2 !important;
+}
+.setom-plan-tabs {
+  gap:6px !important;
+  padding:3px;
+  border:1px solid #e5ebf4;
+  border-radius:12px;
+  background:#f5f8fc;
+}
+.setom-plan-tabs button {
+  min-height:38px;
+  border-color:transparent !important;
+  border-radius:9px !important;
+  color:#52647a;
+  font-size:12px;
+  font-weight:680;
+}
+.setom-plan-tabs button:hover { color:#184f7c; background:#eaf2fb; border-color:#dce8f5 !important; }
+.setom-plan-tabs button.active {
+  color:#fff !important;
+  background:linear-gradient(135deg,#206ca7,#174d7b) !important;
+  border-color:#174d7b !important;
+  box-shadow:0 3px 9px rgba(23,83,132,.2);
+}
+.setom-plan-nav button {
+  min-width:38px;
+  min-height:38px;
+  border-color:#dce5ef !important;
+  border-radius:9px !important;
+  color:#344d68;
+  box-shadow:0 1px 2px rgba(22,42,72,.04);
+}
+.setom-plan-nav button:hover { background:#edf5fd; border-color:#bcd4eb !important; }
+.setom-plan-nav strong { color:#1a3554; font-weight:750; font-size:14px; }
+.setom-day-material-strip { background:#f7f9fc !important; border-bottom-color:#e0e8f2 !important; }
+.setom-day-material-cell {
+  border-color:#e0e7f0 !important;
+  border-radius:11px !important;
+  box-shadow:0 2px 7px rgba(22,42,72,.035);
+}
+.setom-day-material-cell select,
+.setom-plan-order-actions select,
+.setom-map-order input,
+.setom-map-order select {
+  min-height:36px;
+  border-color:#d8e2ee !important;
+  border-radius:8px !important;
+  color:#233c59;
+}
+.setom-month-cell { transition:background-color .14s ease,box-shadow .14s ease; }
+.setom-month-cell:not(.muted):hover { background:#f0f7ff !important; }
+.setom-month-cell.selected { background:#edf5ff !important; outline-color:#2879b8 !important; }
+.setom-month-day b { background:#e7f1fc !important; color:#18578b !important; font-weight:800; }
+.setom-week-col {
+  border-color:#dfe7f0 !important;
+  border-radius:14px !important;
+  box-shadow:0 3px 12px rgba(22,42,72,.04);
+}
+.setom-week-head { background:linear-gradient(180deg,#fff 0%,#f7faff 100%); padding:12px; }
+.setom-plan-order {
+  border-color:#e0e7f0 !important;
+  border-radius:11px !important;
+  box-shadow:0 2px 7px rgba(22,42,72,.035);
+  transition:border-color .15s ease,box-shadow .15s ease,transform .15s ease;
+}
+.setom-plan-order:hover { border-color:#bfd5e9 !important; box-shadow:0 5px 13px rgba(22,42,72,.075); transform:translateY(-1px); }
+.setom-plan-order-actions button {
+  min-height:32px;
+  padding:5px 9px;
+  border-color:#d7e1ed !important;
+  border-radius:7px;
+  color:#38516d;
+}
+.setom-plan-order-actions button:hover { border-color:#a9c8e4 !important; background:#eef6fd; }
+.setom-day-title,.setom-binder-head,.setom-map-route-summary,.setom-map-order-list {
+  border-color:#dfe7f0 !important;
+  border-radius:14px !important;
+  box-shadow:0 3px 12px rgba(22,42,72,.045);
+}
+.setom-binder-head { background:linear-gradient(110deg,#fff,#f6faff); }
+.setom-binder-card,.setom-week-binder-day { border-color:#e0e8f2 !important; }
+.setom-map-order-list > header { background:#f5f8fc !important; border-bottom-color:#e0e8f2 !important; }
+.setom-map-order:hover { background:#f8fbff; }
+.setom-map-order button {
+  border-radius:9px !important;
+  background:linear-gradient(135deg,#216fa9,#18517f) !important;
+  box-shadow:0 2px 5px rgba(24,81,127,.12);
+}
+.setom-map-order button:hover:not(:disabled) { background:linear-gradient(135deg,#195f96,#123e65) !important; }
+
+/* Interface générale */
+.header { background:linear-gradient(112deg,#13243d 0%,#193c65 64%,#1d5786 100%) !important; }
+.container { max-width:1500px; }
+.nav { border-color:#dce5ef !important; }
+.card,.os,fieldset,table { border-color:#e1e8f1; }
+.primary { background:linear-gradient(135deg,#1a70b4,#175b94) !important; }
+.primary:hover:not(:disabled) { background:linear-gradient(135deg,#1766a5,#124b7b) !important; }
+.secondary:hover:not(:disabled) { background:#eaf2fb !important; }
+
+@media (max-width:800px) {
+  .setom-planner-header { padding:14px 15px !important; }
+  .setom-plan-toolbar { gap:10px !important; padding:10px !important; }
+  .setom-plan-tabs { width:100%; overflow-x:auto; flex-wrap:nowrap; }
+  .setom-plan-tabs button { flex:0 0 auto; }
+  .setom-plan-nav { width:100%; justify-content:space-between; }
+  .setom-plan-nav strong { flex:1; min-width:0; }
+}
+@media (prefers-reduced-motion:reduce) {
+  .setom-plan-tabs button,.setom-month-cell,.setom-plan-order,.setom-map-order { transition:none !important; }
+}
 
 /* Impression : on imprime uniquement le classeur demandé, pas toute l'application. */
 @media print {
