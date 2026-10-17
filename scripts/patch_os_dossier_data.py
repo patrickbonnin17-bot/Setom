@@ -9,6 +9,7 @@ function OSDossierPilotage({ os, attachments = [], constat = null, constatLines 
   const hero = imageAttachments[0];
   const planned = Number(String(os?.quantity || "").replace(" m²", "").replace(",", ".")) || 0;
   const actual = (Number(actualRoadSurface) || 0) + (Number(actualSidewalkSurface) || 0) + (Number(actualOtherSurface) || 0);
+  const extension = Math.max(0, actual - planned);
   const constatAmount = Number(constat?.total_amount) || 0;
   const constatStatus = constat?.status || os?.constatStatus || "Non généré";
   const progress = planned > 0 ? Math.min(100, Math.round((actual / planned) * 100)) : 0;
@@ -23,15 +24,16 @@ function OSDossierPilotage({ os, attachments = [], constat = null, constatLines 
         <strong>{os?.id || "OS"}</strong>
         <span>{os?.address || "Adresse non renseignée"}</span>
         <div className="setom-os-live-status">● {os?.status || "Nouveau"}</div>
+        {extension > 0 && <div className="setom-os-live-extension-badge">↗ OS AGRANDI · +{extension.toFixed(2)} m²</div>}
       </div>
     </div>
     <div className="setom-os-live-grid">
       <div className="setom-os-live-card"><small>PLANNING</small><strong>{os?.day || "Non planifié"}</strong><span>{os?.plannedDate ? new Date(os.plannedDate + "T12:00:00").toLocaleDateString("fr-FR") : "Date non définie"}</span></div>
       <div className="setom-os-live-card"><small>ÉQUIPE</small><strong>{os?.team || "Non affectée"}</strong><span>{os?.sector || "Secteur non classé"}</span></div>
-      <div className="setom-os-live-card"><small>SURFACE RÉALISÉE</small><strong>{actual ? `${actual.toFixed(2)} m²` : "—"}</strong><span>{planned ? `${planned.toFixed(2)} m² prévu` : "Surface prévue non renseignée"}</span></div>
+      <div className="setom-os-live-card"><small>SURFACE RÉALISÉE</small><strong>{actual ? `${actual.toFixed(2)} m²` : "—"}</strong><span>{planned ? `${planned.toFixed(2)} m² prévu` : "Surface prévue non renseignée"}{extension > 0 ? ` · +${extension.toFixed(2)} m² d'extension` : ""}</span></div>
       <div className="setom-os-live-card"><small>CONSTAT / FACTURATION</small><strong>{constatAmount ? `${constatAmount.toFixed(2)} €` : "—"}</strong><span>{constatStatus} · {constatLines.length} ligne(s)</span></div>
     </div>
-    {planned > 0 && <div className="setom-os-live-progress"><div><span>Avancement des surfaces</span><strong>{progress}%</strong></div><div className="setom-os-live-progress-track"><span style={{ width: `${progress}%` }} /></div></div>}
+    {planned > 0 && <div className="setom-os-live-progress"><div><span>Avancement des surfaces</span><strong>{progress}%{extension > 0 ? " · OS agrandi" : ""}</strong></div><div className="setom-os-live-progress-track"><span style={{ width: `${progress}%` }} /></div></div>}
   </div>;
 }
 
@@ -47,8 +49,6 @@ start = text.find("function OSModal(")
 if start == -1:
     raise SystemExit("SETOM: OSModal function not found")
 
-# Locate the first stable JSX tab marker inside OSModal. Do not depend on OSCard,
-# whose location/signature can change as the dossier evolves.
 needle = '    <div className="os-tabs">'
 needle_index = text.find(needle, start)
 if needle_index == -1:
