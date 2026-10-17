@@ -1,204 +1,66 @@
-/* SETOM — Étape esthétique 2
-   Priorité : tableau de bord + liste des OS + confort mobile.
+/* SETOM — Étapes esthétiques 2 + 3
+   Priorité : dashboard, OS, écrans métier, formulaires et confort mobile.
    Aucun changement métier. */
 
-/* ===== Tableau de bord ===== */
-.container > h2:first-child {
-  display:flex;
-  align-items:center;
-  min-height:42px;
-}
-
-.cards {
-  position:relative;
-}
-
-.cards .card {
-  padding:18px 19px !important;
-  min-height:122px;
-  display:flex;
-  flex-direction:column;
-  justify-content:center;
-}
-
-.cards .card > div:first-child {
-  color:#66778d;
-  font-size:12px;
-  font-weight:760;
-  letter-spacing:.045em;
-  text-transform:uppercase;
-}
-
-.cards .card .number {
-  margin-top:6px;
-  font-weight:820;
-  line-height:1;
-}
-
-.cards .card small {
-  display:block;
-  margin-top:8px;
-  color:#8190a3;
-  line-height:1.35;
-}
-
-/* ===== Barre de navigation principale ===== */
-.nav {
-  position:sticky;
-  box-sizing:border-box;
-  overflow-x:auto;
-  overscroll-behavior-x:contain;
-}
-
+.container > h2:first-child { display:flex; align-items:center; min-height:42px; }
+.cards { position:relative; }
+.cards .card { padding:18px 19px !important; min-height:122px; display:flex; flex-direction:column; justify-content:center; }
+.cards .card > div:first-child { color:#66778d; font-size:12px; font-weight:760; letter-spacing:.045em; text-transform:uppercase; }
+.cards .card .number { margin-top:6px; font-weight:820; line-height:1; }
+.cards .card small { display:block; margin-top:8px; color:#8190a3; line-height:1.35; }
+.nav { position:sticky; box-sizing:border-box; overflow-x:auto; overscroll-behavior-x:contain; }
 .nav::-webkit-scrollbar { height:4px; }
 .nav::-webkit-scrollbar-thumb { background:#cbd8e6; border-radius:99px; }
-
-.nav button.active {
-  position:relative;
-}
-.nav button.active::after {
-  content:"";
-  position:absolute;
-  left:18%;
-  right:18%;
-  bottom:-2px;
-  height:2px;
-  border-radius:99px;
-  background:rgba(255,255,255,.72);
-}
-
-/* ===== Liste des OS ===== */
-.os-list {
-  display:grid;
-  grid-template-columns:repeat(auto-fit,minmax(min(100%,420px),1fr));
-  align-items:start;
-}
-
-.os {
-  position:relative;
-  overflow:hidden;
-}
-
-.os::after {
-  content:"";
-  position:absolute;
-  inset:0;
-  pointer-events:none;
-  background:linear-gradient(105deg,rgba(255,255,255,.55),transparent 32%);
-  opacity:.55;
-}
-
-.os-top,
-.os-info,
-.os-actions {
-  position:relative;
-  z-index:1;
-}
-
-.os-number {
-  display:inline-flex;
-  align-items:center;
-  min-height:28px;
-  padding:3px 9px;
-  border-radius:8px;
-  background:#eef5fc;
-  color:#164f80;
-}
-
-.os-info {
-  color:#4d6077;
-}
-
-.os-info strong {
-  color:#243b56;
-}
-
-.os-actions {
-  position:relative;
-  padding-top:12px;
-  border-top:1px solid #edf1f6;
-}
-
-.os-actions button {
-  border-radius:9px !important;
-}
-
-/* Les badges restent très lisibles, sans modifier leurs couleurs métier. */
-.badge {
-  border-radius:999px;
-  box-shadow:0 1px 2px rgba(23,42,68,.05);
-}
-
-/* ===== Barres d'outils / filtres ===== */
-.toolbar {
-  position:relative;
-}
-
-.toolbar::before {
-  content:"";
-  position:absolute;
-  left:14px;
-  right:14px;
-  top:0;
-  height:1px;
-  background:linear-gradient(90deg,transparent,#dbe6f1,transparent);
-}
-
+.nav button.active { position:relative; }
+.nav button.active::after { content:""; position:absolute; left:18%; right:18%; bottom:-2px; height:2px; border-radius:99px; background:rgba(255,255,255,.72); }
+.os-list { display:grid; grid-template-columns:repeat(auto-fit,minmax(min(100%,420px),1fr)); align-items:start; }
+.os { position:relative; overflow:hidden; }
+.os::after { content:""; position:absolute; inset:0; pointer-events:none; background:linear-gradient(105deg,rgba(255,255,255,.55),transparent 32%); opacity:.55; }
+.os-top,.os-info,.os-actions { position:relative; z-index:1; }
+.os-number { display:inline-flex; align-items:center; min-height:28px; padding:3px 9px; border-radius:8px; background:#eef5fc; color:#164f80; }
+.os-info { color:#4d6077; }
+.os-info strong { color:#243b56; }
+.os-actions { position:relative; padding-top:12px; border-top:1px solid #edf1f6; }
+.os-actions button { border-radius:9px !important; }
+.badge { border-radius:999px; box-shadow:0 1px 2px rgba(23,42,68,.05); }
+.toolbar { position:relative; }
+.toolbar::before { content:""; position:absolute; left:14px; right:14px; top:0; height:1px; background:linear-gradient(90deg,transparent,#dbe6f1,transparent); }
 .toolbar input::placeholder { color:#96a3b3; }
+tbody tr:hover td:first-child { box-shadow:inset 3px 0 0 #4b91c5; }
+tbody td:first-child, thead th:first-child { padding-left:16px; }
+.modal,.os-detail-modal { animation:setom-modal-in .18s ease-out; }
+@keyframes setom-modal-in { from { opacity:0; transform:translateY(7px) scale(.992); } to { opacity:1; transform:none; } }
 
-/* ===== Tables ===== */
-tbody tr:hover td:first-child {
-  box-shadow:inset 3px 0 0 #4b91c5;
-}
+/* ===== Écrans métier : Travaux / Constat / Finance ===== */
+.container > section,.container > form,.container > fieldset,.container > .card { border-radius:16px; }
+.container h3 { color:#18324d; letter-spacing:-.01em; }
+form,fieldset { border-color:#dce5ef !important; }
+label { color:#40566e; font-weight:650; }
+input,select,textarea { border:1px solid #d5e0eb !important; border-radius:10px !important; background:#fff; color:#1c3046; box-shadow:0 1px 2px rgba(23,42,68,.035); transition:border-color .15s ease,box-shadow .15s ease,background .15s ease; }
+input:focus,select:focus,textarea:focus { outline:none; border-color:#6da7d2 !important; box-shadow:0 0 0 3px rgba(55,126,181,.12) !important; }
+textarea { min-height:88px; }
+button { border-radius:10px !important; font-weight:650; transition:transform .12s ease,box-shadow .12s ease,filter .12s ease; }
+button:hover { filter:brightness(1.015); }
+button:active { transform:translateY(1px); }
+.primary { box-shadow:0 3px 10px rgba(26,91,139,.14); }
+input[type="file"] { padding:9px !important; background:#f8fafc; }
+table { border-collapse:separate !important; border-spacing:0; overflow:hidden; border:1px solid #e0e7ef; border-radius:12px; }
+thead th { background:#f4f7fb; color:#496077; font-size:11px; font-weight:760; letter-spacing:.035em; text-transform:uppercase; }
+.card { box-shadow:0 5px 18px rgba(28,52,78,.055); }
+.card strong,.card b { color:#203b57; }
+.success,.message,.error,.alert { border-radius:10px !important; }
 
-tbody td:first-child,
-thead th:first-child {
-  padding-left:16px;
-}
-
-/* ===== Modales ===== */
-.modal,
-.os-detail-modal {
-  animation:setom-modal-in .18s ease-out;
-}
-
-@keyframes setom-modal-in {
-  from { opacity:0; transform:translateY(7px) scale(.992); }
-  to { opacity:1; transform:none; }
-}
-
-/* ===== Confort mobile ===== */
 @media (max-width:800px) {
-  .cards .card {
-    min-height:104px;
-    padding:14px !important;
-  }
-
-  .cards .card > div:first-child {
-    font-size:10px;
-    letter-spacing:.035em;
-  }
-
+  .cards .card { min-height:104px; padding:14px !important; }
+  .cards .card > div:first-child { font-size:10px; letter-spacing:.035em; }
   .cards .card .number { font-size:24px; }
-
-  .os-list {
-    grid-template-columns:1fr;
-  }
-
-  .os {
-    border-radius:13px;
-  }
-
+  .os-list { grid-template-columns:1fr; }
+  .os { border-radius:13px; }
   .nav button.active::after { display:none; }
+  .container { padding-left:12px; padding-right:12px; }
+  form,fieldset,.card { border-radius:13px; }
+  input,select,textarea,button { min-height:42px; }
+  table { font-size:13px; }
 }
-
-@media (max-width:480px) {
-  .cards { gap:8px; }
-  .cards .card { min-height:98px; padding:12px !important; }
-  .cards .card small { font-size:11px; }
-  .os-actions { gap:7px; }
-}
-
-@media (prefers-reduced-motion:reduce) {
-  .modal,.os-detail-modal { animation:none !important; }
-}
+@media (max-width:480px) { .cards { gap:8px; } .cards .card { min-height:98px; padding:12px !important; } .cards .card small { font-size:11px; } .os-actions { gap:7px; } }
+@media (prefers-reduced-motion:reduce) { .modal,.os-detail-modal,button,input,select,textarea { animation:none !important; transition:none !important; } }
