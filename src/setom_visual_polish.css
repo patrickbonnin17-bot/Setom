@@ -1,0 +1,9 @@
+/* SETOM visual polish — shared métier screens */
+.setom-quality-card,.setom-section,.setom-kpi{transition:box-shadow .18s ease,transform .18s ease}.setom-section:hover,.setom-kpi:hover{box-shadow:0 12px 28px rgba(16,36,58,.11)}
+.setom-section-title{display:flex;align-items:center;gap:8px;min-height:42px;padding:10px 14px;border-radius:10px 10px 0 0}
+.setom-page-title{font-size:clamp(20px,2vw,28px);line-height:1.1}.setom-page-subtitle{color:#657384;font-size:13px;margin-top:4px}
+.setom-action{min-height:40px;padding:9px 14px;border:1px solid #d3dfe6;background:#fff;color:#17324b;cursor:pointer}.setom-action.primary{border-color:#1769aa;background:#1769aa;color:#fff}.setom-action.secondary:hover{border-color:#1769aa;background:#f0f7fb}
+.setom-status{display:inline-flex;align-items:center;gap:6px;white-space:nowrap}.setom-status::before{content:"";width:7px;height:7px;border-radius:50%;background:currentColor;opacity:.85}
+.setom-photo-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px}.setom-photo-grid img{width:100%;aspect-ratio:4/3;object-fit:cover;border-radius:9px;border:1px solid #d8e2e8;display:block}
+@media(max-width:900px){.setom-photo-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.setom-action{min-height:44px}}
+@media(max-width:520px){.setom-photo-grid{grid-template-columns:1fr 1fr}.setom-section-title{font-size:12px}.setom-page-title{font-size:21px}}
