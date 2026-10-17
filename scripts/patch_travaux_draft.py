@@ -1,4 +1,5 @@
 from pathlib import Path
+import re
 
 path = Path("src/main.jsx")
 text = path.read_text(encoding="utf-8")
@@ -54,14 +55,11 @@ if "async function saveWorkDraft()" not in text:
     text = text.replace(anchor, draft + anchor, 1)
 
 if "onClick={saveWorkDraft}" not in text:
-    prefix_old = '<div className="work-actions">{["admin","bureau","equipe_terrain"].includes(profile?.role) && ["Nouveau","À planifier","Planifié","En travaux","Travaux en cours","Travaux réalisés"].includes(os?.status) && <button className="primary" type="button" onClick={save}>'
-    prefix_new = '<div className="work-actions">{["admin","bureau","equipe_terrain"].includes(profile?.role) && ["Nouveau","À planifier","Planifié","En travaux","Travaux en cours","Travaux réalisés"].includes(os?.status) && <div className="work-action-row"><button className="secondary" type="button" onClick={saveWorkDraft}>💾 Enregistrer les mesures</button><button className="primary" type="button" onClick={save}>'
-    if prefix_old not in text: raise SystemExit("SETOM: Travaux transmission prefix not found")
-    text = text.replace(prefix_old, prefix_new, 1)
-    pos = text.find('<div className="work-actions">')
-    closing_pos = text.find('</button>}{![', pos)
-    if closing_pos == -1: raise SystemExit("SETOM: Travaux action closing not found")
-    text = text[:closing_pos] + '</button></div>}' + text[closing_pos + len('</button>}{'):]
+    old = r'<div className="work-actions">{\["admin","bureau","equipe_terrain"\]\.includes\(profile\?\.role\) && \["Planifié","Travaux en cours","Travaux réalisés"\]\.includes\(os\?\.status\) && <button className="primary" type="button" onClick=\{save\}>✅ Transmettre les travaux réalisés</button>}\{!\["Planifié","Travaux en cours","Travaux réalisés"\]\.includes\(os\?\.status\) && <span style=\{\{ color: "#667085", fontSize: 13 \}\}>Les travaux ne peuvent plus être transmis depuis ce statut\.</span>\}</div>'
+    new = '<div className="work-actions">{["admin","bureau","equipe_terrain"].includes(profile?.role) && ["Nouveau","À planifier","Planifié","En travaux","Travaux en cours","Travaux réalisés"].includes(os?.status) && <div className="work-action-row"><button className="secondary" type="button" onClick={saveWorkDraft}>💾 Enregistrer les mesures</button>{["Planifié","En travaux","Travaux en cours","Travaux réalisés"].includes(os?.status) && <button className="primary" type="button" onClick={save}>✅ Transmettre les travaux réalisés</button>}</div>}{!["Planifié","En travaux","Travaux en cours","Travaux réalisés"].includes(os?.status) && <span style={{ color: "#667085", fontSize: 13 }}>Les travaux peuvent être enregistrés en brouillon ; la transmission sera disponible après planification.</span>}</div>'
+    text, count = re.subn(old, new, text, count=1)
+    if count != 1:
+        raise SystemExit("SETOM: Travaux action block not found")
 
 path.write_text(text, encoding="utf-8")
 print("SETOM: Travaux draft save added")
