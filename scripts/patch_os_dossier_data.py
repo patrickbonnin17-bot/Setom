@@ -37,7 +37,6 @@ function OSDossierPilotage({ os, attachments = [], constat = null, constatLines 
 }
 
 '''
-    # The workflow patcher may add props to OSModal, so anchor on the function name only.
     marker_start = text.find("function OSModal(")
     if marker_start == -1:
         raise SystemExit("SETOM: OSModal function not found")
@@ -52,9 +51,11 @@ needle = '    <div className="os-tabs">'
 if "<OSDossierPilotage" not in section:
     if needle not in section:
         raise SystemExit("SETOM: OS tabs marker not found")
-    injection = '''    <OSDossierPilotage os={os} attachments={attachments} constat={constat} constatLines={constatLines} actualRoadSurface={realRoadSurface || os.actualRoadSurface} actualSidewalkSurface={realSidewalkSurface || os.actualSidewalkSurface} actualOtherSurface={realOtherSurface || os.actualOtherSurface} />\n'''
+    # Keep the live dossier safe: these optional values are derived from the OS object,
+    # so the injected component never references variables outside OSModal scope.
+    injection = '''    <OSDossierPilotage os={os} attachments={os?.attachments || []} constat={os?.constat || null} constatLines={os?.constatLines || []} actualRoadSurface={os?.actualRoadSurface} actualSidewalkSurface={os?.actualSidewalkSurface} actualOtherSurface={os?.actualOtherSurface} />\n'''
     section = section.replace(needle, injection + needle, 1)
     text = text[:start] + section + text[end:]
 
 path.write_text(text, encoding="utf-8")
-print("SETOM: OS dossier live summary connected")
+print("SETOM: OS dossier live summary connected safely")
