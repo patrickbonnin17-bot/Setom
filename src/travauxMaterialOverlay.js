@@ -62,17 +62,18 @@ async function loadContext(osNumber) {
   }
   const date = intervention?.planned_date || new Date().toISOString().slice(0, 10);
   const { data: load } = material ? await supabase.from("truck_daily_loads").select("id,loaded_quantity,unit,material_id").eq("load_date", date).eq("material_id", material.id).maybeSingle() : { data: null };
-  const { data: consumptions } = material ? await supabase.from("truck_material_consumptions").select("quantity,unit,estimated").eq("consumption_date", date).eq("material_id", material.id) : { data: [] };
+  const { data: consumptions } = material ? await supabase.from("truck_material_consumptions").select("id,work_order_id,quantity,unit,estimated").eq("consumption_date", date).eq("material_id", material.id) : { data: [] };
   const consumed = (consumptions || []).reduce((sum, row) => sum + (norm(row.unit) === "t" ? num(row.quantity) : 0), 0);
-  const actualSurface = intervention?.actual_surface_m2 || os.actual_road_surface_m2 || os.actual_sidewalk_surface_m2 || os.actual_other_surface_m2 || 0;
-  const plannedSurface = intervention?.planned_surface_m2 || os.planned_surface_m2 || 0;
+  const currentConsumption = (consumptions || []).find((row) => row.work_order_id === os.id);
+  const actualSurface = Number(intervention?.actual_surface_m2) || Number(os.actual_road_surface_m2) + Number(os.actual_sidewalk_surface_m2) + Number(os.actual_other_surface_m2) || 0;
+  const plannedSurface = Number(intervention?.planned_surface_m2) || Number(os.planned_surface_m2) || 0;
   const density = num(material?.density_t_m3);
   const thickness = num(material?.default_thickness_cm);
   const estimatedTonnes = density > 0 && thickness > 0 && actualSurface > 0 ? actualSurface * (thickness / 100) * density : 0;
   const plannedTonnes = density > 0 && thickness > 0 && plannedSurface > 0 ? plannedSurface * (thickness / 100) * density : 0;
   const loaded = num(load?.loaded_quantity);
   const remainingBefore = Math.max(0, loaded - consumed);
-  return { os, intervention, material, date, load, consumed, actualSurface, plannedSurface, density, thickness, estimatedTonnes, plannedTonnes, loaded, remainingBefore };
+  return { os, intervention, material, date, load, consumptions, currentConsumption, consumed, actualSurface, plannedSurface, density, thickness, estimatedTonnes, plannedTonnes, loaded, remainingBefore };
 }
 
 function renderPanel(ctx) {
@@ -85,7 +86,8 @@ function renderPanel(ctx) {
   panel.id = PANEL_ID;
   const m = ctx.material;
   const estimated = ctx.estimatedTonnes;
-  const remainingAfterEstimated = Math.max(0, ctx.remainingBefore - estimated);
+  const displayedActual = ctx.currentConsumption?.quantity || estimated;
+  const remainingAfterEstimated = Math.max(0, ctx.remainingBefore - (ctx.currentConsumption ? 0 : estimated));
   panel.innerHTML = `
     <div class="stm-head"><div><div class="stm-title">🚚 Matériaux & tonnage</div><div class="stm-sub">Estimation automatique à partir des mesures réelles, de l'épaisseur et de la densité du matériau.</div></div><span class="os-status-badge" style="background:#eef6ff;color:#0759d6;padding:6px 10px;border-radius:999px;font-size:11px;font-weight:800">${m?.name || "Matériau non associé"}</span></div>
     <div class="stm-grid">
@@ -96,7 +98,7 @@ function renderPanel(ctx) {
     </div>
     <div class="stm-form">
       <label>Chargement du jour (t)<input id="stm-load" type="number" min="0" step="0.01" value="${ctx.loaded || ""}" ${m ? "" : "disabled"}></label>
-      <label>Consommé réel (t)<input id="stm-actual" type="number" min="0" step="0.01" value="${ctx.estimatedTonnes ? ctx.estimatedTonnes.toFixed(2) : ""}" ${m ? "" : "disabled"}></label>
+      <label>Consommé réel (t)<input id="stm-actual" type="number" min="0" step="0.01" value="${Number(displayedActual).toFixed(2)}" ${m ? "" : "disabled"}></label>
       <button id="stm-save" ${m ? "" : "disabled"}>Enregistrer</button>
       <button id="stm-refresh" class="secondary">Actualiser</button>
     </div>
@@ -122,10 +124,16 @@ function renderPanel(ctx) {
         }
       }
       if (actualValue > 0) {
-        const { error } = await supabase.from("truck_material_consumptions").insert({ work_order_id: ctx.os.id, intervention_id: ctx.intervention.id, material_id: ctx.material.id, consumption_date: ctx.date, quantity: actualValue, unit: "t", estimated: false, source: "travaux_reels", created_by: userId });
-        if (error) throw error;
+        const payload = { work_order_id: ctx.os.id, intervention_id: ctx.intervention.id, material_id: ctx.material.id, consumption_date: ctx.date, quantity: actualValue, unit: "t", estimated: false, source: "travaux_reels", created_by: userId, updated_at: new Date().toISOString() };
+        if (ctx.currentConsumption?.id) {
+          const { error } = await supabase.from("truck_material_consumptions").update(payload).eq("id", ctx.currentConsumption.id);
+          if (error) throw error;
+        } else {
+          const { error } = await supabase.from("truck_material_consumptions").insert(payload);
+          if (error) throw error;
+        }
       }
-      if (msg) msg.textContent = "✅ Chargement et consommation enregistrés.";
+      if (msg) { msg.textContent = "✅ Chargement et consommation enregistrés."; msg.className = "stm-msg"; }
       setTimeout(refresh, 500);
     } catch (error) {
       if (msg) { msg.textContent = `Impossible d'enregistrer : ${error?.message || "erreur inconnue"}`; msg.className = "stm-msg stm-warn"; }
@@ -156,3 +164,5 @@ observer.observe(document.body, { childList: true, subtree: true, attributes: tr
 window.addEventListener("setom:planning-updated", scheduleRefresh);
 addStyle();
 scheduleRefresh();
+
+// SETOM: material consumption upsert
