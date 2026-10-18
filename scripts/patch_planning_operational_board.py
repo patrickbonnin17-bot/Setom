@@ -28,12 +28,7 @@ helper_replacement = '''  const selectedOrders = byDate.get(selectedDate) || [];
 if helper_anchor in text and 'planningMaterialSummary' not in text:
     text = text.replace(helper_anchor, helper_replacement, 1)
 
-render_anchor = '''  function renderOrder(order) {
-    const dayOrders = byDate.get(order.planned_date) || [];'''
-render_replacement = '''  function renderOrder(order) {
-    const dayOrders = byDate.get(order.planned_date) || [];'''
-# no-op anchor check
-if render_anchor not in text:
+if 'function renderOrder(order)' not in text:
     raise SystemExit("SETOM: planning renderOrder anchor not found")
 
 old_day = '''        {view === "jour" && <div className="setom-day-view"><div className="setom-day-title"><strong>{new Date(selectedDate + "T12:00:00").toLocaleDateString("fr-FR", { weekday: "long", day: "numeric", month: "long", year: "numeric" })}</strong><span>{selectedOrders.length} OS planifié(s)</span></div>{selectedOrders.map(renderOrder)}<div className="setom-add-row"><select defaultValue="" onChange={(e) => { const o = orders.find((x) => String(x.id) === e.target.value); if (o) planOrder(o, selectedDate, o.team_id); e.target.value = ""; }}><option value="">+ Ajouter un OS à cette journée…</option>{orders.filter((o) => STATUS_PLANIFIABLE.includes(o.status) && !o.planned_date).map((o) => <option key={o.id} value={o.id}>{fullOsNumber(o)} · {o.address}</option>)}</select></div></div>}'''
@@ -41,7 +36,7 @@ new_day = '''        {view === "jour" && <div className="setom-planning-board">
           <section className="setom-day-view setom-planning-list">
             <div className="setom-day-title"><div><strong>{new Date(selectedDate + "T12:00:00").toLocaleDateString("fr-FR", { weekday: "long", day: "numeric", month: "long", year: "numeric" })}</strong><span>{selectedOrders.length} OS planifié(s)</span></div><div className="setom-day-kpis"><b>{selectedDaySurface.toLocaleString("fr-FR")} m²</b><span>{selectedDayTeams.length} équipe(s)</span></div></div>
             <div className="setom-planning-material-strip">{planningMaterialSummary.length ? planningMaterialSummary.map((item) => <span key={item.name}><b>{item.name}</b> · {item.surface.toLocaleString("fr-FR")} m² · {item.count} OS</span>) : <span>Aucun matériau prévu sur cette journée.</span>}</div>
-            {selectedOrders.map((order) => <button key={order.id} type="button" className={`setom-planning-order-select ${selectedPlanningOrderId === order.id ? "active" : ""}`} onClick={() => setSelectedPlanningOrderId(order.id)}>{renderOrder(order)}</button>)}
+            {selectedOrders.map((order) => <div key={order.id} role="button" tabIndex={0} className={`setom-planning-order-select ${selectedPlanningOrderId === order.id ? "active" : ""}`} onClick={(event) => { if (event.target.closest("button,select,input,a")) return; setSelectedPlanningOrderId(order.id); }} onKeyDown={(event) => { if ((event.key === "Enter" || event.key === " ") && !event.target.closest("button,select,input,a")) { event.preventDefault(); setSelectedPlanningOrderId(order.id); } }}>{renderOrder(order)}</div>)}
             <div className="setom-add-row"><select defaultValue="" onChange={(e) => { const o = orders.find((x) => String(x.id) === e.target.value); if (o) { setSelectedPlanningOrderId(o.id); planOrder(o, selectedDate, o.team_id); } e.target.value = ""; }}><option value="">+ Ajouter un OS à cette journée…</option>{orders.filter((o) => STATUS_PLANIFIABLE.includes(o.status) && !o.planned_date).map((o) => <option key={o.id} value={o.id}>{fullOsNumber(o)} · {o.address}</option>)}</select></div>
           </section>
           <aside className="setom-planning-detail">
