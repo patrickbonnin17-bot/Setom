@@ -1,32 +1,32 @@
 from pathlib import Path
+import re
 
 p = Path("src/profitabilityOverlay.js")
 s = p.read_text(encoding="utf-8")
-
 marker = "// SETOM: material cost variance by OS"
 if marker in s:
     print("SETOM: material cost variance already applied")
     raise SystemExit(0)
 
-needle = '''    const materialCost = osConsumptions.reduce((sum, x) => sum + (num(x.quantity) * num(x.unit_cost)), 0);'''
-replacement = '''    const materialCost = osConsumptions.reduce((sum, x) => sum + (num(x.quantity) * num(x.unit_cost)), 0);
-    const consumedTonnes = osConsumptions.reduce((sum, x) => sum + (normUnit(x.unit) === "t" ? num(x.quantity) : 0), 0);
-    const plannedMaterialTonnes = num(i?.planned_tonnage || o.planned_tonnage || o.estimated_tonnage);
-    const materialQuantityVariance = consumedTonnes - plannedMaterialTonnes;
-    const materialQuantityVariancePct = plannedMaterialTonnes > 0 ? (materialQuantityVariance / plannedMaterialTonnes) * 100 : null;'''
-if needle in s and "materialQuantityVariance" not in s:
-    s = s.replace(needle, replacement, 1)
+# The profitability source already computes real consumed tonnes. Enrich that
+# same OS row with planned-vs-real material variance without changing CA rules.
+if "materialQuantityVariance" not in s:
+    pattern = r'(consumedTonnes=xs\.reduce\(\(sum,x\)=>sum\+\(String\(x\.unit\|\|\"\"\)\.toLowerCase\(\)===\"t\"\?num\(x\.quantity\):0\),0\),)'
+    replacement = r'\1plannedMaterialTonnes=num(i?.planned_tonnage||o.planned_tonnage||o.estimated_tonnage),materialQuantityVariance=consumedTonnes-plannedMaterialTonnes,materialQuantityVariancePct=plannedMaterialTonnes>0?(materialQuantityVariance/plannedMaterialTonnes)*100:null,'
+    s, count = re.subn(pattern, replacement, s, count=1)
+    if count == 0:
+        print("SETOM: profitability variance insertion point not found")
+        raise SystemExit(0)
 
-old_return_fragment = 'marginPct, consumedTonnes, constatStatus };'
-new_return_fragment = 'marginPct, consumedTonnes, materialQuantityVariance, materialQuantityVariancePct, constatStatus };'
-if old_return_fragment in s:
-    s = s.replace(old_return_fragment, new_return_fragment, 1)
+# Add fields to the OS object returned by loadProfitability().
+s = s.replace('marginPct:ca>0?margin/ca*100:null,consumedTonnes,', 'marginPct:ca>0?margin/ca*100:null,consumedTonnes,plannedMaterialTonnes,materialQuantityVariance,materialQuantityVariancePct,', 1)
 
-# Add a visible variance column to the OS table if the table uses the existing row template.
-needle_row = '''<div class="pr-os-row">'''
-if needle_row in s and "Écart matière" not in s:
-    s = s.replace(needle_row, '<div class="pr-os-row">', 1)
-    # Keep this patch data-focused; the existing renderer remains authoritative for layout.
+# Make the variance visible in the OS table. Keep the existing financial columns intact.
+if "Écart matière" not in s and '<th>Tonnage</th>' in s:
+    s = s.replace('<th>Tonnage</th><th>CA accepté</th>', '<th>Tonnage</th><th>Prévu matière</th><th>Écart matière</th><th>CA accepté</th>', 1)
+    old = '<td class="num">${r.consumedTonnes.toFixed(2)} t</td><td class="num">${euro(r.ca)}</td>'
+    new = '<td class="num">${r.consumedTonnes.toFixed(2)} t</td><td class="num">${r.plannedMaterialTonnes>0?r.plannedMaterialTonnes.toFixed(2)+" t":"—"}</td><td class="num ${Math.abs(r.materialQuantityVariancePct||0)>5?"pr-negative":""}">${r.plannedMaterialTonnes>0?(r.materialQuantityVariance>=0?"+":"")+r.materialQuantityVariance.toFixed(2)+" t · "+(r.materialQuantityVariancePct>=0?"+":"")+r.materialQuantityVariancePct.toFixed(1)+" %":"—"}</td><td class="num">${euro(r.ca)}</td>'
+    s = s.replace(old, new, 1)
 
 s += "\n" + marker + "\n"
 p.write_text(s, encoding="utf-8")
