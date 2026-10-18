@@ -56,9 +56,20 @@ for marker in ["setom:chargement:date:v1", "selectedDate = ()", "setom:chargemen
         raise SystemExit(f"SETOM audit: planning/loading date bridge marker missing: {marker}")
 
 bridge = (root / "scripts" / "patch_planning_chargement_bridge.py").read_text(encoding="utf-8")
-for marker in ["SETOM_PLANNING_TONNAGE_KEY", "syncPlanningToChargement", "setom:chargement-updated"]:
+for marker in [
+    "SETOM_PLANNING_TONNAGE_KEY",
+    "syncPlanningToChargement",
+    "setom:chargement-updated",
+    "loaded: Math.max(0, Number(existing?.loaded || 0))",
+    "Cette valeur alimente directement les rotations du camion.",
+]:
     if marker not in bridge:
-        raise SystemExit(f"SETOM audit: planning/loading bridge marker missing: {marker}")
+        raise SystemExit(f"SETOM audit: planning/loading bridge invariant missing: {marker}")
+
+consumption = (root / "scripts" / "patch_chargement_consumption_truth.py").read_text(encoding="utf-8")
+for marker in ["remainingInTruckType: \"reste_affecte\"", "Reste affecté", "n’est pas un stock physique capteur"]:
+    if marker not in consumption:
+        raise SystemExit(f"SETOM audit: consumption truth marker missing: {marker}")
 
 constat = (root / "scripts" / "patch_constat_rpc_safety.py").read_text(encoding="utf-8")
 for marker in ["get_constat_for_work_order", "unsupported regenerate_constat_for_work_order RPC remains"]:
@@ -82,4 +93,4 @@ costs = (root / "scripts" / "patch_profitability_cost_breakdown.py").read_text(e
 if "laborCost" not in costs or "directOtherCost" not in costs:
     raise SystemExit("SETOM audit: profitability cost breakdown patch is incomplete")
 
-print("SETOM audit: build chain, material-separated rotations, planning/loading date, forced-mix control, constat safety/validation, staffing, material ledger and profitability invariants are structurally present")
+print("SETOM audit: build chain, material-separated rotations, planning/loading truth, consumption truth, forced-mix control, constat safety/validation, staffing, material ledger and profitability invariants are structurally present")
