@@ -46,6 +46,9 @@ if(typeof window!=="undefined"){
 }
 '''
 if old not in s:
+    if "let mountedRoot = null;" in s and "let refreshInFlight = false;" in s:
+        print("SETOM: material ledger observer already mutation-safe")
+        raise SystemExit(0)
     raise SystemExit("SETOM: material ledger observer block not found")
 s=s.replace(old,new,1)
 p.write_text(s,encoding="utf-8")
