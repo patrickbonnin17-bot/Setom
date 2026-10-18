@@ -108,7 +108,7 @@ function updateMetrics(root, totals) {
   if (metrics[0]) metrics[0].textContent = `${planned.toFixed(2)} t`;
   if (metrics[1]) metrics[1].textContent = `${loaded.toFixed(2)} t`;
   if (metrics[2]) metrics[2].textContent = `${used.toFixed(2)} t`;
-  if (metrics[3]) metrics[3].textContent = `${(loaded - used).toFixed(2)} t`;
+  if (metrics[3]) metrics[3].textContent = `${Math.max(0, loaded - used).toFixed(2)} t`;
   if (metrics[4]) metrics[4].textContent = `${(loaded - planned).toFixed(2)} t`;
 }
 
@@ -146,7 +146,8 @@ function mergeOrderPilot(date, byOrder) {
   });
   return [...byKey.values()].map((item) => ({
     ...item,
-    remaining: round2(Math.max(0, item.planned - item.loaded)),
+    remainingToLoad: round2(Math.max(0, item.planned - item.loaded)),
+    remainingInTruck: round2(Math.max(0, item.loaded - item.consumed)),
     variance: round2(item.consumed - item.planned),
     consumptionGap: round2(item.loaded - item.consumed)
   })).sort((a, b) => b.planned - a.planned || String(a.osNumber).localeCompare(String(b.osNumber)));
@@ -164,14 +165,16 @@ function renderOrderConsumption(root, byOrder, date) {
   const totalPlanned = pilot.reduce((s, x) => s + num(x.planned), 0);
   const totalLoaded = pilot.reduce((s, x) => s + num(x.loaded), 0);
   const totalConsumed = pilot.reduce((s, x) => s + num(x.consumed), 0);
+  const totalToLoad = pilot.reduce((s, x) => s + num(x.remainingToLoad), 0);
+  const totalInTruck = pilot.reduce((s, x) => s + num(x.remainingInTruck), 0);
   panel.innerHTML = `
     <div class="setom-real-consumption-head">
       <div><strong>Pilotage réel par OS</strong><small>Prévu → chargé → consommé · ${esc(date)}</small></div>
-      <div class="setom-real-consumption-head-kpis"><span>${totalPlanned.toFixed(2)} t prévu</span><span>${totalLoaded.toFixed(2)} t chargé</span><b>${totalConsumed.toFixed(2)} t consommé</b></div>
+      <div class="setom-real-consumption-head-kpis"><span>${totalPlanned.toFixed(2)} t prévu</span><span>${totalLoaded.toFixed(2)} t chargé</span><b>${totalConsumed.toFixed(2)} t consommé</b><span>${totalToLoad.toFixed(2)} t à charger</span><span>${totalInTruck.toFixed(2)} t restant chargé</span></div>
     </div>
     <div class="setom-real-consumption-list">
       ${pilot.map((item) => {
-        const status = item.consumed > 0 && item.planned > 0 && item.consumed > item.planned * 1.05 ? "attention" : item.remaining > 0 ? "encours" : "ok";
+        const status = item.consumed > 0 && item.planned > 0 && item.consumed > item.planned * 1.05 ? "attention" : item.remainingToLoad > 0 ? "encours" : "ok";
         const statusLabel = status === "attention" ? "Surconsommation" : status === "encours" ? "À charger" : "Suivi OK";
         return `
         <article class="setom-real-consumption-item ${status}" data-order-id="${esc(item.orderId)}">
@@ -180,16 +183,18 @@ function renderOrderConsumption(root, byOrder, date) {
             <span>Prévu <b>${item.planned.toFixed(2)} t</b></span>
             <span>Chargé <b>${item.loaded.toFixed(2)} t</b></span>
             <span>Consommé <b>${item.consumed.toFixed(2)} t</b></span>
-            <span>Reste <b>${item.remaining.toFixed(2)} t</b></span>
+            <span>À charger <b>${item.remainingToLoad.toFixed(2)} t</b></span>
+            <span>Restant chargé <b>${item.remainingInTruck.toFixed(2)} t</b></span>
+            <span>Écart conso <b>${item.variance >= 0 ? "+" : ""}${item.variance.toFixed(2)} t</b></span>
           </div>
           <div class="setom-real-consumption-materials">${item.materials.length ? item.materials.map((m) => `<span>${esc(m.name)} <b>${num(m.tonnes).toFixed(2)} t</b></span>`).join("") : `<span>${esc(item.material || "Matériau à préciser")}</span>`}</div>
         </article>`;
       }).join("")}
     </div>`;
-  if (!document.getElementById("setom-real-consumption-style-v3")) {
+  if (!document.getElementById("setom-real-consumption-style-v4")) {
     const style = document.createElement("style");
-    style.id = "setom-real-consumption-style-v3";
-    style.textContent = `.setom-real-consumption-by-os{margin:0 11px 11px;background:#0b202b;border:1px solid #2b5062;border-radius:14px;color:#eaf5f8;overflow:hidden}.setom-real-consumption-head{display:flex;justify-content:space-between;align-items:center;gap:12px;padding:12px 14px;background:linear-gradient(90deg,#0e2938,#102f3d);border-bottom:1px solid #2b5062}.setom-real-consumption-head strong{display:block;font-size:13px}.setom-real-consumption-head small{display:block;margin-top:3px;color:#8fa8b4;font-size:10px}.setom-real-consumption-head-kpis{display:flex;gap:8px;align-items:center;flex-wrap:wrap;justify-content:flex-end}.setom-real-consumption-head-kpis span,.setom-real-consumption-head-kpis b{padding:5px 7px;border-radius:7px;background:#102d3b;color:#a9c0ca;font-size:9px}.setom-real-consumption-head-kpis b{color:#39df88}.setom-real-consumption-list{display:grid;gap:7px;padding:9px}.setom-real-consumption-item{display:grid;grid-template-columns:1fr 1.6fr 1fr;gap:10px;align-items:center;padding:9px 10px;background:#0d2634;border:1px solid #234757;border-radius:9px}.setom-real-consumption-item.attention{border-color:#a97935}.setom-real-consumption-item.encours{border-color:#2c7898}.setom-real-consumption-os strong{display:block;font-size:11px}.setom-real-consumption-os small{display:block;color:#8da6b2;font-size:9px;margin-top:3px}.setom-real-consumption-os em{display:inline-block;margin-top:5px;padding:3px 5px;border-radius:5px;background:#123342;color:#8fd8f2;font-size:8px;font-style:normal;font-weight:900}.setom-real-consumption-item.attention .setom-real-consumption-os em{color:#ffd36a;background:#3b2c16}.setom-real-consumption-values{display:grid;grid-template-columns:repeat(4,1fr);gap:5px}.setom-real-consumption-values span{padding:5px 6px;border-radius:6px;background:#122f3d;color:#8fa8b4;font-size:8px}.setom-real-consumption-values b{display:block;color:#edf7fa;font-size:10px;margin-top:2px}.setom-real-consumption-materials{display:flex;flex-wrap:wrap;gap:5px}.setom-real-consumption-materials span{padding:4px 6px;border-radius:6px;background:#122f3d;color:#a9c0ca;font-size:9px}.setom-real-consumption-materials b{color:#eaf8ed}@media(max-width:900px){.setom-real-consumption-item{grid-template-columns:1fr 1fr}.setom-real-consumption-values{grid-column:1/-1}}@media(max-width:700px){.setom-real-consumption-head{display:block}.setom-real-consumption-head-kpis{justify-content:flex-start;margin-top:8px}.setom-real-consumption-item{grid-template-columns:1fr}.setom-real-consumption-values{grid-template-columns:1fr 1fr}}`;
+    style.id = "setom-real-consumption-style-v4";
+    style.textContent = `.setom-real-consumption-by-os{margin:0 11px 11px;background:#0b202b;border:1px solid #2b5062;border-radius:14px;color:#eaf5f8;overflow:hidden}.setom-real-consumption-head{display:flex;justify-content:space-between;align-items:center;gap:12px;padding:12px 14px;background:linear-gradient(90deg,#0e2938,#102f3d);border-bottom:1px solid #2b5062}.setom-real-consumption-head strong{display:block;font-size:13px}.setom-real-consumption-head small{display:block;margin-top:3px;color:#8fa8b4;font-size:10px}.setom-real-consumption-head-kpis{display:flex;gap:8px;align-items:center;flex-wrap:wrap;justify-content:flex-end}.setom-real-consumption-head-kpis span,.setom-real-consumption-head-kpis b{padding:5px 7px;border-radius:7px;background:#102d3b;color:#a9c0ca;font-size:9px}.setom-real-consumption-head-kpis b{color:#39df88}.setom-real-consumption-list{display:grid;gap:7px;padding:9px}.setom-real-consumption-item{display:grid;grid-template-columns:1fr 1.8fr 1fr;gap:10px;align-items:center;padding:9px 10px;background:#0d2634;border:1px solid #234757;border-radius:9px}.setom-real-consumption-item.attention{border-color:#a97935}.setom-real-consumption-item.encours{border-color:#2c7898}.setom-real-consumption-os strong{display:block;font-size:11px}.setom-real-consumption-os small{display:block;color:#8da6b2;font-size:9px;margin-top:3px}.setom-real-consumption-os em{display:inline-block;margin-top:5px;padding:3px 5px;border-radius:5px;background:#123342;color:#8fd8f2;font-size:8px;font-style:normal;font-weight:900}.setom-real-consumption-item.attention .setom-real-consumption-os em{color:#ffd36a;background:#3b2c16}.setom-real-consumption-values{display:grid;grid-template-columns:repeat(3,1fr);gap:5px}.setom-real-consumption-values span{padding:5px 6px;border-radius:6px;background:#122f3d;color:#8fa8b4;font-size:8px}.setom-real-consumption-values b{display:block;color:#edf7fa;font-size:10px;margin-top:2px}.setom-real-consumption-materials{display:flex;flex-wrap:wrap;gap:5px}.setom-real-consumption-materials span{padding:4px 6px;border-radius:6px;background:#122f3d;color:#a9c0ca;font-size:9px}.setom-real-consumption-materials b{color:#eaf8ed}@media(max-width:900px){.setom-real-consumption-item{grid-template-columns:1fr 1fr}.setom-real-consumption-values{grid-column:1/-1}}@media(max-width:700px){.setom-real-consumption-head{display:block}.setom-real-consumption-head-kpis{justify-content:flex-start;margin-top:8px}.setom-real-consumption-item{grid-template-columns:1fr}.setom-real-consumption-values{grid-template-columns:1fr 1fr}}`;
     document.head.appendChild(style);
   }
 }
