@@ -34,7 +34,14 @@ if "let mountedRoot" not in observer or "refreshInFlight" not in observer:
     raise SystemExit("SETOM audit: material ledger observer is not mutation-safe/idempotent")
 
 rot = (root / "scripts" / "patch_chargement_material_rules.py").read_text(encoding="utf-8")
-for marker in ["materialInfo", "mixedMaterials", "MÉLANGE FORCÉ", "Material change always starts a fresh rotation."]:
+for marker in [
+    "materialInfo",
+    "byMaterial",
+    "mixedMaterials",
+    "MÉLANGE FORCÉ",
+    "Material change always starts a fresh rotation.",
+    "assignments[copy.id] = rotation",
+]:
     if marker not in rot:
         raise SystemExit(f"SETOM audit: loading rotation invariant missing: {marker}")
 
@@ -75,4 +82,4 @@ costs = (root / "scripts" / "patch_profitability_cost_breakdown.py").read_text(e
 if "laborCost" not in costs or "directOtherCost" not in costs:
     raise SystemExit("SETOM audit: profitability cost breakdown patch is incomplete")
 
-print("SETOM audit: build chain, loading/date bridges, forced-mix control, constat safety/validation, staffing, material ledger and profitability invariants are structurally present")
+print("SETOM audit: build chain, material-separated rotations, planning/loading date, forced-mix control, constat safety/validation, staffing, material ledger and profitability invariants are structurally present")
