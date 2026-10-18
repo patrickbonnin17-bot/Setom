@@ -76,6 +76,11 @@ for marker in ["get_constat_for_work_order", "unsupported regenerate_constat_for
     if marker not in constat:
         raise SystemExit(f"SETOM audit: constat safety guard marker missing: {marker}")
 
+travaux = (root / "scripts" / "patch_travaux_measurements_photos.py").read_text(encoding="utf-8")
+for marker in ["data-setom-travaux-photo-zone", "capture=\"environment\"", "Mesures réelles", "totalSurface"]:
+    if marker not in travaux:
+        raise SystemExit(f"SETOM audit: Travaux measurement/photo marker missing: {marker}")
+
 validation = (root / "scripts" / "patch_constat_validation_status.py").read_text(encoding="utf-8")
 if "[\"Brouillon\", \"À vérifier\", \"À valider\"]" not in validation:
     raise SystemExit("SETOM audit: constat validation status guard is incomplete")
@@ -85,12 +90,12 @@ for marker in ["DEFAULT_TEAM_SIZE = 6", "jamais OS par OS"]:
     if marker not in staffing:
         raise SystemExit(f"SETOM audit: staffing rule marker missing: {marker}")
 
-variance = (root / "scripts" / "patch_profitability_material_variance.py").read_text(encoding="utf-8")
+variance = (root / "scripts/patch_profitability_material_variance.py").read_text(encoding="utf-8")
 if "materialQuantityVariance" not in variance or "Écart matière" not in variance:
     raise SystemExit("SETOM audit: profitability material variance patch is incomplete")
 
-costs = (root / "scripts" / "patch_profitability_cost_breakdown.py").read_text(encoding="utf-8")
+costs = (root / "scripts/patch_profitability_cost_breakdown.py").read_text(encoding="utf-8")
 if "laborCost" not in costs or "directOtherCost" not in costs:
     raise SystemExit("SETOM audit: profitability cost breakdown patch is incomplete")
 
-print("SETOM audit: build chain, material-separated rotations, planning/loading truth, consumption truth, forced-mix control, constat safety/validation, staffing, material ledger and profitability invariants are structurally present")
+print("SETOM audit: build chain, material-separated rotations, planning/loading truth, consumption truth, Travaux capture, constat safety/validation, staffing, material ledger and profitability invariants are structurally present")
