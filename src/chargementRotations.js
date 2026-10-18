@@ -82,6 +82,7 @@ function loadedOf(row) {
 function buildPlan() {
   const rs = rows();
   const capacityT = payloadCapacity();
+  const state = readRotations();
   const byRotation = new Map();
   rs.forEach((row) => {
     const r = getAssignment(row.id);
@@ -91,7 +92,10 @@ function buildPlan() {
   const totalPlanned = rs.reduce((s, r) => s + plannedOf(r), 0);
   const totalLoaded = rs.reduce((s, r) => s + loadedOf(r), 0);
   const needed = Math.max(1, Math.ceil(totalPlanned / capacityT));
-  for (let i = 1; i <= needed; i += 1) if (!byRotation.has(i)) byRotation.set(i, []);
+  // Keep manually created empty rotations visible instead of losing them on re-render.
+  const manualRotations = Math.max(0, (Number(state.next) || 1) - 1);
+  const rotationCount = Math.max(needed, manualRotations, ...byRotation.keys(), 1);
+  for (let i = 1; i <= rotationCount; i += 1) if (!byRotation.has(i)) byRotation.set(i, []);
   const rotations = [...byRotation.entries()].sort((a, b) => a[0] - b[0]).map(([number, list]) => ({
     number,
     rows: list,
@@ -99,7 +103,7 @@ function buildPlan() {
     loaded: round2(list.reduce((s, r) => s + loadedOf(r), 0)),
     osCount: new Set(list.map((r) => r.osId).filter(Boolean)).size,
   }));
-  return { rows: rs, totalPlanned: round2(totalPlanned), totalLoaded: round2(totalLoaded), needed, capacityT, rotations };
+  return { rows: rs, totalPlanned: round2(totalPlanned), totalLoaded: round2(totalLoaded), needed, rotationCount, capacityT, rotations };
 }
 
 function styles() {
@@ -159,7 +163,7 @@ function render() {
   styles();
   const plan = buildPlan();
   let active = Number(host.dataset.rotationActive || 1);
-  if (active > Math.max(plan.needed, 1)) active = 1;
+  if (active > Math.max(plan.rotationCount, 1)) active = 1;
   host.dataset.rotationActive = String(active);
   let panel = document.getElementById(ROOT_ID);
   if (!panel) {
@@ -168,9 +172,9 @@ function render() {
     host.appendChild(panel);
   }
   const remaining = Math.max(0, round2(plan.totalPlanned - plan.totalLoaded));
-  const capacity = Math.max(0, round2(plan.needed * plan.capacityT - plan.totalPlanned));
+  const capacity = Math.max(0, round2(plan.rotationCount * plan.capacityT - plan.totalPlanned));
   const selected = plan.rotations.find((r) => r.number === active) || plan.rotations[0];
-  const rotationOptions = Array.from({ length: Math.max(plan.needed + 2, 3) }, (_, i) => i + 1);
+  const rotationOptions = Array.from({ length: Math.max(plan.rotationCount + 1, 3) }, (_, i) => i + 1);
   panel.innerHTML = `
     <div class="rtn-head">
       <div><div class="rtn-title">🚛 ROTATIONS DU CAMION</div><span class="rtn-sub">Répartition automatique des besoins de la journée sur des chargements de ${plan.capacityT.toFixed(1)} t maximum.</span></div>
@@ -181,7 +185,7 @@ function render() {
       <div class="rtn-kpi"><span>DÉJÀ CHARGÉ</span><strong>${plan.totalLoaded.toFixed(2)} t</strong></div>
       <div class="rtn-kpi good"><span>RESTE À CHARGER</span><strong>${remaining.toFixed(2)} t</strong></div>
       <div class="rtn-kpi warn"><span>ROTATIONS NÉCESSAIRES</span><strong>${plan.needed}</strong></div>
-      <div class="rtn-kpi"><span>CAPACITÉ TOTALE</span><strong>${(plan.needed * plan.capacityT).toFixed(1)} t</strong></div>
+      <div class="rtn-kpi"><span>CAPACITÉ TOTALE</span><strong>${(plan.rotationCount * plan.capacityT).toFixed(1)} t</strong></div>
     </div>
     <div class="rtn-rotations">
       ${plan.rotations.map((r) => `
@@ -224,7 +228,7 @@ function render() {
   });
   panel.querySelector(".rtn-add")?.addEventListener("click", () => {
     const state = readRotations();
-    const next = Math.max(plan.needed + 1, Number(state.next) || 1);
+    const next = Math.max(plan.rotationCount + 1, Number(state.next) || 1);
     state.next = next + 1;
     writeRotations(state);
     host.dataset.rotationActive = String(next);
