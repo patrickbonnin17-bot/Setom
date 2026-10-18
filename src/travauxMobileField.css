@@ -1,0 +1,18 @@
+/* SETOM — Travaux terrain mobile */
+@media (max-width: 700px) {
+  .os-detail-modal [data-setom-travaux-mobile="true"] { margin-top: 10px !important; }
+  .os-detail-modal [data-setom-travaux-mobile="true"] > div:first-child { align-items: flex-start !important; }
+  .os-detail-modal [data-setom-travaux-mobile="true"] label { min-height: 48px; box-sizing: border-box; }
+  .os-detail-modal [data-setom-travaux-mobile="true"] label input[type="file"] { display: none !important; }
+  .os-detail-modal .work-measurement-summary { position: sticky; top: 0; z-index: 5; box-shadow: 0 5px 16px rgba(16,36,58,.08); }
+  .os-detail-modal .work-measurement-summary > div { grid-template-columns: repeat(2, minmax(0, 1fr)) !important; }
+  .os-detail-modal .work-measurement-summary strong { font-size: 15px; }
+  .os-detail-modal .work-actions { margin-left: -1px; margin-right: -1px; padding: 10px 12px; }
+  .os-detail-modal .work-action-row { gap: 8px !important; }
+  .os-detail-modal .work-action-row button { min-height: 52px !important; border-radius: 10px; }
+  .os-detail-modal .attachments-list { grid-template-columns: 1fr !important; }
+  .os-detail-modal .attachment-item { min-height: 64px; }
+}
+@media (min-width: 701px) {
+  .os-detail-modal [data-setom-travaux-mobile="true"] { display: block; }
+}
