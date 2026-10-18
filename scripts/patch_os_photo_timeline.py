@@ -31,22 +31,37 @@ function OSPhotoTimeline({ attachments = [] }) {
   </section>;
 }
 '''
+
 if "function OSPhotoTimeline(" not in text:
     marker = "function OSDossierPilotage("
     idx = text.find(marker)
     if idx == -1:
-        raise SystemExit("SETOM: dossier pilotage anchor not found")
+        # Fallback: keep the timeline independent of the optional dossier pilotage layer.
+        marker = "function OSModal("
+        idx = text.find(marker)
+    if idx == -1:
+        raise SystemExit("SETOM: OS modal anchor not found; refusing to corrupt main.jsx")
     text = text[:idx] + component + "\n" + text[idx:]
 
 marker = '    <OSDossierPilotage os={os} attachments={os?.attachments || []}'
 idx = text.find(marker)
-if idx == -1:
-    raise SystemExit("SETOM: dossier pilotage usage not found")
-end = text.find('\n', idx)
-if end == -1:
-    raise SystemExit("SETOM: dossier pilotage usage line not found")
-if "<OSPhotoTimeline" not in text[idx:end + 300]:
-    text = text[:end + 1] + '    <OSPhotoTimeline attachments={os?.attachments || []} />\n' + text[end + 1:]
+if idx != -1:
+    end = text.find('\n', idx)
+    if end == -1:
+        raise SystemExit("SETOM: dossier pilotage usage line not found")
+    if "<OSPhotoTimeline" not in text[idx:end + 300]:
+        text = text[:end + 1] + '    <OSPhotoTimeline attachments={os?.attachments || []} />\n' + text[end + 1:]
+else:
+    # Fallback insertion point for builds where the pilotage layer is not present yet.
+    fallback = '    <div className="os-v2-photo-callout">'
+    idx = text.find(fallback)
+    if idx == -1:
+        fallback = '    <div className="os-tabs">'
+        idx = text.find(fallback)
+    if idx == -1:
+        raise SystemExit("SETOM: OS timeline insertion anchor not found; refusing to corrupt main.jsx")
+    if "<OSPhotoTimeline" not in text[idx:idx + 500]:
+        text = text[:idx] + '    <OSPhotoTimeline attachments={os?.attachments || []} />\n' + text[idx:]
 
 path.write_text(text, encoding="utf-8")
 print("SETOM: OS photo timeline added")
