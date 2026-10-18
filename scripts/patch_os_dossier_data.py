@@ -8,7 +8,11 @@ harmonization_marker = "// SETOM: planned surface harmonization"
 if harmonization_marker not in text:
     needle = '        const day = plannedDay ? plannedDay.charAt(0).toUpperCase() + plannedDay.slice(1) : null;\n'
     if needle in text:
-        replacement = needle + '''        const plannedSurfaceM2 = row.planned_surface_m2 != null\n          ? Number(row.planned_surface_m2)\n          : ((Number(row.planned_road_surface_m2) || 0) + (Number(row.planned_sidewalk_surface_m2) || 0) + (Number(row.planned_other_surface_m2) || 0));\n        const normalizedPlannedSurfaceM2 = Number.isFinite(plannedSurfaceM2) && plannedSurfaceM2 > 0 ? plannedSurfaceM2 : null;\n'''
+        replacement = needle + '''        const plannedSurfaceM2 = row.planned_surface_m2 != null
+          ? Number(row.planned_surface_m2)
+          : ((Number(row.planned_road_surface_m2) || 0) + (Number(row.planned_sidewalk_surface_m2) || 0) + (Number(row.planned_other_surface_m2) || 0));
+        const normalizedPlannedSurfaceM2 = Number.isFinite(plannedSurfaceM2) && plannedSurfaceM2 > 0 ? plannedSurfaceM2 : null;
+'''
         text = text.replace(needle, replacement, 1)
         return_needle = '          trade: row.material_detail || "Intervention", sector: sectorById.get(row.sector_id) || "Non classé", sectorId: row.sector_id || "", status: row.status || "Nouveau",\n'
         if return_needle in text:
