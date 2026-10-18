@@ -9,6 +9,7 @@ required = [
     "patch_dashboard_intelligence.py",
     "patch_staffing_intelligence.py",
     "patch_chargement_material_rules.py",
+    "patch_chargement_forced_mix_guard.py",
     "patch_chargement_planning_date.py",
     "patch_chargement_order_context.py",
     "patch_planning_chargement_bridge.py",
@@ -35,6 +36,11 @@ for marker in ["materialInfo", "mixedMaterials", "MÉLANGE FORCÉ", "Material ch
     if marker not in rot:
         raise SystemExit(f"SETOM audit: loading rotation invariant missing: {marker}")
 
+forced = (root / "scripts" / "patch_chargement_forced_mix_guard.py").read_text(encoding="utf-8")
+for marker in ["createsForcedMix", "forcedMixes", "manual multi-material assignment"]:
+    if marker not in forced:
+        raise SystemExit(f"SETOM audit: forced-mix guard marker missing: {marker}")
+
 date_patch = (root / "scripts" / "patch_chargement_planning_date.py").read_text(encoding="utf-8")
 for marker in ["setom:chargement:date:v1", "selectedDate = ()", "setom:chargement-date-changed"]:
     if marker not in date_patch:
@@ -58,4 +64,4 @@ costs = (root / "scripts" / "patch_profitability_cost_breakdown.py").read_text(e
 if "laborCost" not in costs or "directOtherCost" not in costs:
     raise SystemExit("SETOM audit: profitability cost breakdown patch is incomplete")
 
-print("SETOM audit: build chain, loading/date bridges, staffing, material ledger and profitability invariants are structurally present")
+print("SETOM audit: build chain, loading/date bridges, forced-mix control, staffing, material ledger and profitability invariants are structurally present")
