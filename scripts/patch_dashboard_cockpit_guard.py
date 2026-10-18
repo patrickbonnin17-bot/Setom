@@ -14,25 +14,21 @@ block = re.compile(
     re.S,
 )
 
-new_section = '''    pattern = re.compile(
-        r'\\{page\\s*===\\s*"dashboard"\\s*&&\\s*\\(.*?\\n\\s*\\{page\\s*===\\s*"os"',
+new_section = """    pattern = re.compile(
+        r'\\{page\\s*===\\s*\"dashboard\"\\s*&&\\s*\\(.*?\\n\\s*\\{page\\s*===\\s*\"os\"',
         re.S,
     )
     match = pattern.search(s)
-    replacement = '''{page === "dashboard" && <DashboardCockpit osList={osList} dbTeams={dbTeams} dbMaterials={dbMaterials} appSettings={appSettings} onOpenOS={(os) => { setSelectedOS(os); setPage("os"); }} onNavigate={setPage} />}
-
-      {page === "os"'''
+    replacement = '''{page === \"dashboard\" && <DashboardCockpit osList={osList} dbTeams={dbTeams} dbMaterials={dbMaterials} appSettings={appSettings} onOpenOS={(os) => { setSelectedOS(os); setPage(\"os\"); }} onNavigate={setPage} />}\n\n      {page === \"os\"'''
     if match:
         s = s[:match.start()] + replacement + s[match.end():]
     else:
-        os_anchor = re.search(r'\\{page\\s*===\\s*"os"', s)
+        os_anchor = re.search(r'\\{page\\s*===\\s*\"os\"', s)
         if not os_anchor:
-            raise SystemExit("SETOM dashboard: no dashboard or OS render anchor found; refusing to corrupt main.jsx")
-        dashboard_render = '''{page === "dashboard" && <DashboardCockpit osList={osList} dbTeams={dbTeams} dbMaterials={dbMaterials} appSettings={appSettings} onOpenOS={(os) => { setSelectedOS(os); setPage("os"); }} onNavigate={setPage} />}
-
-      '''
+            raise SystemExit(\"SETOM dashboard: no dashboard or OS render anchor found; refusing to corrupt main.jsx\")
+        dashboard_render = '''{page === \"dashboard\" && <DashboardCockpit osList={osList} dbTeams={dbTeams} dbMaterials={dbMaterials} appSettings={appSettings} onOpenOS={(os) => { setSelectedOS(os); setPage(\"os\"); }} onNavigate={setPage} />}\n\n      '''
         s = s[:os_anchor.start()] + dashboard_render + s[os_anchor.start():]
-'''
+"""
 
 m = block.search(s)
 if m:
