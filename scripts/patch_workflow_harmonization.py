@@ -4,13 +4,11 @@ MAIN = Path("src/main.jsx")
 PLANNING = Path("src/planningOverlay.jsx")
 CONSTATS = Path("src/constatValidationPatch.jsx")
 
-CANONICAL = '["Nouveau", "À planifier", "Planifié", "En travaux", "Travaux en cours", "Travaux réalisés", "Travaux effectués", "Constat à vérifier", "Constat de facturation", "En attente de validation", "Validé", "Validé avec réserve", "Réserve", "Correction à réaliser", "Payé", "Archivé", "En erreur", "Doublon", "Annulé"]'
 EDITABLE = '["Nouveau", "À planifier", "Planifié", "En travaux", "Travaux en cours", "Travaux réalisés", "Travaux effectués", "Constat à vérifier", "Constat de facturation", "En attente de validation", "En erreur"]'
 
 s = MAIN.read_text(encoding="utf-8")
-# The build is patch-driven, so this final pass is deliberately idempotent and runs after every other workflow patch.
+# Final pass: normalize guards after all other build-time patches. Safe to run more than once.
 s = s.replace('const EDITABLE_OS_STATUSES = ["Nouveau", "À planifier", "Planifié", "En travaux", "Travaux en cours", "Travaux réalisés", "Travaux effectués", "Constat à vérifier", "Constat de facturation", "En attente de validation", "En erreur"];', 'const EDITABLE_OS_STATUSES = ' + EDITABLE + ';')
-# Any remaining literal guard that mixes the two active-work labels is expanded rather than renamed, preserving existing data.
 for old in [
     '["Planifié", "Travaux en cours", "Travaux réalisés"]',
     '["Planifié","Travaux en cours","Travaux réalisés"]',
@@ -22,8 +20,8 @@ for old in [
 MAIN.write_text(s, encoding="utf-8")
 
 p = PLANNING.read_text(encoding="utf-8")
-p = p.replace('const STATUS_PLANIFIABLE = ["À planifier", "Planifié"];', 'const STATUS_PLANIFIABLE = ["À planifier", "Planifié"];\nconst STATUS_ACTIVE_WORK = ["En travaux", "Travaux en cours"];')
-# Never allow an automatically planned OS to be treated as an active-work OS by a narrow legacy guard.
+if 'const STATUS_ACTIVE_WORK = ["En travaux", "Travaux en cours"];' not in p:
+    p = p.replace('const STATUS_PLANIFIABLE = ["À planifier", "Planifié"];', 'const STATUS_PLANIFIABLE = ["À planifier", "Planifié"];\nconst STATUS_ACTIVE_WORK = ["En travaux", "Travaux en cours"];')
 p = p.replace('order.status === "Travaux en cours"', 'STATUS_ACTIVE_WORK.includes(order.status)')
 PLANNING.write_text(p, encoding="utf-8")
 
