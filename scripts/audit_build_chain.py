@@ -40,7 +40,7 @@ for marker in ["SETOM_PLANNING_TONNAGE_KEY", "syncPlanningToChargement", "setom:
     if marker not in bridge:
         raise SystemExit(f"SETOM audit: planning/loading bridge marker missing: {marker}")
 
-staffing = (root / "scripts" / "patch_staffing_intelligence.py").read_text(encoding="utf-8")
+staffing = (root / "src" / "staffingIntelligence.js").read_text(encoding="utf-8")
 for marker in ["DEFAULT_TEAM_SIZE = 6", "jamais OS par OS"]:
     if marker not in staffing:
         raise SystemExit(f"SETOM audit: staffing rule marker missing: {marker}")
