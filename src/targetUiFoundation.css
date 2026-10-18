@@ -1,17 +1,19 @@
-/* SETOM — target UI foundation
-   Stage 1: converge the existing functional application toward the approved visual direction.
-   This layer is intentionally non-destructive: it changes layout/visual hierarchy, not workflow logic.
+/* SETOM — approved visual direction v2
+   Functional code remains unchanged. This layer aligns the existing app with
+   the approved SETOM desktop/mobile visual language: top navigation, navy
+   identity, bright blue actions, compact cards and operational workspaces.
 */
 :root {
   --setom-navy: #062a45;
-  --setom-navy-2: #0b3a5d;
-  --setom-blue: #0b8ef3;
-  --setom-blue-2: #0076d9;
+  --setom-navy-2: #0a3b5e;
+  --setom-blue: #0788ee;
+  --setom-blue-2: #006fc9;
   --setom-bg: #eef3f7;
   --setom-card: #ffffff;
-  --setom-line: #d8e2ea;
+  --setom-line: #d6e1ea;
   --setom-text: #102b43;
   --setom-muted: #66788a;
+  --setom-green: #18a56b;
   --setom-radius: 10px;
 }
 
@@ -19,137 +21,279 @@ html, body, #root { min-height: 100%; }
 body { background: var(--setom-bg); color: var(--setom-text); }
 
 @media (min-width: 980px) {
+  /* Top application bar */
   .header {
     position: fixed !important;
-    inset: 0 auto 0 0 !important;
-    width: 176px !important;
-    height: 100vh !important;
-    min-height: 100vh !important;
-    padding: 18px 12px !important;
+    inset: 0 0 auto 0 !important;
+    width: 100% !important;
+    height: 86px !important;
+    min-height: 86px !important;
+    padding: 0 24px 0 30px !important;
     border-radius: 0 !important;
-    background: linear-gradient(180deg, var(--setom-navy), #071f33) !important;
-    box-shadow: 4px 0 18px rgba(7, 36, 57, .16) !important;
+    background: linear-gradient(100deg, #052944 0%, #063553 54%, #082f4b 100%) !important;
+    box-shadow: 0 3px 14px rgba(5, 37, 59, .18) !important;
     display: flex !important;
-    flex-direction: column !important;
-    justify-content: flex-start !important;
-    align-items: stretch !important;
-    gap: 0 !important;
-    z-index: 100 !important;
+    align-items: center !important;
+    justify-content: space-between !important;
+    gap: 20px !important;
+    z-index: 1000 !important;
   }
 
   .header > div:first-child {
-    min-height: 76px;
-    padding: 4px 8px 14px;
-    border-bottom: 1px solid rgba(255,255,255,.12);
+    width: 278px;
+    min-width: 278px;
+    min-height: 86px;
+    padding: 0 18px 0 0;
+    border: 0 !important;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
   }
 
   .header h1 {
-    font-size: 25px !important;
-    letter-spacing: -.7px;
-    line-height: 1 !important;
-    margin-bottom: 8px !important;
+    margin: 0 !important;
+    font-size: 39px !important;
+    line-height: .92 !important;
+    letter-spacing: -1.8px !important;
+    font-weight: 800 !important;
+    color: #fff !important;
   }
 
-  .header small { color: rgba(255,255,255,.72); }
+  .header small {
+    display: block;
+    margin-top: 6px;
+    color: rgba(255,255,255,.78) !important;
+    font-size: 10px !important;
+    letter-spacing: .35px;
+    text-transform: uppercase;
+  }
 
+  /* User area */
   .header > div:last-child {
-    position: absolute !important;
-    left: 12px !important;
-    right: 12px !important;
-    bottom: 14px !important;
+    position: relative !important;
+    left: auto !important;
+    right: auto !important;
+    bottom: auto !important;
+    width: 205px !important;
+    min-width: 205px !important;
+    padding: 0 !important;
+    background: transparent !important;
+    border-radius: 0 !important;
     display: flex !important;
-    flex-direction: column !important;
-    align-items: stretch !important;
-    gap: 8px !important;
-    padding: 10px 8px !important;
-    border-radius: 10px;
-    background: rgba(255,255,255,.07);
+    flex-direction: row !important;
+    align-items: center !important;
+    justify-content: flex-end !important;
+    gap: 10px !important;
   }
 
-  .header > div:last-child small { font-size: 11px; line-height: 1.35; }
+  .header > div:last-child small { font-size: 11px !important; line-height: 1.25; }
 
   .header > div:last-child .secondary {
-    width: 100%;
-    padding: 7px 8px !important;
-    background: rgba(255,255,255,.1) !important;
+    width: auto !important;
+    padding: 6px 9px !important;
+    background: rgba(255,255,255,.08) !important;
     color: #fff !important;
     border: 1px solid rgba(255,255,255,.12) !important;
-    font-size: 11px;
+    font-size: 11px !important;
   }
 
-  .container {
-    max-width: none !important;
-    width: calc(100% - 176px) !important;
-    margin: 0 0 0 176px !important;
-    padding: 22px 24px 30px !important;
-  }
-
+  /* Navigation occupies the center of the same top bar */
   .nav {
     position: fixed !important;
-    z-index: 101 !important;
-    left: 0 !important;
-    top: 102px !important;
-    bottom: 126px !important;
-    width: 176px !important;
+    z-index: 1001 !important;
+    left: 308px !important;
+    top: 0 !important;
+    bottom: auto !important;
+    width: calc(100% - 520px) !important;
+    height: 86px !important;
     margin: 0 !important;
-    padding: 10px !important;
+    padding: 0 !important;
     display: flex !important;
-    flex-direction: column !important;
-    gap: 4px !important;
-    overflow-x: hidden !important;
-    overflow-y: auto !important;
+    align-items: stretch !important;
+    justify-content: flex-start !important;
+    gap: 0 !important;
+    overflow-x: auto !important;
+    overflow-y: hidden !important;
     background: transparent !important;
   }
 
   .nav button {
-    width: 100% !important;
-    min-height: 39px !important;
-    padding: 9px 11px !important;
+    flex: 0 0 104px;
+    min-width: 92px !important;
+    height: 86px !important;
+    min-height: 86px !important;
+    padding: 10px 12px 8px !important;
     border: 0 !important;
-    border-radius: 8px !important;
+    border-radius: 0 !important;
     background: transparent !important;
-    color: rgba(255,255,255,.78) !important;
+    color: rgba(255,255,255,.86) !important;
     box-shadow: none !important;
-    text-align: left !important;
+    text-align: center !important;
     font-size: 12px !important;
-    font-weight: 600;
+    font-weight: 700 !important;
+    transition: background .16s ease, color .16s ease, transform .16s ease;
   }
 
   .nav button:hover { background: rgba(255,255,255,.08) !important; color: #fff !important; }
   .nav button.active {
-    background: linear-gradient(90deg, rgba(14,143,243,.98), rgba(0,111,207,.92)) !important;
+    background: linear-gradient(180deg, rgba(14,143,243,.98), rgba(0,111,207,.96)) !important;
     color: #fff !important;
-    box-shadow: 0 5px 12px rgba(0, 109, 204, .25) !important;
+    box-shadow: inset 0 -3px 0 rgba(255,255,255,.22) !important;
   }
 
+  /* Main canvas */
+  .container {
+    max-width: none !important;
+    width: 100% !important;
+    margin: 0 !important;
+    padding: 106px 24px 30px !important;
+  }
+
+  /* Dashboard / KPI cards */
   .cards {
     grid-template-columns: repeat(4, minmax(0, 1fr)) !important;
     gap: 12px !important;
+    margin-bottom: 16px !important;
   }
 
   .card {
-    border: 1px solid var(--setom-line);
+    min-height: 92px;
+    border: 1px solid var(--setom-line) !important;
     border-radius: var(--setom-radius) !important;
-    box-shadow: 0 4px 14px rgba(17, 42, 62, .06) !important;
-    padding: 16px !important;
+    background: var(--setom-card) !important;
+    box-shadow: 0 4px 14px rgba(17, 42, 62, .055) !important;
+    padding: 15px 16px !important;
   }
 
-  .card .number { color: var(--setom-blue-2); }
+  .card .number { color: var(--setom-blue-2) !important; }
 
-  .toolbar, .os, .day, .map {
-    border: 1px solid var(--setom-line);
-    box-shadow: 0 4px 14px rgba(17, 42, 62, .05);
+  /* Toolbars and filters */
+  .toolbar {
+    border: 1px solid var(--setom-line) !important;
+    border-radius: var(--setom-radius) !important;
+    background: #fff !important;
+    box-shadow: 0 3px 12px rgba(17,42,62,.045) !important;
   }
 
-  .toolbar { border-radius: var(--setom-radius); }
-  .primary { background: linear-gradient(180deg, #1296f5, #067bd8); }
+  .toolbar input, .toolbar select {
+    border-color: #cfdbe5 !important;
+    border-radius: 8px !important;
+    min-height: 40px;
+  }
+
+  button.primary {
+    background: linear-gradient(180deg, #1298f6, #067bd8) !important;
+    color: #fff !important;
+    border: 0 !important;
+    border-radius: 8px !important;
+    font-weight: 700 !important;
+  }
+
+  button.secondary {
+    background: #f4f7fa !important;
+    color: #17334d !important;
+    border: 1px solid #d3dee7 !important;
+    border-radius: 8px !important;
+    font-weight: 700 !important;
+  }
+
+  button.primary, button.secondary { transition: transform .12s ease, box-shadow .12s ease; }
+  button.primary:hover { transform: translateY(-1px); box-shadow: 0 5px 12px rgba(0,118,217,.18); }
+
+  /* OS cards */
+  .os {
+    border: 1px solid var(--setom-line) !important;
+    border-left: 4px solid #9aa9b5 !important;
+    border-radius: 10px !important;
+    background: #fff !important;
+    box-shadow: 0 3px 12px rgba(17,42,62,.045) !important;
+  }
+
+  .os:hover { box-shadow: 0 7px 18px rgba(17,42,62,.08) !important; }
+  .os-number { color: #102b43 !important; }
+  .badge { font-weight: 700 !important; }
+
+  /* Planning workspace */
+  .planning, .map, .workspace-shell { border-radius: 10px !important; }
+  .planning {
+    border: 1px solid var(--setom-line) !important;
+    background: #fff !important;
+    box-shadow: 0 4px 14px rgba(17,42,62,.05) !important;
+  }
+
+  .week { gap: 0 !important; }
+  .day {
+    border: 1px solid #e1e8ee !important;
+    border-radius: 0 !important;
+    min-height: 420px;
+    padding: 10px !important;
+    background: #fff !important;
+  }
+
+  .day:first-child { border-radius: 9px 0 0 9px !important; }
+  .day:last-child { border-radius: 0 9px 9px 0 !important; }
+
+  .day-header {
+    border-radius: 7px !important;
+    margin-bottom: 9px !important;
+    color: #12304a !important;
+    background: #f1f6fa !important;
+    border-bottom: 3px solid #0788ee !important;
+  }
+
+  .planning-os {
+    border: 1px solid #d8e4ec !important;
+    border-radius: 8px !important;
+    background: #f6f9fb !important;
+    box-shadow: 0 2px 6px rgba(17,42,62,.04);
+  }
+
+  /* Maps */
+  .map {
+    border: 1px solid var(--setom-line) !important;
+    box-shadow: 0 4px 14px rgba(17,42,62,.05) !important;
+  }
+
+  /* Modals: closer to the approved OS dossier cards */
+  .modal, .modal-overlay .modal {
+    border-radius: 14px !important;
+    border: 1px solid #d8e3eb !important;
+    box-shadow: 0 24px 70px rgba(6,42,69,.24) !important;
+  }
+
+  .modal-header h2 { color: #102b43 !important; }
 }
 
-.workspace-shell, .planning, .map { border-radius: 10px; }
-button.primary, button.secondary { transition: transform .12s ease, box-shadow .12s ease; }
-button.primary:hover { transform: translateY(-1px); box-shadow: 0 5px 12px rgba(0,118,217,.18); }
-
 @media (max-width: 979px) {
-  .header { position: sticky !important; }
-  .container { width: 100% !important; margin: 0 !important; }
+  .header {
+    position: sticky !important;
+    top: 0 !important;
+    min-height: 70px !important;
+    padding: 10px 14px !important;
+    z-index: 1000 !important;
+  }
+
+  .header > div:first-child { min-width: 0; }
+  .header h1 { font-size: 26px !important; }
+  .header small { font-size: 9px !important; }
+
+  .nav {
+    position: sticky !important;
+    top: 70px !important;
+    z-index: 999 !important;
+    margin: 0 !important;
+    padding: 0 8px 8px !important;
+    background: var(--setom-navy) !important;
+    overflow-x: auto !important;
+  }
+
+  .nav button { min-height: 48px !important; }
+  .container { width: 100% !important; margin: 0 !important; padding: 14px !important; }
+  .cards { grid-template-columns: repeat(2, minmax(0,1fr)) !important; }
+}
+
+@media (max-width: 560px) {
+  .cards { grid-template-columns: 1fr 1fr !important; gap: 8px !important; }
+  .card { padding: 12px !important; }
+  .card .number { font-size: 24px !important; }
 }
