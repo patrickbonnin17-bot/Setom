@@ -1,17 +1,7 @@
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
-MAIN = ROOT / "src" / "main.jsx"
 SRC = ROOT / "src" / "chargementRealConsumptionOverlay.js"
-
-main = MAIN.read_text(encoding="utf-8")
-marker = 'import "./chargementRealConsumptionOverlay";'
-bridge_marker = 'import "./operationalIntelligenceBridge";'
-if bridge_marker not in main:
-    if marker not in main:
-        raise SystemExit("operational intelligence: consumption overlay import not found")
-    main = main.replace(marker, marker + '\n' + bridge_marker, 1)
-MAIN.write_text(main, encoding="utf-8")
 
 src = SRC.read_text(encoding="utf-8")
 needle = '''  const totalInTruck = pilot.reduce((s, x) => s + num(x.remainingInTruck), 0);\n'''
@@ -21,7 +11,4 @@ if 'window.setomOperationalIntelligence = state;' not in src:
         raise SystemExit("operational intelligence: metrics marker not found")
     src = src.replace(needle, addition, 1)
 SRC.write_text(src, encoding="utf-8")
-
-# The dashboard bridge is populated by the real-consumption overlay; keep a tiny
-# standalone file only as a future extension point and avoid duplicate polling.
 print("SETOM: operational intelligence bridge wired")
