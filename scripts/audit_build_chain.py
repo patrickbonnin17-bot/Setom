@@ -1,6 +1,5 @@
 from pathlib import Path
 import json
-import re
 
 root = Path(__file__).resolve().parents[1]
 pkg = json.loads((root / "package.json").read_text(encoding="utf-8"))
@@ -22,18 +21,16 @@ required = [
 missing = [x for x in required if x not in script]
 if missing:
     raise SystemExit("SETOM audit: missing build patches: " + ", ".join(missing))
-
 for name in required:
-    path = root / "scripts" / name
-    if not path.exists():
+    if not (root / "scripts" / name).exists():
         raise SystemExit(f"SETOM audit: missing script file {name}")
 
 observer = (root / "scripts" / "patch_material_ledger_observer.py").read_text(encoding="utf-8")
-if "already mutation-safe" not in observer and "let mountedRoot" not in observer:
-    raise SystemExit("SETOM audit: material ledger observer is not idempotent")
+if "let mountedRoot" not in observer or "refreshInFlight" not in observer:
+    raise SystemExit("SETOM audit: material ledger observer is not mutation-safe/idempotent")
 
 rot = (root / "scripts" / "patch_chargement_material_rules.py").read_text(encoding="utf-8")
-for marker in ["materialInfo", "forcedMix", "mixedMaterials"]:
+for marker in ["materialInfo", "mixedMaterials", "MÉLANGE FORCÉ", "single-material"]:
     if marker not in rot:
         raise SystemExit(f"SETOM audit: loading material rule marker missing: {marker}")
 
