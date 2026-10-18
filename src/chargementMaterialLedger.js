@@ -9,68 +9,25 @@ const r = (v) => Math.round(n(v) * 100) / 100;
 const esc = (v) => String(v ?? "").replace(/[&<>\"]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;"}[c]));
 const norm = (v) => String(v ?? "").trim().toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
 
-function plannedRows(date) {
-  try {
-    const all = JSON.parse(localStorage.getItem(STORAGE_KEY) || "{}");
-    return Array.isArray(all?.[date]?.rows) ? all[date].rows.filter(Boolean) : [];
-  } catch (_) { return []; }
-}
-
-function materialLabel(row) {
-  const m = row?.material;
-  if (typeof m === "string" && m.trim()) return m.trim();
-  if (m?.name) return m.name;
-  return row?.materialName || row?.material_name || row?.materialLabel || "Matériau non renseigné";
-}
+function plannedRows(date) { try { const all = JSON.parse(localStorage.getItem(STORAGE_KEY) || "{}"); return Array.isArray(all?.[date]?.rows) ? all[date].rows.filter(Boolean) : []; } catch (_) { return []; } }
+function materialLabel(row) { const m = row?.material; if (typeof m === "string" && m.trim()) return m.trim(); if (m?.name) return m.name; return row?.materialName || row?.material_name || row?.materialLabel || "Matériau non renseigné"; }
 
 async function load(date) {
-  const rows = plannedRows(date);
-  const map = new Map();
-  const add = (name, field, value) => {
-    const label = String(name || "Matériau non renseigné").trim();
-    const key = norm(label) || "unknown";
-    const item = map.get(key) || { name: label, planned: 0, loaded: 0, consumed: 0, orders: 0 };
-    item[field] = r(item[field] + Math.max(0, n(value)));
-    map.set(key, item);
-  };
-  const orderKeys = new Set();
-  rows.forEach(row => {
-    const material = materialLabel(row);
-    add(material, "planned", row?.planned);
-    add(material, "loaded", row?.loaded);
-    const order = String(row?.orderId || row?.workOrderId || row?.osId || "").trim();
-    if (order) orderKeys.add(order);
-  });
-
-  const { data: consumptions, error } = await supabase
-    .from("truck_material_consumptions")
-    .select("work_order_id,material_id,quantity,unit,estimated")
-    .eq("consumption_date", date)
-    .eq("estimated", false);
-  if (!error && consumptions?.length) {
-    const ids = [...new Set(consumptions.map(x => x.material_id).filter(Boolean))];
-    const { data: materials } = ids.length ? await supabase.from("materials").select("id,name").in("id", ids) : { data: [] };
-    const names = new Map((materials || []).map(x => [x.id, x.name]));
-    consumptions.forEach(row => {
-      const unit = norm(row.unit);
-      if (!['t','tonne','tonnes'].includes(unit)) return;
-      add(names.get(row.material_id) || "Matériau non renseigné", "consumed", row.quantity);
-    });
-  }
+  const rows = plannedRows(date); const map = new Map();
+  const add = (name, field, value) => { const label = String(name || "Matériau non renseigné").trim(); const key = norm(label) || "unknown"; const item = map.get(key) || { name: label, planned: 0, loaded: 0, consumed: 0 }; item[field] = r(item[field] + Math.max(0, n(value))); map.set(key, item); };
+  rows.forEach(row => { const material = materialLabel(row); add(material, "planned", row?.planned); add(material, "loaded", row?.loaded); });
+  const { data: consumptions, error } = await supabase.from("truck_material_consumptions").select("work_order_id,material_id,quantity,unit,estimated").eq("consumption_date", date).eq("estimated", false);
+  if (!error && consumptions?.length) { const ids = [...new Set(consumptions.map(x => x.material_id).filter(Boolean))]; const { data: materials } = ids.length ? await supabase.from("materials").select("id,name").in("id", ids) : { data: [] }; const names = new Map((materials || []).map(x => [x.id, x.name])); consumptions.forEach(row => { const unit = norm(row.unit); if (!['t','tonne','tonnes'].includes(unit)) return; add(names.get(row.material_id) || "Matériau non renseigné", "consumed", row.quantity); }); }
   return [...map.values()].sort((a,b) => b.planned - a.planned || a.name.localeCompare(b.name));
 }
 
 function render(root, date, items) {
-  let panel = root.querySelector(`#${PANEL_ID}`);
-  if (!panel) { panel = document.createElement("section"); panel.id = PANEL_ID; root.appendChild(panel); }
-  const planned = r(items.reduce((s,x)=>s+x.planned,0));
-  const loaded = r(items.reduce((s,x)=>s+x.loaded,0));
-  const consumed = r(items.reduce((s,x)=>s+x.consumed,0));
-  const allocated = r(Math.max(0, loaded - consumed));
-  panel.innerHTML = `<div class="setom-ledger-head"><div><strong>Registre matière de la journée</strong><small>${esc(date)} · suivi séparé par matériau</small></div><div class="setom-ledger-total"><span>Prévu <b>${planned.toFixed(2)} t</b></span><span>Chargé <b>${loaded.toFixed(2)} t</b></span><span>Consommé <b>${consumed.toFixed(2)} t</b></span><span>Reste affecté <b>${allocated.toFixed(2)} t</b></span></div></div><div class="setom-ledger-table"><div class="setom-ledger-row setom-ledger-title"><span>Matériau</span><span>Prévu</span><span>Chargé</span><span>Consommé</span><span>Solde affecté</span></div>${items.map(x=>{const balance=r(Math.max(0,x.loaded-x.consumed)); const gap=r(x.consumed-x.planned); return `<div class="setom-ledger-row"><strong>${esc(x.name)}</strong><span>${x.planned.toFixed(2)} t</span><span>${x.loaded.toFixed(2)} t</span><span>${x.consumed.toFixed(2)} t</span><span class="${gap>0.05?'warn':''}">${balance.toFixed(2)} t</span></div>`}).join("")}</div><div class="setom-ledger-note">Le « solde affecté » correspond au chargé alloué moins le consommé connu par OS. Il ne constitue pas un stock physique certifié du camion.</div>`;
-  if (!document.getElementById("setom-ledger-style-v1")) { const s=document.createElement("style"); s.id="setom-ledger-style-v1"; s.textContent=`#${PANEL_ID}{margin:0 11px 11px;background:#0b202b;border:1px solid #2b5062;border-radius:14px;overflow:hidden;color:#eaf5f8}.setom-ledger-head{padding:13px 14px;background:linear-gradient(90deg,#0e2938,#102f3d);border-bottom:1px solid #2b5062;display:flex;justify-content:space-between;gap:14px;align-items:center}.setom-ledger-head strong{display:block;font-size:13px}.setom-ledger-head small{display:block;color:#8fa8b4;font-size:10px;margin-top:3px}.setom-ledger-total{display:flex;gap:7px;flex-wrap:wrap;justify-content:flex-end}.setom-ledger-total span{background:#122f3d;border-radius:7px;padding:5px 7px;color:#91aab5;font-size:9px}.setom-ledger-total b{color:#eef8fa}.setom-ledger-table{padding:9px;display:grid;gap:5px}.setom-ledger-row{display:grid;grid-template-columns:2fr repeat(4,1fr);gap:7px;align-items:center;background:#0d2634;border:1px solid #234757;border-radius:8px;padding:8px 9px;font-size:9px}.setom-ledger-row span{color:#b3c5cc}.setom-ledger-row strong{font-size:10px}.setom-ledger-title{background:#102d3b;border-color:#2b5062;color:#7f9da9;font-weight:800;text-transform:uppercase}.setom-ledger-title span{font-size:8px}.setom-ledger-row .warn{color:#ffd36a}.setom-ledger-note{padding:9px 12px;color:#7f9da9;font-size:9px;border-top:1px solid #234757}@media(max-width:700px){.setom-ledger-head{display:block}.setom-ledger-total{justify-content:flex-start;margin-top:8px}.setom-ledger-row{grid-template-columns:1.5fr repeat(2,1fr)}.setom-ledger-row span:nth-child(4),.setom-ledger-row span:nth-child(5){grid-column:auto}.setom-ledger-title{display:none}}`; document.head.appendChild(s); }
+  let panel = root.querySelector(`#${PANEL_ID}`); if (!panel) { panel = document.createElement("section"); panel.id = PANEL_ID; root.appendChild(panel); }
+  const planned = r(items.reduce((s,x)=>s+x.planned,0)); const loaded = r(items.reduce((s,x)=>s+x.loaded,0)); const consumed = r(items.reduce((s,x)=>s+x.consumed,0)); const allocated = r(Math.max(0, loaded - consumed));
+  panel.innerHTML = `<div class="setom-ledger-head"><div><strong>Registre matière de la journée</strong><small>${esc(date)} · suivi séparé par matériau</small></div><div class="setom-ledger-total"><span>Prévu <b>${planned.toFixed(2)} t</b></span><span>Chargé affecté <b>${loaded.toFixed(2)} t</b></span><span>Consommé <b>${consumed.toFixed(2)} t</b></span><span>Reste affecté <b>${allocated.toFixed(2)} t</b></span></div></div><div class="setom-ledger-table"><div class="setom-ledger-row setom-ledger-title"><span>Matériau</span><span>Prévu</span><span>Chargé affecté</span><span>Consommé</span><span>Solde affecté</span></div>${items.map(x=>{const balance=r(Math.max(0,x.loaded-x.consumed)); const gap=r(x.consumed-x.planned); return `<div class="setom-ledger-row"><strong>${esc(x.name)}</strong><span>${x.planned.toFixed(2)} t</span><span>${x.loaded.toFixed(2)} t</span><span>${x.consumed.toFixed(2)} t</span><span class="${gap>0.05?'warn':''}">${balance.toFixed(2)} t</span></div>`}).join("")}</div><div class="setom-ledger-note">« Chargé affecté » correspond aux quantités allouées aux OS dans le plan de chargement. Le « solde affecté » n’est pas un stock physique certifié du camion.</div>`;
+  if (!document.getElementById("setom-ledger-style-v1")) { const s=document.createElement("style"); s.id="setom-ledger-style-v1"; s.textContent=`#${PANEL_ID}{margin:0 11px 11px;background:#0b202b;border:1px solid #2b5062;border-radius:14px;overflow:hidden;color:#eaf5f8}.setom-ledger-head{padding:13px 14px;background:linear-gradient(90deg,#0e2938,#102f3d);border-bottom:1px solid #2b5062;display:flex;justify-content:space-between;gap:14px;align-items:center}.setom-ledger-head strong{display:block;font-size:13px}.setom-ledger-head small{display:block;color:#8fa8b4;font-size:10px;margin-top:3px}.setom-ledger-total{display:flex;gap:7px;flex-wrap:wrap;justify-content:flex-end}.setom-ledger-total span{background:#122f3d;border-radius:7px;padding:5px 7px;color:#91aab5;font-size:9px}.setom-ledger-total b{color:#eef8fa}.setom-ledger-table{padding:9px;display:grid;gap:5px}.setom-ledger-row{display:grid;grid-template-columns:2fr repeat(4,1fr);gap:7px;align-items:center;background:#0d2634;border:1px solid #234757;border-radius:8px;padding:8px 9px;font-size:9px}.setom-ledger-row span{color:#b3c5cc}.setom-ledger-row strong{font-size:10px}.setom-ledger-title{background:#102d3b;border-color:#2b5062;color:#7f9da9;font-weight:800;text-transform:uppercase}.setom-ledger-title span{font-size:8px}.setom-ledger-row .warn{color:#ffd36a}.setom-ledger-note{padding:9px 12px;color:#7f9da9;font-size:9px;border-top:1px solid #234757}@media(max-width:700px){.setom-ledger-head{display:block}.setom-ledger-total{justify-content:flex-start;margin-top:8px}.setom-ledger-row{grid-template-columns:1.5fr repeat(2,1fr)}.setom-ledger-title{display:none}}`; document.head.appendChild(s); }
 }
 
-let timer;
-async function refresh(){ const root=document.getElementById(ROOT_ID); if(!root) return; const date=root.dataset.date || sessionStorage.getItem("setom:chargement:date:v1") || new Date().toISOString().slice(0,10); const items=await load(date); render(root,date,items); }
-if(typeof window!=="undefined"){ window.setomRefreshMaterialLedger=refresh; window.addEventListener("setom:chargement-date-changed",()=>refresh()); const observer=new MutationObserver(()=>{ clearTimeout(timer); timer=setTimeout(refresh,250); }); observer.observe(document.body,{childList:true,subtree:true}); setTimeout(refresh,300); }
+let timer; let mountedRoot = null; let refreshInFlight = false;
+async function refresh(){ if (refreshInFlight) return; const root=document.getElementById(ROOT_ID); if(!root) return; const date=root.dataset.date || sessionStorage.getItem("setom:chargement:date:v1") || new Date().toISOString().slice(0,10); refreshInFlight=true; try { const items=await load(date); render(root,date,items); } finally { refreshInFlight=false; } }
+if(typeof window!=="undefined"){ window.setomRefreshMaterialLedger=refresh; window.addEventListener("setom:chargement-date-changed",(event)=>{ const root=document.getElementById(ROOT_ID); if(root && event?.detail?.date) root.dataset.date=event.detail.date; refresh(); }); const observer=new MutationObserver(()=>{ const root=document.getElementById(ROOT_ID); if(!root || root===mountedRoot) return; mountedRoot=root; clearTimeout(timer); timer=setTimeout(refresh,150); }); observer.observe(document.body,{childList:true,subtree:true}); setTimeout(()=>{ const root=document.getElementById(ROOT_ID); if(root) mountedRoot=root; refresh(); },300); }
