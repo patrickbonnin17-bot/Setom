@@ -21,6 +21,8 @@ required = [
     "patch_travaux_final_guard.py",
     "patch_travaux_measurements_photos.py",
     "patch_travaux_material_zero.py",
+    "patch_travaux_actual_reference.py",
+    "audit_actual_reference.py",
     "patch_profitability_material_variance.py",
     "patch_profitability_cost_breakdown.py",
     "patch_material_ledger.py",
@@ -63,8 +65,19 @@ for marker in [
 if "function setAssignment(id, rotation)" not in forced:
     raise SystemExit("SETOM audit: manual assignment function is missing")
 
-if "function autoDistribute(plan)" not in rot or "for (const [material, group] of byMaterial.entries())" not in rot:
+if "function autoDistribute(plan)" not in rot or "for (const group of groups.values())" not in rot:
     raise SystemExit("SETOM audit: automatic loading distribution is not grouped by material")
+
+actual = (root / "scripts" / "audit_actual_reference.py").read_text(encoding="utf-8")
+for marker in [
+    "setom:actual-reference:v1:",
+    "setom:actual-measurements-updated",
+    "totalSurfaceM2",
+    "source: \"travaux_reels\"",
+    "setom:travaux-final-transmitted",
+]:
+    if marker not in actual:
+        raise SystemExit(f"SETOM audit: actual-reference marker missing: {marker}")
 
 date_patch = (root / "scripts" / "patch_chargement_planning_date.py").read_text(encoding="utf-8")
 for marker in ["setom:chargement:date:v1", "selectedDate = ()", "setom:chargement-date-changed"]:
@@ -144,4 +157,4 @@ costs = (root / "scripts/patch_profitability_cost_breakdown.py").read_text(encod
 if "laborCost" not in costs or "directOtherCost" not in costs:
     raise SystemExit("SETOM audit: profitability cost breakdown is incomplete")
 
-print("SETOM audit: build chain, material-separated rotations, forced-mix control, planning/loading preservation, daily team rule, consumption truth, Travaux draft/transmission/capture, constat safety/validation, staffing, material ledger and profitability invariants are structurally present")
+print("SETOM audit: build chain, material-separated rotations, forced-mix control, planning/loading preservation, daily team rule, consumption truth, Travaux actual reference/draft/transmission/capture, constat safety/validation, staffing, material ledger and profitability invariants are structurally present")
