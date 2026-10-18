@@ -29,6 +29,24 @@ checklist = '''<div className="os-dossier-checklist">
         <button type="button" className={`os-check-item ${os.constat ? "is-complete" : "is-missing"}`} onClick={() => setActiveTab("constat")}><span className="os-check-icon">{os.constat ? "✓" : "!"}</span><span><b>Constat</b><small>{os.constat ? "Disponible" : "À générer / vérifier"}</small></span></button>
       </div>
     </div>
+    <div className="os-next-action">
+      <div><span className="os-next-action-kicker">PROCHAINE ÉTAPE</span><strong>{
+        !os.address ? "Compléter les informations de l'OS" :
+        !Array.isArray(os.attachments) || !os.attachments.some((a) => ["avant_travaux", "avant travaux", "avant"].includes(String(a.category || a.type || "").toLowerCase())) ? "Ajouter la photo avant travaux" :
+        !(os.realized_surface_m2 || os.actual_surface_m2 || os.realizedSurfaceM2) && ["En travaux", "Travaux en cours", "Planifié"].includes(String(os.status || "")) ? "Renseigner les mesures réelles" :
+        !os.constat && ["Travaux réalisés", "Travaux effectués", "Constat à vérifier", "Constat de facturation", "En attente de validation"].includes(String(os.status || "")) ? "Générer / vérifier le constat" :
+        "Vérifier le dossier avant validation"
+      }</strong></div>
+      <button type="button" className="primary" onClick={() => {
+        if (!os.address) return setActiveTab("resume");
+        const hasBefore = Array.isArray(os.attachments) && os.attachments.some((a) => ["avant_travaux", "avant travaux", "avant"].includes(String(a.category || a.type || "").toLowerCase()));
+        if (!hasBefore) return setActiveTab("photos");
+        const hasMeasurements = !!(os.realized_surface_m2 || os.actual_surface_m2 || os.realizedSurfaceM2);
+        if (!hasMeasurements && ["En travaux", "Travaux en cours", "Planifié"].includes(String(os.status || ""))) return setActiveTab("travaux");
+        if (!os.constat && ["Travaux réalisés", "Travaux effectués", "Constat à vérifier", "Constat de facturation", "En attente de validation"].includes(String(os.status || ""))) return setActiveTab("constat");
+        return setActiveTab("resume");
+      }}>Ouvrir</button>
+    </div>
     '''
 if marker in text and 'os-dossier-checklist' not in text:
     text = text.replace(marker, checklist + marker, 1)
