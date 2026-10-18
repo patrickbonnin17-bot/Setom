@@ -30,8 +30,8 @@ if "let mountedRoot" not in observer or "refreshInFlight" not in observer:
     raise SystemExit("SETOM audit: material ledger observer is not mutation-safe/idempotent")
 
 rot = (root / "scripts" / "patch_chargement_material_rules.py").read_text(encoding="utf-8")
-for marker in ["materialInfo", "mixedMaterials", "MÉLANGE FORCÉ", "single-material"]:
+for marker in ["materialInfo", "mixedMaterials", "MÉLANGE FORCÉ", "Material change always starts a fresh rotation."]:
     if marker not in rot:
-        raise SystemExit(f"SETOM audit: loading material rule marker missing: {marker}")
+        raise SystemExit(f"SETOM audit: loading rotation invariant missing: {marker}")
 
-print("SETOM audit: build chain, loading rules and ledger observer are structurally present")
+print("SETOM audit: build chain, loading rotation invariants and ledger observer are structurally present")
