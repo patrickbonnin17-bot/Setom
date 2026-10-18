@@ -54,8 +54,9 @@ for marker in ["SETOM_PLANNING_TONNAGE_KEY", "syncPlanningToChargement", "setom:
         raise SystemExit(f"SETOM audit: planning/loading bridge marker missing: {marker}")
 
 constat = (root / "scripts" / "patch_constat_rpc_safety.py").read_text(encoding="utf-8")
-if "regenerate_constat_for_work_order" in constat or "get_constat_for_work_order" not in constat:
-    raise SystemExit("SETOM audit: unsupported constat regeneration RPC remains in the safety patch")
+for marker in ["get_constat_for_work_order", "unsupported regenerate_constat_for_work_order RPC remains"]:
+    if marker not in constat:
+        raise SystemExit(f"SETOM audit: constat safety guard marker missing: {marker}")
 
 validation = (root / "scripts" / "patch_constat_validation_status.py").read_text(encoding="utf-8")
 if "[\"Brouillon\", \"À vérifier\", \"À valider\"]" not in validation:
