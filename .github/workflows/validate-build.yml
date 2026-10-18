@@ -3,11 +3,13 @@ name: Validate SETOM build
 on:
   push:
     branches:
+      - feature-target-ui-v2
       - next-finance-controls
   pull_request:
     branches:
       - main
       - next-finance-controls
+      - feature-target-ui-v2
 
 jobs:
   build:
@@ -28,4 +30,4 @@ jobs:
         run: python3 scripts/patch_workflow_status.py
 
       - name: Build production bundle
-        run: npx vite build
+        run: npm run build
