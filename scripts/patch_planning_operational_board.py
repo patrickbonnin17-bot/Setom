@@ -3,6 +3,9 @@ from pathlib import Path
 path = Path("src/planningOverlay.jsx")
 text = path.read_text(encoding="utf-8")
 
+if 'import "./planningOperationalBoard.css";' not in text:
+    text = text.replace('import "./planningOverlay.css";', 'import "./planningOverlay.css";\nimport "./planningOperationalBoard.css";', 1)
+
 state_anchor = '  const [routeTeamId, setRouteTeamId] = useState("");'
 state_replacement = '''  const [routeTeamId, setRouteTeamId] = useState("");
   const [selectedPlanningOrderId, setSelectedPlanningOrderId] = useState(null);'''
