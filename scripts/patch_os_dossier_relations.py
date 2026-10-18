@@ -1,4 +1,5 @@
 from pathlib import Path
+import re
 
 path = Path("src/main.jsx")
 text = path.read_text(encoding="utf-8")
@@ -41,13 +42,18 @@ insertion = '''      const constatLinesByConstat = new Map();
 if "const attachmentsByOS = new Map();" not in text:
     text = text.replace(anchor, insertion + anchor)
 
-old_latest = '          const latestConstat = constatByOS.get(row.id) || null;'
-if old_latest in text:
-    new_latest = '          const latestConstat = constatByOS.get(row.id) || null;\n        const latestConstatLines = latestConstat ? (constatLinesByConstat.get(latestConstat.id) || []) : [];\n        const osAttachments = attachmentsByOS.get(row.id) || [];'
-    text = text.replace(old_latest, new_latest)
+line_pattern = r'(?m)^(\s*)const latestConstat = constatByOS\.get\(row\.id\) \|\| null;\s*$'
+match = re.search(line_pattern, text)
+if match:
+    indent = match.group(1)
+    replacement = (
+        f'{indent}const latestConstat = constatByOS.get(row.id) || null;\n'
+        f'{indent}const latestConstatLines = latestConstat ? (constatLinesByConstat.get(latestConstat.id) || []) : [];\n'
+        f'{indent}const osAttachments = attachmentsByOS.get(row.id) || [];'
+    )
+    if 'const latestConstatLines = latestConstat ?' not in text:
+        text = text[:match.start()] + replacement + text[match.end():]
 else:
-    # The relations patch may already have been applied by an earlier build.
-    # Do not fail the build merely because the exact pre-patch line is absent.
     if 'const latestConstatLines = latestConstat ?' not in text or 'const osAttachments = attachmentsByOS.get(row.id)' not in text:
         raise SystemExit("SETOM: OS dossier latest constat context not found")
 
@@ -57,4 +63,4 @@ if old_tail in text and 'attachments: osAttachments' not in text:
     text = text.replace(old_tail, new_tail)
 
 path.write_text(text, encoding="utf-8")
-print("SETOM: OS dossier relations loaded (idempotent)")
+print("SETOM: OS dossier relations loaded (indentation-safe)")
