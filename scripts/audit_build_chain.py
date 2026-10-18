@@ -50,4 +50,12 @@ for marker in ["DEFAULT_TEAM_SIZE = 6", "jamais OS par OS"]:
     if marker not in staffing:
         raise SystemExit(f"SETOM audit: staffing rule marker missing: {marker}")
 
-print("SETOM audit: build chain, material rotation, date bridge, planning/loading bridge, staffing and ledger invariants are structurally present")
+variance = (root / "scripts" / "patch_profitability_material_variance.py").read_text(encoding="utf-8")
+if "materialQuantityVariance" not in variance or "Écart matière" not in variance:
+    raise SystemExit("SETOM audit: profitability material variance patch is incomplete")
+
+costs = (root / "scripts" / "patch_profitability_cost_breakdown.py").read_text(encoding="utf-8")
+if "laborCost" not in costs or "directOtherCost" not in costs:
+    raise SystemExit("SETOM audit: profitability cost breakdown patch is incomplete")
+
+print("SETOM audit: build chain, loading/date bridges, staffing, material ledger and profitability invariants are structurally present")
