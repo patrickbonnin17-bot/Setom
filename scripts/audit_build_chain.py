@@ -13,6 +13,8 @@ required = [
     "patch_chargement_planning_date.py",
     "patch_chargement_order_context.py",
     "patch_planning_chargement_bridge.py",
+    "patch_constat_rpc_safety.py",
+    "patch_constat_validation_status.py",
     "patch_travaux_measurements_photos.py",
     "patch_travaux_material_zero.py",
     "patch_profitability_material_variance.py",
@@ -51,6 +53,14 @@ for marker in ["SETOM_PLANNING_TONNAGE_KEY", "syncPlanningToChargement", "setom:
     if marker not in bridge:
         raise SystemExit(f"SETOM audit: planning/loading bridge marker missing: {marker}")
 
+constat = (root / "scripts" / "patch_constat_rpc_safety.py").read_text(encoding="utf-8")
+if "regenerate_constat_for_work_order" in constat or "get_constat_for_work_order" not in constat:
+    raise SystemExit("SETOM audit: unsupported constat regeneration RPC remains in the safety patch")
+
+validation = (root / "scripts" / "patch_constat_validation_status.py").read_text(encoding="utf-8")
+if "[\"Brouillon\", \"À vérifier\", \"À valider\"]" not in validation:
+    raise SystemExit("SETOM audit: constat validation status guard is incomplete")
+
 staffing = (root / "src" / "staffingIntelligence.js").read_text(encoding="utf-8")
 for marker in ["DEFAULT_TEAM_SIZE = 6", "jamais OS par OS"]:
     if marker not in staffing:
@@ -64,4 +74,4 @@ costs = (root / "scripts" / "patch_profitability_cost_breakdown.py").read_text(e
 if "laborCost" not in costs or "directOtherCost" not in costs:
     raise SystemExit("SETOM audit: profitability cost breakdown patch is incomplete")
 
-print("SETOM audit: build chain, loading/date bridges, forced-mix control, staffing, material ledger and profitability invariants are structurally present")
+print("SETOM audit: build chain, loading/date bridges, forced-mix control, constat safety/validation, staffing, material ledger and profitability invariants are structurally present")
