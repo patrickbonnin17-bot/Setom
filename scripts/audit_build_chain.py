@@ -14,6 +14,7 @@ required = [
     "patch_chargement_order_context.py",
     "patch_planning_chargement_bridge.py",
     "patch_planning_daily_team.py",
+    "patch_chargement_travaux_bridge.py",
     "patch_constat_rpc_safety.py",
     "patch_constat_validation_status.py",
     "patch_travaux_draft.py",
@@ -79,12 +80,25 @@ for marker in [
     if marker not in actual:
         raise SystemExit(f"SETOM audit: actual-reference marker missing: {marker}")
 
-date_patch = (root / "scripts" / "patch_chargement_planning_date.py").read_text(encoding="utf-8")
+travaux_bridge = (root / "scripts" / "patch_chargement_travaux_bridge.py").read_text(encoding="utf-8")
+for marker in [
+    "actualReferenceFor(row)",
+    "setom:actual-reference:v1:",
+    "actualSurfaceOf(row)",
+    "setom:actual-measurements-updated",
+    "setom:travaux-final-transmitted",
+    "RÉALISÉ",
+    "ÉCART",
+]:
+    if marker not in travaux_bridge:
+        raise SystemExit(f"SETOM audit: Travaux/Chargement bridge marker missing: {marker}")
+
+date_patch = (root / "scripts/patch_chargement_planning_date.py").read_text(encoding="utf-8")
 for marker in ["setom:chargement:date:v1", "selectedDate = ()", "setom:chargement-date-changed"]:
     if marker not in date_patch:
         raise SystemExit(f"SETOM audit: planning/loading date bridge marker missing: {marker}")
 
-bridge = (root / "scripts" / "patch_planning_chargement_bridge.py").read_text(encoding="utf-8")
+bridge = (root / "scripts/patch_planning_chargement_bridge.py").read_text(encoding="utf-8")
 for marker in [
     "SETOM_PLANNING_TONNAGE_KEY",
     "syncPlanningToChargement",
@@ -97,7 +111,7 @@ for marker in [
 if "value === \"\" ? 0 : Math.max(0, Number(value))" not in bridge:
     raise SystemExit("SETOM audit: planning tonnage input is not normalized safely")
 
-team = (root / "scripts" / "patch_planning_daily_team.py").read_text(encoding="utf-8")
+team = (root / "scripts/patch_planning_daily_team.py").read_text(encoding="utf-8")
 for marker in [
     "destinationTeamIds",
     "effectiveDayTeamId",
@@ -110,41 +124,41 @@ for marker in [
 if "plannedIds" not in team or ".in(\"id\", plannedIds)" not in team:
     raise SystemExit("SETOM audit: daily team adaptation does not update the whole day")
 
-consumption = (root / "scripts" / "patch_chargement_consumption_truth.py").read_text(encoding="utf-8")
+consumption = (root / "scripts/patch_chargement_consumption_truth.py").read_text(encoding="utf-8")
 for marker in ["remainingInTruckType: \"reste_affecte\"", "Reste affecté", "n’est pas un stock physique capteur"]:
     if marker not in consumption:
         raise SystemExit(f"SETOM audit: consumption truth marker missing: {marker}")
 
-constat = (root / "scripts" / "patch_constat_rpc_safety.py").read_text(encoding="utf-8")
+constat = (root / "scripts/patch_constat_rpc_safety.py").read_text(encoding="utf-8")
 for marker in ["get_constat_for_work_order", "unsupported regenerate_constat_for_work_order RPC remains"]:
     if marker not in constat:
         raise SystemExit(f"SETOM audit: constat safety guard marker missing: {marker}")
 
-travaux = (root / "scripts" / "patch_travaux_measurements_photos.py").read_text(encoding="utf-8")
+travaux = (root / "scripts/patch_travaux_measurements_photos.py").read_text(encoding="utf-8")
 for marker in ["data-setom-travaux-photo-zone", "capture=\"environment\"", "Mesures réelles", "totalSurface"]:
     if marker not in travaux:
         raise SystemExit(f"SETOM audit: Travaux measurement/photo marker missing: {marker}")
 
-draft = (root / "scripts" / "patch_travaux_draft.py").read_text(encoding="utf-8")
+draft = (root / "scripts/patch_travaux_draft.py").read_text(encoding="utf-8")
 for marker in ["async function saveWorkDraft()", "Enregistrer les mesures", "Brouillon des travaux enregistré"]:
     if marker not in draft:
         raise SystemExit(f"SETOM audit: Travaux draft marker missing: {marker}")
 
-draft_safety = (root / "scripts" / "patch_travaux_draft_safety.py").read_text(encoding="utf-8")
+draft_safety = (root / "scripts/patch_travaux_draft_safety.py").read_text(encoding="utf-8")
 for marker in ["must not gate the measurement draft itself", "work_realizations", "Travaux drafts now persist measurements independently of photos"]:
     if marker not in draft_safety:
         raise SystemExit(f"SETOM audit: Travaux draft safety marker missing: {marker}")
 
-final_guard = (root / "scripts" / "patch_travaux_final_guard.py").read_text(encoding="utf-8")
+final_guard = (root / "scripts/patch_travaux_final_guard.py").read_text(encoding="utf-8")
 for marker in ["final transmission", "[\"Planifié\",\"En travaux\",\"Travaux en cours\",\"Travaux réalisés\"]", "SETOM: final Travaux transmission guard applied"]:
     if marker not in final_guard:
         raise SystemExit(f"SETOM audit: Travaux final transmission guard marker missing: {marker}")
 
-validation = (root / "scripts" / "patch_constat_validation_status.py").read_text(encoding="utf-8")
+validation = (root / "scripts/patch_constat_validation_status.py").read_text(encoding="utf-8")
 if "[\"Brouillon\", \"À vérifier\", \"À valider\"]" not in validation:
     raise SystemExit("SETOM audit: constat validation status guard is incomplete")
 
-staffing = (root / "src" / "staffingIntelligence.js").read_text(encoding="utf-8")
+staffing = (root / "src/staffingIntelligence.js").read_text(encoding="utf-8")
 for marker in ["DEFAULT_TEAM_SIZE = 6", "jamais OS par OS"]:
     if marker not in staffing:
         raise SystemExit(f"SETOM audit: staffing rule marker missing: {marker}")
@@ -157,4 +171,4 @@ costs = (root / "scripts/patch_profitability_cost_breakdown.py").read_text(encod
 if "laborCost" not in costs or "directOtherCost" not in costs:
     raise SystemExit("SETOM audit: profitability cost breakdown is incomplete")
 
-print("SETOM audit: build chain, material-separated rotations, forced-mix control, planning/loading preservation, daily team rule, consumption truth, Travaux actual reference/draft/transmission/capture, constat safety/validation, staffing, material ledger and profitability invariants are structurally present")
+print("SETOM audit: build chain, material-separated rotations, forced-mix control, planning/loading preservation, daily team rule, Travaux actual-reference bridge, consumption truth, Travaux draft/transmission/capture, constat safety/validation, staffing, material ledger and profitability invariants are structurally present")
