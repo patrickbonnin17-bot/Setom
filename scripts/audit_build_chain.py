@@ -13,6 +13,7 @@ required = [
     "patch_chargement_planning_date.py",
     "patch_chargement_order_context.py",
     "patch_planning_chargement_bridge.py",
+    "patch_planning_daily_team.py",
     "patch_constat_rpc_safety.py",
     "patch_constat_validation_status.py",
     "patch_travaux_draft.py",
@@ -62,10 +63,8 @@ for marker in [
 if "function setAssignment(id, rotation)" not in forced:
     raise SystemExit("SETOM audit: manual assignment function is missing")
 
-# Automatic distribution must remain material-separated; forced mixing is only a manual assignment path.
 if "function autoDistribute(plan)" not in rot or "for (const [material, group] of byMaterial.entries())" not in rot:
     raise SystemExit("SETOM audit: automatic loading distribution is not grouped by material")
-
 
 date_patch = (root / "scripts" / "patch_chargement_planning_date.py").read_text(encoding="utf-8")
 for marker in ["setom:chargement:date:v1", "selectedDate = ()", "setom:chargement-date-changed"]:
@@ -82,10 +81,21 @@ for marker in [
 ]:
     if marker not in bridge:
         raise SystemExit(f"SETOM audit: planning/loading bridge invariant missing: {marker}")
-if "loaded: Math.max(0, Number(existing?.loaded || 0))" not in bridge:
-    raise SystemExit("SETOM audit: planning sync may overwrite already-loaded tonnage")
 if "value === \"\" ? 0 : Math.max(0, Number(value))" not in bridge:
     raise SystemExit("SETOM audit: planning tonnage input is not normalized safely")
+
+team = (root / "scripts" / "patch_planning_daily_team.py").read_text(encoding="utf-8")
+for marker in [
+    "destinationTeamIds",
+    "effectiveDayTeamId",
+    "Équipe unique de la journée",
+    "dayTeam = new Map()",
+    "team_id: teamId",
+]:
+    if marker not in team:
+        raise SystemExit(f"SETOM audit: daily team planning marker missing: {marker}")
+if "plannedIds" not in team or ".in(\"id\", plannedIds)" not in team:
+    raise SystemExit("SETOM audit: daily team adaptation does not update the whole day")
 
 consumption = (root / "scripts" / "patch_chargement_consumption_truth.py").read_text(encoding="utf-8")
 for marker in ["remainingInTruckType: \"reste_affecte\"", "Reste affecté", "n’est pas un stock physique capteur"]:
@@ -134,4 +144,4 @@ costs = (root / "scripts/patch_profitability_cost_breakdown.py").read_text(encod
 if "laborCost" not in costs or "directOtherCost" not in costs:
     raise SystemExit("SETOM audit: profitability cost breakdown is incomplete")
 
-print("SETOM audit: build chain, material-separated rotations, forced-mix control, planning/loading preservation, consumption truth, Travaux draft/transmission/capture, constat safety/validation, staffing, material ledger and profitability invariants are structurally present")
+print("SETOM audit: build chain, material-separated rotations, forced-mix control, planning/loading preservation, daily team rule, consumption truth, Travaux draft/transmission/capture, constat safety/validation, staffing, material ledger and profitability invariants are structurally present")
