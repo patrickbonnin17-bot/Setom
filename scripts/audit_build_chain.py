@@ -15,6 +15,9 @@ required = [
     "patch_planning_chargement_bridge.py",
     "patch_constat_rpc_safety.py",
     "patch_constat_validation_status.py",
+    "patch_travaux_draft.py",
+    "patch_travaux_draft_safety.py",
+    "patch_travaux_final_guard.py",
     "patch_travaux_measurements_photos.py",
     "patch_travaux_material_zero.py",
     "patch_profitability_material_variance.py",
@@ -81,6 +84,21 @@ for marker in ["data-setom-travaux-photo-zone", "capture=\"environment\"", "Mesu
     if marker not in travaux:
         raise SystemExit(f"SETOM audit: Travaux measurement/photo marker missing: {marker}")
 
+draft = (root / "scripts" / "patch_travaux_draft.py").read_text(encoding="utf-8")
+for marker in ["async function saveWorkDraft()", "Enregistrer les mesures", "Brouillon des travaux enregistré"]:
+    if marker not in draft:
+        raise SystemExit(f"SETOM audit: Travaux draft marker missing: {marker}")
+
+draft_safety = (root / "scripts" / "patch_travaux_draft_safety.py").read_text(encoding="utf-8")
+for marker in ["must not gate the measurement draft itself", "work_realizations", "Travaux drafts now persist measurements independently of photos"]:
+    if marker not in draft_safety:
+        raise SystemExit(f"SETOM audit: Travaux draft safety marker missing: {marker}")
+
+final_guard = (root / "scripts" / "patch_travaux_final_guard.py").read_text(encoding="utf-8")
+for marker in ["final transmission", "[\"Planifié\",\"En travaux\",\"Travaux en cours\",\"Travaux réalisés\"]", "SETOM: final Travaux transmission guard applied"]:
+    if marker not in final_guard:
+        raise SystemExit(f"SETOM audit: Travaux final transmission guard marker missing: {marker}")
+
 validation = (root / "scripts" / "patch_constat_validation_status.py").read_text(encoding="utf-8")
 if "[\"Brouillon\", \"À vérifier\", \"À valider\"]" not in validation:
     raise SystemExit("SETOM audit: constat validation status guard is incomplete")
@@ -98,4 +116,4 @@ costs = (root / "scripts/patch_profitability_cost_breakdown.py").read_text(encod
 if "laborCost" not in costs or "directOtherCost" not in costs:
     raise SystemExit("SETOM audit: profitability cost breakdown patch is incomplete")
 
-print("SETOM audit: build chain, material-separated rotations, planning/loading truth, consumption truth, Travaux capture, constat safety/validation, staffing, material ledger and profitability invariants are structurally present")
+print("SETOM audit: build chain, material-separated rotations, planning/loading truth, consumption truth, Travaux draft/transmission/capture, constat safety/validation, staffing, material ledger and profitability invariants are structurally present")
