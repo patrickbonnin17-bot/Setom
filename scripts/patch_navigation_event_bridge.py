@@ -4,7 +4,57 @@ path = Path("src/main.jsx")
 text = path.read_text(encoding="utf-8")
 
 marker = '  const [page, setPage] = useState("dashboard");\n'
-insert = '''  const [page, setPage] = useState("dashboard");\n\n  useEffect(() => {\n    const allowedPages = new Set([\n      "dashboard", "os", "travaux", "planning", "chargement", "constat",\n      "financier", "map", "teams", "reserves", "bpu", "materials", "settings", "access"\n    ]);\n    const handleSetomNavigate = (event) => {\n      const detail = event?.detail || {};\n      const nextPage = String(detail.page || "").trim();\n      if (!allowedPages.has(nextPage)) return;\n      setSelectedOS(null);\n      setShowNewOS(false);\n      setShowOsFilters(false);\n      if (nextPage === "chargement") {\n        const loadingDate = String(detail.date || "").trim();\n        const orderId = String(detail.orderId || "").trim();\n        window.__setomCurrentSection = "chargement";\n        try {\n          sessionStorage.setItem("setom:current-section", "chargement");\n          if (/^\\d{4}-\\d{2}-\\d{2}$/.test(loadingDate)) {\n            sessionStorage.setItem("setom:chargement:date:v1", loadingDate);\n            localStorage.setItem("setom:chargement:date:v1", loadingDate);\n          }\n          if (orderId) {\n            sessionStorage.setItem("setom:chargement:order:v1", orderId);\n            localStorage.setItem("setom:chargement:order:v1", orderId);\n          } else {\n            sessionStorage.removeItem("setom:chargement:order:v1");\n            localStorage.removeItem("setom:chargement:order:v1");\n          }\n        } catch (_) {}\n        window.dispatchEvent(new CustomEvent("setom:chargement-date-changed", { detail: { date: loadingDate, orderId } }));\n        window.dispatchEvent(new CustomEvent("setom:chargement-order-changed", { detail: { orderId, date: loadingDate } }));\n      }\n      setPage(nextPage);\n    };\n    window.addEventListener("setom:navigate", handleSetomNavigate);\n    return () => window.removeEventListener("setom:navigate", handleSetomNavigate);\n  }, []);\n'''
+insert = '''  const [page, setPage] = useState("dashboard");
+
+  useEffect(() => {
+    const allowedPages = new Set([
+      "dashboard", "os", "travaux", "planning", "chargement", "constat",
+      "financier", "map", "teams", "reserves", "bpu", "materials", "settings", "access"
+    ]);
+    const handleSetomNavigate = async (event) => {
+      const detail = event?.detail || {};
+      const nextPage = String(detail.page || "").trim();
+      if (!allowedPages.has(nextPage)) return;
+      setShowNewOS(false);
+      setShowOsFilters(false);
+      if (nextPage === "chargement") {
+        setSelectedOS(null);
+        const loadingDate = String(detail.date || "").trim();
+        const orderId = String(detail.orderId || "").trim();
+        window.__setomCurrentSection = "chargement";
+        try {
+          sessionStorage.setItem("setom:current-section", "chargement");
+          if (/^\\d{4}-\\d{2}-\\d{2}$/.test(loadingDate)) {
+            sessionStorage.setItem("setom:chargement:date:v1", loadingDate);
+            localStorage.setItem("setom:chargement:date:v1", loadingDate);
+          }
+          if (orderId) {
+            sessionStorage.setItem("setom:chargement:order:v1", orderId);
+            localStorage.setItem("setom:chargement:order:v1", orderId);
+          } else {
+            sessionStorage.removeItem("setom:chargement:order:v1");
+            localStorage.removeItem("setom:chargement:order:v1");
+          }
+        } catch (_) {}
+        window.dispatchEvent(new CustomEvent("setom:chargement-date-changed", { detail: { date: loadingDate, orderId } }));
+        window.dispatchEvent(new CustomEvent("setom:chargement-order-changed", { detail: { orderId, date: loadingDate } }));
+        setPage(nextPage);
+        return;
+      }
+      const orderId = String(detail.orderId || "").trim();
+      const osNumber = String(detail.osNumber || "").trim();
+      if (orderId || osNumber) {
+        let query = supabase.from("work_orders").select("*").limit(1);
+        query = orderId ? query.eq("id", orderId) : query.eq("os_number", osNumber);
+        const { data, error } = await query.maybeSingle();
+        if (!error && data) setSelectedOS(data);
+      }
+      setPage(nextPage);
+    };
+    window.addEventListener("setom:navigate", handleSetomNavigate);
+    return () => window.removeEventListener("setom:navigate", handleSetomNavigate);
+  }, []);
+'''
 
 if 'window.addEventListener("setom:navigate", handleSetomNavigate)' not in text:
     if marker not in text:
