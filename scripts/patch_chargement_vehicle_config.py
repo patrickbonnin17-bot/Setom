@@ -4,7 +4,7 @@ path = Path("src/chargementRotations.js")
 text = path.read_text()
 
 marker = 'const DEFAULT_PAYLOAD_T = 7;\n'
-bridge = '''const DEFAULT_PAYLOAD_T = 7;\n\n// Central vehicle bridge: keeps Chargement synchronized with the rest of SETOM.\nlet runtimeVehicleConfig = null;\nfunction applyVehicleConfig(value) {\n  if (!value || typeof value !== "object") return;\n  runtimeVehicleConfig = value;\n}\ntry {\n  window.addEventListener("setom:vehicle-config", (event) => applyVehicleConfig(event?.detail));\n  window.addEventListener("storage", (event) => {\n    if (event.key === VEHICLE_KEY && event.newValue) {\n      try { applyVehicleConfig(JSON.parse(event.newValue)); } catch (_) {}\n    }\n  });\n} catch (_) {}\n'''
+bridge = '''const DEFAULT_PAYLOAD_T = 7;\n\n// Central vehicle bridge: keeps Chargement synchronized with the rest of SETOM.\nlet runtimeVehicleConfig = null;\nfunction applyVehicleConfig(value) {\n  if (!value || typeof value !== "object") return;\n  runtimeVehicleConfig = value;\n  // The vehicle can be changed from another SETOM screen while Chargement is open.\n  // Re-render immediately so capacity, rotations and tonnage indicators stay accurate.\n  try { schedule(); } catch (_) {}\n}\ntry {\n  window.addEventListener("setom:vehicle-config", (event) => applyVehicleConfig(event?.detail));\n  window.addEventListener("storage", (event) => {\n    if (event.key === VEHICLE_KEY && event.newValue) {\n      try { applyVehicleConfig(JSON.parse(event.newValue)); } catch (_) {}\n    }\n  });\n} catch (_) {}\n'''
 if 'Central vehicle bridge:' not in text:
     if marker not in text:
         raise SystemExit('SETOM vehicle config marker not found; refusing to patch')
