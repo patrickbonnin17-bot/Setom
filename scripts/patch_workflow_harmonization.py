@@ -1,4 +1,5 @@
 from pathlib import Path
+import re
 
 MAIN = Path("src/main.jsx")
 PLANNING = Path("src/planningOverlay.jsx")
@@ -13,8 +14,7 @@ EDITABLE = [
 s = MAIN.read_text(encoding="utf-8")
 
 # One canonical editable OS policy. This pass runs after all feature patches.
-import re
-canonical = 'const EDITABLE_OS_STATUSES = [' + ', '.join(repr(x) for x in EDITABLE) + '];'
+canonical = 'const EDITABLE_OS_STATUSES = [' + ', '.join('"' + x.replace('"', '\\"') + '"' for x in EDITABLE) + '];'
 pattern = re.compile(r'const EDITABLE_OS_STATUSES\s*=\s*\[[^;]*\];')
 if pattern.search(s):
     s = pattern.sub(canonical, s, count=1)
