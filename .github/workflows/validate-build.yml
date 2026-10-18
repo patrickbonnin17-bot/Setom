@@ -32,5 +32,8 @@ jobs:
       - name: Validate workflow guards
         run: python3 scripts/patch_workflow_status.py
 
+      - name: Audit build chain
+        run: python3 scripts/audit_build_chain.py
+
       - name: Build production bundle
         run: npm run build
