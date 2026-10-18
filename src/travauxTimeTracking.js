@@ -21,10 +21,7 @@ function readJson(keys) {
   return {};
 }
 function contextFor(orderId) {
-  const sources = [
-    readJson(["setom:chargement:order:v1"]),
-    readJson(["setom:planning:selected-order:v1"]),
-  ];
+  const sources = [readJson(["setom:chargement:order:v1"]), readJson(["setom:planning:selected-order:v1"])];
   const value = sources.find((item) => {
     const id = item?.orderId || item?.id || item?.dbId || item?.osId;
     return !orderId || !id || String(id) === String(orderId);
@@ -85,7 +82,7 @@ function finish(orderId) {
     date: latest.startedAt.slice(0, 10),
   };
   window.dispatchEvent(new CustomEvent("setom:productivity-observation", { detail: observation }));
-  try { window.setomStaffingIntelligence?.recordProductivityObservation(observation); } catch (_) { /* learning layer is optional */ }
+  try { window.setomStaffingIntelligence?.recordProductivityObservation(observation); } catch (_) { /* optional learning layer */ }
   return latest;
 }
 function productiveHours(timer) {
@@ -118,28 +115,28 @@ export function TravauxTimeTracking({ orderId, status }) {
 
   if (!orderId) return null;
   const canStart = ["Planifié", "En travaux", "Travaux en cours"].includes(status);
-  return <div className="setom-travaux-timer" style={{ margin: "16px 0", padding: 16, border: "1px solid #dbe3ef", borderRadius: 14, background: "#f8fafc" }}>
-    <div style={{ display: "flex", justifyContent: "space-between", gap: 12, alignItems: "center", flexWrap: "wrap" }}>
-      <div>
-        <strong>⏱️ Temps d’intervention</strong>
-        <div style={{ marginTop: 4, color: "#667085", fontSize: 13 }}>
-          {active ? (timer.pausedAt ? "Intervention en attente" : "Intervention en cours") : timer?.completedAt ? "Intervention terminée" : "Chronométrage prêt"}
-        </div>
-      </div>
-      <div style={{ fontSize: 24, fontWeight: 800 }}>{formatDuration(elapsed)}</div>
-    </div>
-    <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 12 }}>
-      {!active && !timer?.completedAt && canStart && <button type="button" className="primary" onClick={() => setTimer(start(orderId))}>▶ Démarrer l’OS</button>}
-      {active && !timer.pausedAt && <button type="button" className="secondary" onClick={() => setTimer(pause(orderId))}>⏸ Mettre en attente</button>}
-      {active && timer.pausedAt && <button type="button" className="secondary" onClick={() => setTimer(resume(orderId))}>▶ Reprendre</button>}
-      {active && <button type="button" className="primary" onClick={() => setTimer(finish(orderId))}>⏹ Terminer l’OS</button>}
-    </div>
-    <div style={{ display: "flex", gap: 18, flexWrap: "wrap", marginTop: 10, color: "#667085", fontSize: 12 }}>
-      {timer?.startedAt && <span>Début : {new Date(timer.startedAt).toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" })}</span>}
-      <span>Temps productif : <strong>{formatDuration(elapsed)}</strong></span>
-      <span>Attente : <strong>{formatDuration(waiting)}</strong></span>
-    </div>
-  </div>;
+  const button = (label, className, onClick) => React.createElement("button", { type: "button", className, onClick }, label);
+  const children = [
+    React.createElement("div", { key: "head", style: { display: "flex", justifyContent: "space-between", gap: 12, alignItems: "center", flexWrap: "wrap" } },
+      React.createElement("div", null,
+        React.createElement("strong", null, "⏱️ Temps d’intervention"),
+        React.createElement("div", { style: { marginTop: 4, color: "#667085", fontSize: 13 } }, active ? (timer.pausedAt ? "Intervention en attente" : "Intervention en cours") : timer?.completedAt ? "Intervention terminée" : "Chronométrage prêt")
+      ),
+      React.createElement("div", { style: { fontSize: 24, fontWeight: 800 } }, formatDuration(elapsed))
+    ),
+    React.createElement("div", { key: "actions", style: { display: "flex", gap: 8, flexWrap: "wrap", marginTop: 12 } },
+      !active && !timer?.completedAt && canStart ? button("▶ Démarrer l’OS", "primary", () => setTimer(start(orderId))) : null,
+      active && !timer.pausedAt ? button("⏸ Mettre en attente", "secondary", () => setTimer(pause(orderId))) : null,
+      active && timer.pausedAt ? button("▶ Reprendre", "secondary", () => setTimer(resume(orderId))) : null,
+      active ? button("⏹ Terminer l’OS", "primary", () => setTimer(finish(orderId))) : null
+    ),
+    React.createElement("div", { key: "meta", style: { display: "flex", gap: 18, flexWrap: "wrap", marginTop: 10, color: "#667085", fontSize: 12 } },
+      timer?.startedAt ? React.createElement("span", null, "Début : ", new Date(timer.startedAt).toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" })) : null,
+      React.createElement("span", null, "Temps productif : ", React.createElement("strong", null, formatDuration(elapsed))),
+      React.createElement("span", null, "Attente : ", React.createElement("strong", null, formatDuration(waiting)))
+    )
+  ];
+  return React.createElement("div", { className: "setom-travaux-timer", style: { margin: "16px 0", padding: 16, border: "1px solid #dbe3ef", borderRadius: 14, background: "#f8fafc" } }, children);
 }
 
 export function installTravauxTimeTracking() {
