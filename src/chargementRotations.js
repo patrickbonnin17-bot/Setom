@@ -2,8 +2,9 @@ import { supabase } from "./supabase";
 
 const STORAGE_KEY = "setom:chargement:v3";
 const ROTATION_KEY = "setom:chargement:rotations:v1";
+const VEHICLE_KEY = "setom:vehicle:config:v1";
 const ROOT_ID = "setom-chargement-rotations";
-const PAYLOAD_T = 7;
+const DEFAULT_PAYLOAD_T = 7;
 
 const today = () => new Date().toISOString().slice(0, 10);
 const num = (v) => {
@@ -12,6 +13,29 @@ const num = (v) => {
 };
 const round2 = (v) => Math.round(num(v) * 100) / 100;
 const esc = (v) => String(v ?? "").replace(/[&<>\"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", "\"": "&quot;" }[c]));
+
+function readVehiclePayload() {
+  const candidates = [
+    "setom:vehicle:config:v1",
+    "setom:vehicle-config",
+    "setom:truck-config",
+    "setom:chargement:vehicle",
+  ];
+  for (const key of candidates) {
+    try {
+      const raw = localStorage.getItem(key);
+      if (!raw) continue;
+      const value = JSON.parse(raw);
+      const payload = num(value?.payload_t ?? value?.payloadT ?? value?.charge_utile_t ?? value?.chargeUtileT ?? value?.maxPayloadT ?? value?.capacity_t);
+      if (payload > 0) return payload;
+    } catch (_) {}
+  }
+  return DEFAULT_PAYLOAD_T;
+}
+
+function payloadCapacity() {
+  return Math.max(0.1, round2(readVehiclePayload()));
+}
 
 function readDay() {
   try {
@@ -57,6 +81,7 @@ function loadedOf(row) {
 }
 function buildPlan() {
   const rs = rows();
+  const capacityT = payloadCapacity();
   const byRotation = new Map();
   rs.forEach((row) => {
     const r = getAssignment(row.id);
@@ -65,7 +90,7 @@ function buildPlan() {
   });
   const totalPlanned = rs.reduce((s, r) => s + plannedOf(r), 0);
   const totalLoaded = rs.reduce((s, r) => s + loadedOf(r), 0);
-  const needed = Math.max(1, Math.ceil(totalPlanned / PAYLOAD_T));
+  const needed = Math.max(1, Math.ceil(totalPlanned / capacityT));
   for (let i = 1; i <= needed; i += 1) if (!byRotation.has(i)) byRotation.set(i, []);
   const rotations = [...byRotation.entries()].sort((a, b) => a[0] - b[0]).map(([number, list]) => ({
     number,
@@ -74,7 +99,7 @@ function buildPlan() {
     loaded: round2(list.reduce((s, r) => s + loadedOf(r), 0)),
     osCount: new Set(list.map((r) => r.osId).filter(Boolean)).size,
   }));
-  return { rows: rs, totalPlanned: round2(totalPlanned), totalLoaded: round2(totalLoaded), needed, rotations };
+  return { rows: rs, totalPlanned: round2(totalPlanned), totalLoaded: round2(totalLoaded), needed, capacityT, rotations };
 }
 
 function styles() {
@@ -112,13 +137,13 @@ function autoDistribute(plan) {
   let used = 0;
   plan.rows.forEach((row) => {
     const p = plannedOf(row);
-    if (p > 0 && used > 0 && used + p > PAYLOAD_T) {
+    if (p > 0 && used > 0 && used + p > plan.capacityT) {
       rotation += 1;
       used = 0;
     }
     assignments[row.id] = rotation;
     used += p;
-    if (used >= PAYLOAD_T) {
+    if (used >= plan.capacityT) {
       rotation += 1;
       used = 0;
     }
@@ -143,12 +168,12 @@ function render() {
     host.appendChild(panel);
   }
   const remaining = Math.max(0, round2(plan.totalPlanned - plan.totalLoaded));
-  const capacity = Math.max(0, round2(plan.needed * PAYLOAD_T - plan.totalPlanned));
+  const capacity = Math.max(0, round2(plan.needed * plan.capacityT - plan.totalPlanned));
   const selected = plan.rotations.find((r) => r.number === active) || plan.rotations[0];
   const rotationOptions = Array.from({ length: Math.max(plan.needed + 2, 3) }, (_, i) => i + 1);
   panel.innerHTML = `
     <div class="rtn-head">
-      <div><div class="rtn-title">🚛 ROTATIONS DU CAMION</div><span class="rtn-sub">Répartition automatique des besoins de la journée sur des chargements de ${PAYLOAD_T.toFixed(1)} t maximum.</span></div>
+      <div><div class="rtn-title">🚛 ROTATIONS DU CAMION</div><span class="rtn-sub">Répartition automatique des besoins de la journée sur des chargements de ${plan.capacityT.toFixed(1)} t maximum.</span></div>
       <div class="rtn-actions"><button class="rtn-auto">⚡ Répartir automatiquement</button><button class="rtn-add primary">＋ Nouvelle rotation</button></div>
     </div>
     <div class="rtn-kpis">
@@ -156,14 +181,14 @@ function render() {
       <div class="rtn-kpi"><span>DÉJÀ CHARGÉ</span><strong>${plan.totalLoaded.toFixed(2)} t</strong></div>
       <div class="rtn-kpi good"><span>RESTE À CHARGER</span><strong>${remaining.toFixed(2)} t</strong></div>
       <div class="rtn-kpi warn"><span>ROTATIONS NÉCESSAIRES</span><strong>${plan.needed}</strong></div>
-      <div class="rtn-kpi"><span>CAPACITÉ TOTALE</span><strong>${(plan.needed * PAYLOAD_T).toFixed(1)} t</strong></div>
+      <div class="rtn-kpi"><span>CAPACITÉ TOTALE</span><strong>${(plan.needed * plan.capacityT).toFixed(1)} t</strong></div>
     </div>
     <div class="rtn-rotations">
       ${plan.rotations.map((r) => `
         <div class="rtn-rot ${r.number === active ? "active" : ""}" data-rotation="${r.number}">
           <b>Rotation ${r.number}</b>
           <span>${r.osCount} OS · ${r.planned.toFixed(2)} t prévus · ${r.loaded.toFixed(2)} t chargés</span>
-          <div class="meter"><i style="width:${Math.min(100, r.planned / PAYLOAD_T * 100)}%"></i></div>
+          <div class="meter"><i style="width:${Math.min(100, r.planned / plan.capacityT * 100)}%"></i></div>
         </div>`).join("")}
     </div>
     <div class="rtn-table">
@@ -178,7 +203,7 @@ function render() {
           <select class="rtn-assignment" data-row-id="${esc(row.id)}">${rotationOptions.map((r) => `<option value="${r}" ${r === active ? "selected" : ""}>Rotation ${r}</option>`).join("")}</select>
         </div>`).join("") : `<div class="rtn-empty">Aucun chargement n'est encore affecté à cette rotation.</div>`}
     </div>
-    <div class="rtn-note">Capacité paramétrée du camion : <strong>${PAYLOAD_T.toFixed(1)} t</strong>. Les affectations sont conservées pour la journée et restent séparées du statut de l'OS.</div>
+    <div class="rtn-note">Capacité du camion : <strong>${plan.capacityT.toFixed(1)} t</strong>. La valeur provient de la configuration véhicule lorsqu'elle est disponible, sinon la référence reste ${DEFAULT_PAYLOAD_T.toFixed(1)} t. Les affectations sont conservées pour la journée et restent séparées du statut de l'OS.</div>
   `;
 
   panel.querySelectorAll("[data-rotation]").forEach((el) => el.addEventListener("click", () => {
@@ -230,5 +255,5 @@ const observer = new MutationObserver((mutations) => {
 observer.observe(document.body, { childList: true, subtree: true });
 window.addEventListener("setom:planning-updated", schedule);
 window.addEventListener("setom:chargement-updated", schedule);
-window.addEventListener("storage", (e) => { if (e.key === STORAGE_KEY || e.key === ROTATION_KEY) schedule(); });
+window.addEventListener("storage", (e) => { if (e.key === STORAGE_KEY || e.key === ROTATION_KEY || e.key === VEHICLE_KEY) schedule(); });
 schedule();
