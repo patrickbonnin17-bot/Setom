@@ -35,6 +35,11 @@ for marker in ["materialInfo", "mixedMaterials", "MÉLANGE FORCÉ", "Material ch
     if marker not in rot:
         raise SystemExit(f"SETOM audit: loading rotation invariant missing: {marker}")
 
+date_patch = (root / "scripts" / "patch_chargement_planning_date.py").read_text(encoding="utf-8")
+for marker in ["setom:chargement:date:v1", "selectedDate = ()", "setom:chargement-date-changed"]:
+    if marker not in date_patch:
+        raise SystemExit(f"SETOM audit: planning/loading date bridge marker missing: {marker}")
+
 bridge = (root / "scripts" / "patch_planning_chargement_bridge.py").read_text(encoding="utf-8")
 for marker in ["SETOM_PLANNING_TONNAGE_KEY", "syncPlanningToChargement", "setom:chargement-updated"]:
     if marker not in bridge:
@@ -45,4 +50,4 @@ for marker in ["DEFAULT_TEAM_SIZE = 6", "jamais OS par OS"]:
     if marker not in staffing:
         raise SystemExit(f"SETOM audit: staffing rule marker missing: {marker}")
 
-print("SETOM audit: build chain, material rotation, planning/loading bridge, staffing and ledger invariants are structurally present")
+print("SETOM audit: build chain, material rotation, date bridge, planning/loading bridge, staffing and ledger invariants are structurally present")
