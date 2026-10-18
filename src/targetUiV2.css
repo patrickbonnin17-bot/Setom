@@ -1,0 +1,95 @@
+/* SETOM V2 — OS dossier and operational workspace refinements */
+
+.os-v2-commandbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  margin: 14px 0 10px;
+  padding: 11px 13px;
+  border: 1px solid #d7e2eb;
+  border-radius: 12px;
+  background: linear-gradient(90deg, #f7fafc, #ffffff);
+}
+
+.os-v2-status-line { display: flex; align-items: center; gap: 9px; min-width: 0; color: #102b43; }
+.os-v2-status-dot { width: 10px; height: 10px; border-radius: 999px; background: #0788ee; box-shadow: 0 0 0 4px rgba(7,136,238,.12); flex: 0 0 auto; }
+.os-v2-status-address { color: #66788a; font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.os-v2-actions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 7px; }
+.os-v2-actions button { min-height: 36px; padding: 0 12px !important; font-size: 12px !important; }
+
+.os-v2-flow {
+  display: flex;
+  align-items: center;
+  gap: 0;
+  padding: 12px 4px 13px;
+  overflow-x: auto;
+}
+.os-v2-flow-step { display: flex; align-items: center; gap: 7px; white-space: nowrap; color: #7b8b99; }
+.os-v2-flow-step span {
+  width: 27px; height: 27px; border-radius: 50%; display: grid; place-items: center;
+  border: 2px solid #cbd7e0; background: #fff; font-size: 11px; font-weight: 800;
+}
+.os-v2-flow-step small { font-size: 11px; font-weight: 700; }
+.os-v2-flow-step.active { color: #087edb; }
+.os-v2-flow-step.active span { border-color: #0788ee; background: #0788ee; color: #fff; box-shadow: 0 0 0 4px rgba(7,136,238,.10); }
+.os-v2-flow-step.completed { color: #18a56b; }
+.os-v2-flow-step.completed span { border-color: #18a56b; color: #18a56b; }
+.os-v2-flow-line { width: 34px; height: 2px; background: #d6e1ea; margin: 0 7px; flex: 0 0 auto; }
+
+.os-v2-photo-callout {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  margin: 14px 0 16px;
+  padding: 13px 14px;
+  border: 1px solid #b9ddf7;
+  border-radius: 12px;
+  background: linear-gradient(90deg, #eef8ff, #f8fcff);
+}
+.os-v2-photo-callout > div { display: flex; flex-direction: column; gap: 3px; }
+.os-v2-photo-callout strong { color: #0b4770; font-size: 13px; }
+.os-v2-photo-callout span { color: #5e7181; font-size: 12px; }
+.os-v2-photo-callout button { min-height: 38px; white-space: nowrap; }
+
+@media (min-width: 980px) {
+  .os-detail-modal {
+    width: min(1420px, calc(100vw - 34px)) !important;
+    max-width: 1420px !important;
+    max-height: calc(100vh - 34px) !important;
+    padding: 24px !important;
+    overflow-y: auto !important;
+  }
+  .modal-bg:has(.os-detail-modal) { padding: 17px !important; align-items: center !important; }
+  .os-detail-modal .modal-header {
+    position: sticky; top: -24px; z-index: 8; margin: -24px -24px 14px; padding: 16px 24px;
+    background: rgba(255,255,255,.96); backdrop-filter: blur(10px); border-bottom: 1px solid #e2e9ef;
+  }
+  .os-detail-modal .modal-header h2 { font-size: 25px !important; letter-spacing: -.35px; }
+  .os-detail-summary {
+    display: grid !important;
+    grid-template-columns: repeat(6, minmax(0,1fr));
+    gap: 8px !important;
+  }
+  .os-detail-badge {
+    min-height: 62px; border: 1px solid #dbe5ec; background: #f8fafc; border-radius: 10px; padding: 9px 11px !important;
+  }
+  .os-detail-badge span { color: #738495 !important; font-size: 10px !important; }
+  .os-detail-badge strong { color: #12304a !important; font-size: 13px !important; }
+  .os-tabs { position: sticky; top: 62px; z-index: 7; background: rgba(255,255,255,.96); backdrop-filter: blur(8px); padding: 8px 0 !important; border-bottom: 1px solid #e4ebf0; }
+  .os-tab { min-height: 40px !important; border-radius: 8px !important; font-size: 12px !important; }
+  .os-tab.active { background: #eaf5ff !important; color: #067bd8 !important; border-color: #a9d7f7 !important; }
+  .os-info-grid { display: grid !important; grid-template-columns: repeat(4,minmax(0,1fr)); gap: 10px !important; }
+  .os-info-grid > div { padding: 12px !important; border: 1px solid #e1e8ee; border-radius: 10px; background: #fff; }
+  .os-status-box { border-radius: 10px !important; background: #f7fafc !important; border: 1px solid #dbe5ec !important; }
+  .os-section h3 { color: #102b43 !important; margin-top: 6px !important; }
+}
+
+@media (max-width: 979px) {
+  .os-v2-commandbar { align-items: stretch; flex-direction: column; }
+  .os-v2-actions { justify-content: flex-start; }
+  .os-v2-photo-callout { align-items: stretch; flex-direction: column; }
+  .os-v2-photo-callout button { width: 100%; }
+  .os-v2-flow { padding-bottom: 8px; }
+}
