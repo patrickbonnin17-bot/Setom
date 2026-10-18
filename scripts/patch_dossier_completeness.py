@@ -6,8 +6,11 @@ text = main.read_text(encoding="utf-8")
 
 import_marker = 'import "./targetUiV2.css";'
 import_line = 'import "./dossierCompleteness.css";'
+next_import = 'import "./dossierNextAction.css";'
 if import_marker in text and import_line not in text:
     text = text.replace(import_marker, import_marker + "\n" + import_line, 1)
+if import_marker in text and next_import not in text:
+    text = text.replace(import_marker, import_marker + "\n" + next_import, 1)
 
 marker = '<div className="os-v2-photo-callout">'
 checklist = '''<div className="os-dossier-checklist">
