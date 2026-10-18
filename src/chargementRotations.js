@@ -92,7 +92,6 @@ function buildPlan() {
   const totalPlanned = rs.reduce((s, r) => s + plannedOf(r), 0);
   const totalLoaded = rs.reduce((s, r) => s + loadedOf(r), 0);
   const needed = Math.max(1, Math.ceil(totalPlanned / capacityT));
-  // Keep manually created empty rotations visible instead of losing them on re-render.
   const manualRotations = Math.max(0, (Number(state.next) || 1) - 1);
   const rotationCount = Math.max(needed, manualRotations, ...byRotation.keys(), 1);
   for (let i = 1; i <= rotationCount; i += 1) if (!byRotation.has(i)) byRotation.set(i, []);
@@ -259,5 +258,3 @@ const observer = new MutationObserver((mutations) => {
 observer.observe(document.body, { childList: true, subtree: true });
 window.addEventListener("setom:planning-updated", schedule);
 window.addEventListener("setom:chargement-updated", schedule);
-window.addEventListener("storage", (e) => { if (e.key === STORAGE_KEY || e.key === ROTATION_KEY || e.key === VEHICLE_KEY) schedule(); });
-schedule();
