@@ -48,7 +48,8 @@ export const canEditOS = (role, status) => {
 export const canEditWork = (role, status) => [ROLES.ADMIN, ROLES.BUREAU, ROLES.TERRAIN].includes(role) && isWorkEditable(status);
 export const canGenerateConstat = (status) => isWorkCompleted(status);
 export const canControlConstat = (role, status) => [ROLES.ADMIN, ROLES.BUREAU].includes(role) && isConstatControl(status);
-export const canValidateResponsable = (role, status, hasValidationPermission = false) => ([ROLES.ADMIN, ROLES.BUREAU].includes(role) || hasValidationPermission) && isConstatControl(status);
+// Validation responsable is a distinct authority. Admin is always allowed; bureau requires an explicit permission.
+export const canValidateResponsable = (role, status, hasValidationPermission = false) => (role === ROLES.ADMIN || hasValidationPermission) && isConstatControl(status);
 export const canSendToClient = (role, status) => [ROLES.ADMIN, ROLES.BUREAU].includes(role) && normalizeOSStatus(status) === STATUS.RESPONSIBLE_VALIDATED;
 export const canClientValidate = (role, status) => role === ROLES.CLIENT && isClientPending(status);
 export const canRegisterReserve = (role, status) => role === ROLES.CLIENT && isClientPending(status);
