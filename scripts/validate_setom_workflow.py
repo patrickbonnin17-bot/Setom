@@ -30,6 +30,10 @@ if 'order.status === "Travaux en cours"' in planning:
 if constat and '["Brouillon", "À vérifier", "À valider"]' not in constat and "['Brouillon', 'À vérifier', 'À valider']" not in constat:
     errors.append("constatValidationPatch.jsx: review chain is not harmonized")
 
+# The UI must never call an RPC that is not part of the deployed constat contract.
+if "regenerate_constat_for_work_order" in main:
+    errors.append("main.jsx: unsupported regenerate_constat_for_work_order RPC remains")
+
 # Closed financial states must not be treated as editable work states.
 editable_match = re.search(r'const EDITABLE_OS_STATUSES\s*=\s*\[([^\]]+)\]', main)
 if editable_match:
@@ -62,5 +66,6 @@ if errors:
 print("SETOM workflow validation OK")
 print(" - planning/work states: harmonized")
 print(" - constat review states: harmonized")
+print(" - unsupported constat regeneration RPC: absent")
 print(" - validated/closed states: protected")
 print(" - duplicate active-work guards: checked")
