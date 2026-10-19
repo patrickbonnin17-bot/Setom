@@ -10,7 +10,8 @@ const setomWorkTabPlugin = {
     if (start === -1 || end === -1) return null;
     const replacement = "function WorkTab({os,updateOs,onSaved}){return React.createElement(WorkMeasurements,{os,updateOs,onSaved})}\n";
     const withWorkTab = code.slice(0, start) + replacement + code.slice(end);
-    const next = withWorkTab.replace('<WorkTab os={os} updateOs={updateOs}/>', '<WorkTab os={os} updateOs={updateOs} onSaved={()=>setTab("photos")}/>');
+    const withWorkCompletion = withWorkTab.replace('<WorkTab os={os} updateOs={updateOs}/>', '<WorkTab os={os} updateOs={updateOs} onSaved={()=>setTab("photos")}/>');
+    const next = withWorkCompletion.replace('const doAction=()=>{if(!blocked&&actionTarget)updateOs({status:actionTarget})};', 'const doAction=()=>{if(!blocked&&actionTarget){updateOs({status:actionTarget});if(os.status===STATUS.PLANNED)setTab("travaux");}};');
     return { code: `import WorkMeasurements from \"./WorkMeasurements\";\n${next}`, map: null };
   },
 };
