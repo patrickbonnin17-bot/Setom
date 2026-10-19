@@ -1,4 +1,5 @@
 from pathlib import Path
+import re
 
 root = Path(__file__).resolve().parents[1]
 main = root / "src" / "main.jsx"
@@ -47,5 +48,25 @@ photo_callout = '''<div className="os-v2-photo-callout">
     </div><div className="os-info-grid">'''
 if resume_marker in text and 'os-v2-photo-callout' not in text:
     text = text.replace(resume_marker, photo_callout, 1)
+
+# Remove the unsupported constat regeneration RPC. The canonical constat is refreshed
+# from the final Travaux transmission and read through get_constat_for_work_order.
+text = re.sub(
+    r'\n      if \(!constatData && os\.status === "Travaux effectués".*?\n      }\n      if\(!cancelled\)',
+    '\n      if(!cancelled)',
+    text,
+    flags=re.S,
+)
+text = re.sub(
+    r'\n  async function regenerateConstatFromWorks\(\).*?\n\n  const canManagePlanning',
+    '\n\n  const canManagePlanning',
+    text,
+    flags=re.S,
+)
+text = re.sub(
+    r'\s*<button className="secondary" type="button"[^>]*onClick=\{regenerateConstatFromWorks\}>↻ Recalculer depuis les travaux</button>',
+    '',
+    text,
+)
 
 main.write_text(text, encoding="utf-8")
