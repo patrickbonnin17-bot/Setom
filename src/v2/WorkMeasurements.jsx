@@ -12,6 +12,12 @@ const BPU_CATALOG = [
   { code: "MARQ", label: "Marquage / peinture", unit: "forfait" },
 ];
 
+const MATERIAL_DENSITIES = [
+  { match: /enrob/i, density: 2.35 },
+  { match: /béton/i, density: 2.40 },
+  { match: /grave-?émulsion/i, density: 2.20 },
+];
+
 const blankMeasurements = {
   length: "",
   width: "",
@@ -26,6 +32,11 @@ const blankMeasurements = {
 function number(value) {
   const n = Number(String(value).replace(",", "."));
   return Number.isFinite(n) ? n : 0;
+}
+
+function densityForMaterial(material) {
+  const found = MATERIAL_DENSITIES.find(item => item.match.test(String(material || "")));
+  return found?.density || 2.35;
 }
 
 function Input({ label, unit, value, onChange, step = "0.01", placeholder = "0" }) {
@@ -62,6 +73,8 @@ export default function WorkMeasurements({ os, updateOs, onSaved }) {
 
   const surface = useMemo(() => number(m.length) * number(m.width), [m.length, m.width]);
   const volume = useMemo(() => surface * number(m.thickness) / 100, [surface, m.thickness]);
+  const density = useMemo(() => densityForMaterial(os.material), [os.material]);
+  const calculatedTonnage = useMemo(() => volume * density, [volume, density]);
   const selectedService = BPU_CATALOG.find(x => x.code === selectedBpu) || BPU_CATALOG[0];
 
   const set = (key, value) => setM(current => ({ ...current, [key]: value }));
@@ -83,6 +96,7 @@ export default function WorkMeasurements({ os, updateOs, onSaved }) {
   const save = () => {
     updateOs({
       actualSurface: Number(surface.toFixed(2)) || null,
+      actualTonnage: Number(calculatedTonnage.toFixed(2)) || null,
       measurements: {
         ...m,
         length: number(m.length),
@@ -95,6 +109,8 @@ export default function WorkMeasurements({ os, updateOs, onSaved }) {
         marking: number(m.marking),
         surface: Number(surface.toFixed(2)),
         volume: Number(volume.toFixed(3)),
+        density,
+        calculatedTonnage: Number(calculatedTonnage.toFixed(2)),
       },
       bpuLines: services,
     });
@@ -112,10 +128,11 @@ export default function WorkMeasurements({ os, updateOs, onSaved }) {
             <Input label="Largeur" unit="m" value={m.width} onChange={v => set("width", v)} />
             <Input label="Épaisseur" unit="cm" step="0.1" value={m.thickness} onChange={v => set("thickness", v)} />
           </div>
-          <div style={{ marginTop: 16, display: "grid", gridTemplateColumns: "repeat(3,1fr)", gap: 12 }}>
+          <div style={{ marginTop: 16, display: "grid", gridTemplateColumns: "repeat(4,1fr)", gap: 12 }}>
             <div style={{ padding: 14, borderRadius: 10, background: "#f5f8fc", border: "1px solid #e5eaf1" }}><small style={{ color: "#8290a4", fontSize: 9 }}>Surface calculée</small><strong style={{ display: "block", marginTop: 4, fontSize: 21 }}>{surface.toFixed(2)} <small style={{ fontSize: 10, color: "#8290a4" }}>m²</small></strong></div>
             <div style={{ padding: 14, borderRadius: 10, background: "#f5f8fc", border: "1px solid #e5eaf1" }}><small style={{ color: "#8290a4", fontSize: 9 }}>Volume théorique</small><strong style={{ display: "block", marginTop: 4, fontSize: 21 }}>{volume.toFixed(3)} <small style={{ fontSize: 10, color: "#8290a4" }}>m³</small></strong></div>
             <div style={{ padding: 14, borderRadius: 10, background: "#eef5ff", border: "1px solid #d7e7ff" }}><small style={{ color: "#5c7aa4", fontSize: 9 }}>Surface prévue OS</small><strong style={{ display: "block", marginTop: 4, fontSize: 21, color: "#176fe5" }}>{os.plannedSurface || 0} <small style={{ fontSize: 10 }}>m²</small></strong></div>
+            <div style={{ padding: 14, borderRadius: 10, background: "#edf9f1", border: "1px solid #d2efdc" }}><small style={{ color: "#4c7d5d", fontSize: 9 }}>Tonnage réel calculé</small><strong style={{ display: "block", marginTop: 4, fontSize: 21, color: "#159957" }}>{calculatedTonnage.toFixed(2)} <small style={{ fontSize: 10 }}>t</small></strong><small style={{ display: "block", marginTop: 3, color: "#7b8b80", fontSize: 8 }}>Densité {density.toFixed(2)} t/m³</small></div>
           </div>
           <div style={{ marginTop: 17, display: "flex", alignItems: "center", gap: 12 }}>
             <button className="btn primary" onClick={save}><Save size={15}/> Enregistrer les mesures</button>
@@ -146,7 +163,7 @@ export default function WorkMeasurements({ os, updateOs, onSaved }) {
         {services.length > 0 && <div style={{ marginTop: 14, display: "flex", justifyContent: "flex-end" }}><button className="btn primary" onClick={save}><Save size={14}/> Enregistrer les mesures et le BPU</button></div>}
       </section>
 
-      <section style={{ padding: "12px 15px", border: "1px solid #e1e8f1", borderRadius: 10, background: "#fbfcfe", color: "#78869a", fontSize: 10, lineHeight: 1.55 }}><b style={{ color: "#445269" }}>Règle SETOM :</b> les dimensions longueur × largeur calculent la surface réelle. L'épaisseur sert au calcul de volume et au futur calcul de tonnage. Les prestations complémentaires et les lignes BPU sont conservées séparément pour permettre ensuite le constat, la valorisation et la facturation.</section>
+      <section style={{ padding: "12px 15px", border: "1px solid #e1e8f1", borderRadius: 10, background: "#fbfcfe", color: "#78869a", fontSize: 10, lineHeight: 1.55 }}><b style={{ color: "#445269" }}>Règle SETOM :</b> le tonnage est calculé automatiquement à partir des mesures réellement saisies : longueur × largeur × épaisseur × densité du matériau. Pour l'enrobé, la densité de référence est actuellement de 2,35 t/m³ ; elle sera ensuite pilotable depuis le référentiel Matériaux.</section>
     </div>
   );
 }
