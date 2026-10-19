@@ -1,4 +1,5 @@
 from pathlib import Path
+import re
 
 path = Path("src/main.jsx")
 text = path.read_text(encoding="utf-8")
@@ -30,5 +31,27 @@ if old_dep in text:
 elif 'profile?.role, constatRefreshVersion' not in text:
     raise SystemExit('SETOM: constat effect dependency anchor missing')
 
+# The canonical constat is refreshed after the final Travaux transmission and
+# read with get_constat_for_work_order. The deployed database does not expose
+# regenerate_constat_for_work_order, so remove any legacy UI/RPC path before the
+# build audit runs.
+text = re.sub(
+    r'\n      if \(!constatData && os\.status === "Travaux effectués".*?\n      }\n      if\(!cancelled\)',
+    '\n      if(!cancelled)',
+    text,
+    flags=re.S,
+)
+text = re.sub(
+    r'\n  async function regenerateConstatFromWorks\(\).*?\n\n  const canManagePlanning',
+    '\n\n  const canManagePlanning',
+    text,
+    flags=re.S,
+)
+text = re.sub(
+    r'\s*<button className="secondary" type="button"[^>]*onClick=\{regenerateConstatFromWorks\}>↻ Recalculer depuis les travaux</button>',
+    '',
+    text,
+)
+
 path.write_text(text, encoding="utf-8")
-print('SETOM: constat refresh wired to final Travaux transmission')
+print('SETOM: constat refresh wired to final Travaux transmission; unsupported regeneration RPC removed')
