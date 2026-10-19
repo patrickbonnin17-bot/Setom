@@ -1,9 +1,9 @@
 import React, { useMemo, useRef, useState } from "react";
-import { ArrowLeft, ArrowRight, Camera, Check, CheckCircle2, Copy, MapPin, MoreHorizontal, Pencil, Play, Plus, Save, Trash2, Truck, Users, ClipboardList } from "lucide-react";
+import { ArrowLeft, ArrowRight, Camera, Check, CheckCircle2, ClipboardList, Copy, MapPin, MoreHorizontal, Pencil, Play, Plus, Save, Trash2, Truck, Users, X } from "lucide-react";
 import { DOSSIER_TYPES, STATUS } from "./model";
 import "./os-detail.css";
+import "./os-workflow.css";
 
-const STEPS = ["OS", "Mesures", "Matériaux", "Photos"];
 const BPU = [
   { code: "ENR-NOIR", label: "Enrobé noir", unit: "m²" },
   { code: "ENR-COUL", label: "Plus-value enrobé couleur", unit: "m²" },
@@ -14,59 +14,220 @@ const BPU = [
   { code: "CIRC", label: "Circulation / signalisation temporaire", unit: "forfait" },
   { code: "MARQ", label: "Marquage / peinture", unit: "forfait" },
 ];
-const QUICK_BPU = BPU.filter(x => ["SCI", "JNT", "BAC", "CIRC", "MARQ"].includes(x.code));
-const blankZone = (kind = "Chaussée") => ({ id: `${Date.now()}-${Math.random()}`, kind, length: "", width: "", thickness: "5" });
-const n = v => { const x = Number(String(v ?? "").replace(",", ".")); return Number.isFinite(x) ? x : 0; };
+const QUICK = ["SCI", "JNT", "BAC", "CIRC", "MARQ"];
+const n = value => { const x = Number(String(value ?? "").replace(",", ".")); return Number.isFinite(x) ? x : 0; };
+const fmt = (value, digits = 2) => n(value).toFixed(digits).replace(".", ",");
 const densityFor = material => /béton/i.test(material || "") ? 2.4 : /grave/i.test(material || "") ? 2.2 : 2.35;
-const fmt = (v, digits = 2) => Number(v || 0).toFixed(digits).replace(".", ",");
-function StatusBadge({ status }) { const tone = status === STATUS.PLANNED ? "planned" : status === STATUS.IN_PROGRESS ? "progress" : status === STATUS.CREATED ? "created" : "neutral"; return <span className={`os-detail-badge ${tone}`}>{status}</span>; }
-function Field({ label, value, onChange, unit, step = "0.01", disabled = false }) { return <label className="field"><span>{label}</span><div className="field-control"><input type="number" min="0" step={step} value={value} onChange={e => onChange?.(e.target.value)} disabled={disabled}/>{unit && <em>{unit}</em>}</div></label>; }
-function MapPreview() { return <div className="os-map-preview"><div className="map-road r1"/><div className="map-road r2"/><div className="map-road r3"/><div className="map-road r4"/><div className="map-pin"><MapPin size={22} fill="currentColor"/></div></div>; }
+const blankZone = kind => ({ id: `${Date.now()}-${Math.random().toString(16).slice(2)}`, kind, length: "", width: "", thickness: "5" });
+const newBpuLine = item => ({ id: `${item.code}-${Date.now()}-${Math.random().toString(16).slice(2)}`, code: item.code, label: item.label, unit: item.unit, quantity: "" });
+
+function Badge({ status }) {
+  const tone = status === STATUS.PLANNED ? "planned" : status === STATUS.IN_PROGRESS ? "progress" : status === STATUS.CREATED ? "created" : status === STATUS.CLIENT_VALIDATED || status === STATUS.DONE ? "green" : "";
+  return <span className={`wf-badge ${tone}`}>{status}</span>;
+}
+function Field({ label, value, onChange, unit, step = "0.01" }) {
+  return <label><span className="wf-field-label">{label}</span><div className="wf-input-wrap"><input className="wf-input" type="number" min="0" step={step} value={value} onChange={e => onChange(e.target.value)} />{unit && <em className="wf-unit">{unit}</em>}</div></label>;
+}
+function DetailMap() { return <div className="wf-map"><MapPin className="wf-pin" size={25} fill="currentColor" /></div>; }
+function InfoRow({ label, value }) { return <div className="wf-info-row"><span>{label}</span><strong>{value || "—"}</strong></div>; }
+
 function PhotoBox({ title, required, photo, onAdd }) {
   const inputRef = useRef(null);
-  const handleChange = e => { const file = e.target.files?.[0]; if (!file) return; const reader = new FileReader(); reader.onload = () => onAdd(reader.result); reader.readAsDataURL(file); e.target.value = ""; };
-  return <article className={`workflow-photo ${photo ? "done" : ""}`}>
-    <div className="photo-title"><b>{title}</b>{required && <small>Obligatoire</small>}</div>
-    {photo ? <div className="photo-preview"><img src={photo} alt={title}/><button type="button" className="photo-change" onClick={() => inputRef.current?.click()}><Camera size={14}/> Modifier</button><CheckCircle2 className="photo-check" size={20}/></div> : <div className="photo-placeholder"><Camera size={25}/><span>Aucune photo</span><button type="button" onClick={() => inputRef.current?.click()}><Camera size={14}/> Ajouter une photo</button></div>}
-    <input ref={inputRef} className="photo-input" type="file" accept="image/*" capture="environment" onChange={handleChange}/>
+  const handleFile = event => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = () => onAdd(reader.result);
+    reader.readAsDataURL(file);
+    event.target.value = "";
+  };
+  return <article className="wf-photo-card">
+    <div className="wf-photo-title"><b>{title}</b>{required && <span className="wf-required">OBLIGATOIRE</span>}</div>
+    <div className="wf-photo-frame">
+      {photo ? <img src={photo} alt={title} /> : <div className="wf-photo-placeholder"><Camera size={28}/><span>Aucune photo</span></div>}
+      {photo && <div className="wf-photo-actions"><button type="button" onClick={() => inputRef.current?.click()}><Camera size={14}/> Remplacer</button></div>}
+    </div>
+    {!photo && <div style={{padding:10}}><button type="button" className="wf-photo-add" onClick={() => inputRef.current?.click()}><Camera size={14}/> Ajouter une photo</button></div>}
+    <input ref={inputRef} className="wf-photo-input" type="file" accept="image/*" capture="environment" onChange={handleFile}/>
   </article>;
 }
+
 export default function OsDossierDetail({ os, onBack, updateOs }) {
   const [step, setStep] = useState(os.status === STATUS.IN_PROGRESS ? 1 : 0);
+  const [detailTab, setDetailTab] = useState("informations");
   const [zones, setZones] = useState(os.measurements?.zones?.length ? os.measurements.zones : [blankZone("Chaussée")]);
-  const [material, setMaterial] = useState(os.material || "Enrobé noir");
-  const [tonnage, setTonnage] = useState(os.materialData?.tonnage || "");
-  const [comments, setComments] = useState(os.comments || "");
   const [services, setServices] = useState(os.bpuLines || []);
   const [selectedBpu, setSelectedBpu] = useState(BPU[0].code);
-  const [bpuQty, setBpuQty] = useState("");
+  const [material, setMaterial] = useState(os.material || "Enrobé noir");
+  const [tonnage, setTonnage] = useState(os.materialData?.tonnage ? String(os.materialData.tonnage) : "");
+  const [comments, setComments] = useState(os.comments || "");
   const [photos, setPhotos] = useState(os.photos || {});
-  const totals = useMemo(() => zones.reduce((a, z) => { const surface = n(z.length) * n(z.width); const volume = surface * n(z.thickness) / 100; return { surface: a.surface + surface, volume: a.volume + volume }; }, { surface: 0, volume: 0 }), [zones]);
+  const [error, setError] = useState("");
+
+  const totals = useMemo(() => zones.reduce((total, zone) => {
+    const surface = n(zone.length) * n(zone.width);
+    const volume = surface * n(zone.thickness) / 100;
+    return { surface: total.surface + surface, volume: total.volume + volume };
+  }, { surface: 0, volume: 0 }), [zones]);
   const density = densityFor(material);
   const estimatedTonnage = totals.volume * density;
-  const selectedService = BPU.find(x => x.code === selectedBpu) || BPU[0];
   const internal = os.type === DOSSIER_TYPES.INTERNAL;
+  const selectedItem = BPU.find(item => item.code === selectedBpu) || BPU[0];
   const patch = data => updateOs(data);
-  const startWork = () => { patch({ status: STATUS.IN_PROGRESS }); setStep(1); window.scrollTo({ top: 0, behavior: "smooth" }); };
-  const updateZone = (id, key, value) => setZones(current => current.map(z => z.id === id ? { ...z, [key]: value } : z));
+
+  const startWork = () => {
+    patch({ status: STATUS.IN_PROGRESS });
+    setStep(1);
+    setError("");
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  };
+  const updateZone = (id, key, value) => setZones(current => current.map(zone => zone.id === id ? { ...zone, [key]: value } : zone));
   const addZone = kind => setZones(current => [...current, blankZone(kind)]);
-  const removeZone = id => setZones(current => current.length > 1 ? current.filter(z => z.id !== id) : current);
-  const saveMeasures = () => { patch({ actualSurface: Number(totals.surface.toFixed(2)), measurements: { zones, surface: Number(totals.surface.toFixed(2)), volume: Number(totals.volume.toFixed(3)) }, bpuLines: services }); setStep(3); window.scrollTo({ top: 0, behavior: "smooth" }); };
-  const addBpu = () => { const q = n(bpuQty); if (!q) return; setServices(cur => [...cur, { id: `${selectedBpu}-${Date.now()}`, code: selectedService.code, label: selectedService.label, unit: selectedService.unit, quantity: q }]); setBpuQty(""); };
-  const addQuickBpu = service => { setSelectedBpu(service.code); if (!services.some(x => x.code === service.code)) setServices(cur => [...cur, { id: `${service.code}-${Date.now()}`, code: service.code, label: service.label, unit: service.unit, quantity: 0 }]); };
-  const saveMaterials = () => { patch({ material, materialData: { density, tonnage: n(tonnage) || Number(estimatedTonnage.toFixed(2)) }, comments }); setStep(4); window.scrollTo({ top: 0, behavior: "smooth" }); };
-  const completePhoto = (key, value) => setPhotos(cur => ({ ...cur, [key]: value }));
-  const submit = () => { if (!(photos.Avant && photos.Après)) return; patch({ photos, comments, status: STATUS.WAITING_CHIEF }); };
-  if (step === 0) return <div className="os-detail"><div className="os-detail-bluebar"><button className="os-back" onClick={onBack}><ArrowLeft size={17}/> OS</button><span>Détail d'un OS</span></div><div className="os-detail-header"><div><div className="os-detail-number">OS n°{os.number.replace(/^OS-/, "")}</div><div className="os-detail-address">{os.address}</div></div><StatusBadge status={os.status}/></div><div className="os-detail-tabs">{[["informations","Informations"],["travaux","Travaux"],["photos","Photos"],["documents","Documents"],["suivi","Suivi"]].map(([id,label]) => <button key={id} className={id === "informations" ? "active" : ""}>{label}</button>)}</div><div className="os-detail-info-grid"><section className="os-info-card"><InfoRow label="Adresse" value={os.address}/><InfoRow label="Type" value={internal ? "Travail interne Eurovia" : "Reprise enrobé"}/><InfoRow label="Matériau" value={os.material}/><InfoRow label="Surface estimée" value={`${os.plannedSurface || 0} m²`}/><InfoRow label="Surface réelle" value={os.actualSurface ? `${os.actualSurface} m²` : "—"}/><InfoRow label="Secteur" value={os.sector}/><InfoRow label="Date prévue" value={os.plannedDay || "À planifier"}/><InfoRow label="État" value={os.status}/><InfoRow label="Créé par" value={`${os.creator || "—"} · ${new Date(os.createdAt).toLocaleDateString("fr-FR")}`}/></section><aside className="os-detail-visuals"><MapPreview/><button className="os-map-button"><MapPin size={14}/> Voir sur la carte</button><div className="os-site-photo"><Camera size={18}/><span>Photo chantier</span></div></aside></div><div className="os-detail-actions"><button className="os-action secondary"><Pencil size={14}/> Modifier</button><button className="os-action secondary"><Copy size={14}/> Dupliquer</button><button className="os-action secondary icon"><MoreHorizontal size={16}/></button>{os.status === STATUS.PLANNED && <button className="os-action primary" onClick={startWork}><Play size={14}/> Passer en travaux</button>}{os.status === STATUS.CREATED && <button className="os-action primary" onClick={() => patch({ status: STATUS.PLANNED })}><Save size={14}/> Planifier</button>}</div></div>;
-  return <div className="field-workflow"><header className="workflow-header"><button onClick={() => step === 1 ? setStep(0) : setStep(step - 1)}><ArrowLeft size={20}/></button><div><strong>SETOM</strong><span>{["Intervention terrain","Saisie des mesures","Matériaux utilisés","Photos et validation"][step - 1]}</span></div><button className="workflow-menu"><MoreHorizontal size={20}/></button></header><div className="workflow-os-strip"><div><b>OS {os.number.replace(/^OS-/, "")}</b><span>{os.address}</span></div><StatusBadge status={os.status}/></div><main className="workflow-body">{step === 1 && <StepIntervention os={os} onNext={() => setStep(2)} />}{step === 2 && <StepMeasures zones={zones} updateZone={updateZone} addZone={addZone} removeZone={removeZone} totals={totals} services={services} selectedBpu={selectedBpu} setSelectedBpu={setSelectedBpu} bpuQty={bpuQty} setBpuQty={setBpuQty} selectedService={selectedService} addBpu={addBpu} addQuickBpu={addQuickBpu} removeBpu={id => setServices(cur => cur.filter(x => x.id !== id))} onBack={() => setStep(1)} onNext={saveMeasures} />}{step === 3 && <StepMaterials material={material} setMaterial={setMaterial} density={density} estimatedTonnage={estimatedTonnage} tonnage={tonnage} setTonnage={setTonnage} onBack={() => setStep(2)} onNext={saveMaterials} />}{step === 4 && <StepPhotos photos={photos} completePhoto={completePhoto} comments={comments} setComments={setComments} onBack={() => setStep(3)} onSubmit={submit} />}</main><WorkflowStepper step={step}/></div>;
+  const removeZone = id => setZones(current => current.length > 1 ? current.filter(zone => zone.id !== id) : current);
+
+  const addService = item => {
+    if (services.some(line => line.code === item.code)) {
+      setError(`${item.label} est déjà présent dans les travaux complémentaires.`);
+      return;
+    }
+    setServices(current => [...current, newBpuLine(item)]);
+    setSelectedBpu(item.code);
+    setError("");
+  };
+  const updateService = (id, quantity) => setServices(current => current.map(line => line.id === id ? { ...line, quantity } : line));
+  const removeService = id => setServices(current => current.filter(line => line.id !== id));
+
+  const saveMeasures = () => {
+    const invalidZone = zones.some(zone => n(zone.length) <= 0 || n(zone.width) <= 0 || n(zone.thickness) <= 0);
+    const invalidService = services.some(line => n(line.quantity) <= 0);
+    if (invalidZone) {
+      setError("Renseignez une longueur, une largeur et une épaisseur valides pour chaque zone.");
+      return;
+    }
+    if (invalidService) {
+      setError("Une prestation BPU ajoutée doit avoir une quantité supérieure à 0.");
+      return;
+    }
+    patch({
+      actualSurface: Number(totals.surface.toFixed(2)),
+      measurements: { zones, surface: Number(totals.surface.toFixed(2)), volume: Number(totals.volume.toFixed(3)) },
+      bpuLines: services.map(line => ({ ...line, quantity: n(line.quantity) }))
+    });
+    setError("");
+    setStep(3);
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  };
+
+  const saveMaterials = () => {
+    patch({ material, materialData: { density, tonnage: n(tonnage) || Number(estimatedTonnage.toFixed(2)) }, comments });
+    setStep(4);
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  };
+  const setPhoto = (key, value) => setPhotos(current => ({ ...current, [key]: value }));
+  const submit = () => {
+    if (!photos.Avant || !photos.Après) {
+      setError("Les photos Avant et Après / Travaux réalisés sont obligatoires pour soumettre l'intervention.");
+      return;
+    }
+    patch({ photos, comments, status: STATUS.WAITING_CHIEF });
+    setError("");
+  };
+
+  if (step === 0) {
+    return <div className="setom-workflow-shell">
+      <div className="wf-detail">
+        <div className="wf-bluebar"><button onClick={onBack}><ArrowLeft size={17}/> OS</button><span>Détail d'un OS</span></div>
+        <div className="wf-detail-head"><div><div className="wf-detail-number">OS n°{os.number.replace(/^OS-/, "")}</div><div className="wf-detail-address">{os.address}</div></div><Badge status={os.status}/></div>
+        <div className="wf-detail-tabs">{[["informations","Informations"],["travaux","Travaux"],["photos","Photos"],["documents","Documents"],["suivi","Suivi"]].map(([id,label]) => <button key={id} className={detailTab === id ? "active" : ""} onClick={() => setDetailTab(id)}>{label}</button>)}</div>
+        {detailTab === "informations" && <>
+          <div className="wf-info-grid"><section className="wf-info-card">
+            <InfoRow label="Adresse" value={os.address}/><InfoRow label="Type" value={internal ? "Travail interne Eurovia" : "Marché client"}/><InfoRow label="Matériau" value={os.material}/><InfoRow label="Surface estimée" value={`${os.plannedSurface || 0} m²`}/><InfoRow label="Surface réelle" value={os.actualSurface ? `${os.actualSurface} m²` : "—"}/><InfoRow label="Secteur" value={os.sector}/><InfoRow label="Date prévue" value={os.plannedDay || "À planifier"}/><InfoRow label="État" value={os.status}/><InfoRow label="Créé par" value={`${os.creator || "—"} · ${new Date(os.createdAt).toLocaleDateString("fr-FR")}`}/>
+          </section><aside className="wf-visuals"><DetailMap/><button className="wf-map-btn"><MapPin size={14}/> Voir sur la carte</button><div className="wf-photo-empty"><Camera size={18}/> Photo chantier</div></aside></div>
+        </>}
+        {detailTab === "travaux" && <div className="wf-info-grid"><section className="wf-info-card"><InfoRow label="Travaux prévus" value={os.workDescription || "Réfection et remise en état"}/><InfoRow label="Surface prévue" value={`${os.plannedSurface || 0} m²`}/><InfoRow label="BPU" value={os.bpuCode || "BPU lié au marché"}/></section></div>}
+        {detailTab === "photos" && <div className="wf-info-grid"><section className="wf-info-card"><InfoRow label="Avant" value={photos.Avant ? "Présente" : "À ajouter"}/><InfoRow label="Pendant" value={photos.Pendant ? "Présente" : "Facultative"}/><InfoRow label="Après" value={photos.Après ? "Présente" : "À ajouter"}/></section></div>}
+        {(detailTab === "documents" || detailTab === "suivi") && <div className="wf-info-grid"><section className="wf-info-card"><p style={{margin:4,color:"#6b7c90"}}>Cette vue sera raccordée aux documents et à la traçabilité complète du dossier.</p></section></div>}
+        <div className="wf-actions"><button className="wf-btn"><Pencil size={14}/> Modifier</button><button className="wf-btn"><Copy size={14}/> Dupliquer</button><button className="wf-btn"><MoreHorizontal size={15}/></button>{os.status === STATUS.PLANNED && <button className="wf-btn success" onClick={startWork}><Play size={15}/> Passer en travaux</button>}{os.status === STATUS.CREATED && <button className="wf-btn primary" onClick={() => patch({ status: STATUS.PLANNED })}><Save size={14}/> Planifier</button>}</div>
+      </div>
+    </div>;
+  }
+
+  return <div className="wf-field">
+    <header className="wf-top"><div className="wf-top-left"><button onClick={() => setStep(step === 1 ? 0 : step - 1)}><ArrowLeft size={21}/></button><span className="wf-brand">SETOM</span><span className="wf-top-title">{["Intervention terrain","Saisie des mesures","Matériaux utilisés","Photos et validation"][step - 1]}</span></div><div className="wf-top-right"><span style={{fontSize:12,fontWeight:800}}>OS {os.number.replace(/^OS-/, "")}</span><button><MoreHorizontal size={21}/></button></div></header>
+    <div className="wf-os-strip"><div><b>OS {os.number.replace(/^OS-/, "")}</b><span>{os.address}</span></div><Badge status={os.status}/></div>
+    <main className="wf-body">
+      {step === 1 && <StepIntervention os={os} onNext={startWorkFromStep} />}
+      {step === 2 && <StepMeasures zones={zones} services={services} selectedBpu={selectedBpu} setSelectedBpu={setSelectedBpu} updateZone={updateZone} addZone={addZone} removeZone={removeZone} addService={addService} updateService={updateService} removeService={removeService} totals={totals} error={error} onBack={() => setStep(1)} onNext={saveMeasures} />}
+      {step === 3 && <StepMaterials material={material} setMaterial={setMaterial} density={density} estimatedTonnage={estimatedTonnage} tonnage={tonnage} setTonnage={setTonnage} error={error} onBack={() => setStep(2)} onNext={saveMaterials} />}
+      {step === 4 && <StepPhotos photos={photos} setPhoto={setPhoto} comments={comments} setComments={setComments} error={error} onBack={() => setStep(3)} onSubmit={submit} />}
+    </main>
+    <WorkflowStepper step={step}/>
+  </div>;
+
+  function startWorkFromStep() {
+    patch({ status: STATUS.IN_PROGRESS });
+    setStep(2);
+    setError("");
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  }
 }
-function InfoRow({ label, value }) { return <div className="os-info-row"><span>{label}</span><strong>{value || "—"}</strong></div>; }
-function StepIntervention({ os, onNext }) { return <section className="workflow-step step-intervention"><div className="intervention-main"><div className="step-number">1</div><div><h2>OS {os.number.replace(/^OS-/, "")}</h2><p><MapPin size={16}/> {os.address}</p></div><StatusBadge status={os.status}/></div><div className="intervention-grid"><InfoTile icon={<span className="mini-calendar">19</span>} label="Date prévue" value={os.plannedDay || "À définir"}/><InfoTile icon={<Users size={17}/>} label="Équipe" value={os.team ? `Équipe ${os.team}` : "À affecter"}/><InfoTile icon={<Truck size={17}/>} label="Véhicule" value={os.vehicle || "Camion BV01"}/><InfoTile icon={<ClipboardList size={17}/>} label="Matériau principal" value={os.material}/></div><div className="work-photo-hero"><div className="road-art"><span>CHANTIER</span></div></div><div className="work-summary"><div><b>Travaux prévus</b><span>{os.workDescription || "Réfection et remise en état de la zone d'intervention"}</span></div><div className="summary-metrics"><span><b>{os.plannedSurface || 0} m²</b>Surface prévue</span><span><b>{os.thickness || 5} cm</b>Épaisseur</span><span><b>{fmt((n(os.plannedSurface) * n(os.thickness || 5) / 100) * densityFor(os.material),2)} t</b>Tonnage estimé</span></div></div><div className="intervention-zones"><b>Zones d'intervention</b><div><button className="zone-selected">Chaussée</button><button>Trottoir</button></div></div><div className="bpu-linked"><span><ClipboardList size={16}/><b>BPU lié</b><small>{os.bpuCode || "BPU-ENR-01"} · {os.material}</small></span><ArrowRight size={17}/></div><button className="workflow-primary" onClick={onNext}><Play size={17}/> Démarrer l'intervention</button></section>; }
-function InfoTile({ icon, label, value }) { return <div className="info-tile"><span>{icon}</span><small>{label}</small><b>{value}</b></div>; }
-function StepMeasures({ zones, updateZone, addZone, removeZone, totals, services, selectedBpu, setSelectedBpu, bpuQty, setBpuQty, selectedService, addBpu, addQuickBpu, removeBpu, onBack, onNext }) {
-  return <section className="workflow-step"><SectionHead number="2" title="Zones d'intervention" action={<><button className="zone-tab active">Chaussée</button><button className="zone-tab" onClick={() => addZone("Trottoir")}>Trottoir</button></>}/><div className="section-head second"><span><b>Dimensions</b><small>Mesures réelles par zone · surface calculée automatiquement</small></span><button className="add-zone" onClick={() => addZone("Chaussée")}><Plus size={14}/> Ajouter une zone</button></div>{zones.map((z,i) => { const surface=n(z.length)*n(z.width); const volume=surface*n(z.thickness)/100; return <div className="zone-card" key={z.id}><div className="zone-card-title"><b>Zone {i+1} — {z.kind}</b><button onClick={() => removeZone(z.id)}><Trash2 size={15}/></button></div><div className="fields-grid"><Field label="Longueur" unit="m" value={z.length} onChange={v=>updateZone(z.id,"length",v)}/><Field label="Largeur" unit="m" value={z.width} onChange={v=>updateZone(z.id,"width",v)}/><div className="calculated"><small>Surface</small><b>{fmt(surface)} m²</b></div><Field label="Épaisseur" unit="cm" step="0.1" value={z.thickness} onChange={v=>updateZone(z.id,"thickness",v)}/><div className="calculated"><small>Volume</small><b>{fmt(volume,3)} m³</b></div></div></div>})}<div className="total-card"><span><small>Surface totale</small><b>{fmt(totals.surface)} m²</b></span><span><small>Volume total</small><b>{fmt(totals.volume,3)} m³</b></span><span><small>Tonnage estimé</small><b>{fmt(totals.volume * densityFor("Enrobé noir"))} t</b></span></div><section className="complementary-card unified-bpu-card"><div className="section-head"><span><b>Travaux complémentaires</b><small>Ajoutez uniquement les prestations réellement exécutées. Chaque prestation devient une ligne mesurable.</small></span><button className="add-zone" onClick={addBpu}><Plus size={14}/> Ajouter</button></div><div className="quick-bpu-grid">{QUICK_BPU.map(service => <button key={service.code} type="button" className={`quick-bpu ${services.some(x=>x.code===service.code) ? "selected" : ""}`} onClick={() => addQuickBpu(service)}><span>{service.label}</span><small>{service.unit}</small></button>)}</div><div className="bpu-add-row"><select value={selectedBpu} onChange={e=>setSelectedBpu(e.target.value)}>{BPU.map(x=><option key={x.code} value={x.code}>{x.code} — {x.label} ({x.unit})</option>)}</select><input type="number" min="0" step="0.01" placeholder="Quantité" value={bpuQty} onChange={e=>setBpuQty(e.target.value)}/><span>{selectedService.unit}</span><button onClick={addBpu}>Ajouter</button></div>{services.length===0?<div className="bpu-empty">Aucune prestation complémentaire ajoutée. Choisissez une prestation ci-dessus pour créer sa ligne de mesure.</div>:<div className="bpu-lines">{services.map(line=><div className="bpu-line service-card" key={line.id}><div><span>{line.code}</span><b>{line.label}</b></div><label><small>Quantité exécutée</small><div className="service-qty"><input type="number" min="0" step="0.01" value={line.quantity} onChange={e=>setServices(cur=>cur.map(x=>x.id===line.id?{...x,quantity:e.target.value}:x))}/><em>{line.unit}</em></div></label><button title="Supprimer" onClick={()=>removeBpu(line.id)}><Trash2 size={14}/></button></div>)}</div>}</section><div className="workflow-actions"><button className="workflow-secondary" onClick={onBack}><ArrowLeft size={16}/> Retour</button><button className="workflow-primary" onClick={onNext}><Save size={16}/> Enregistrer et continuer <ArrowRight size={16}/></button></div></section>;
+
+function StepIntervention({ os, onNext }) {
+  const estimated = n(os.plannedSurface) * n(os.thickness || 5) / 100 * densityFor(os.material);
+  return <section className="wf-step">
+    <div className="wf-intervention-head"><span className="wf-step-no">1</span><div><h2>OS {os.number.replace(/^OS-/, "")}</h2><p><MapPin size={15}/> {os.address}</p></div><Badge status={os.status}/></div>
+    <div className="wf-grid4"><InfoTile icon="19" label="Date prévue" value={os.plannedDay || "À définir"}/><InfoTile icon={<Users size={16}/>} label="Équipe" value={os.team ? `Équipe ${os.team}` : "À affecter"}/><InfoTile icon={<Truck size={16}/>} label="Véhicule" value={os.vehicle || "Camion BV01"}/><InfoTile icon={<ClipboardList size={16}/>} label="Matériau principal" value={os.material}/></div>
+    <div className="wf-hero"><span className="wf-hero-label">CHANTIER · {os.sector || "SECTEUR"}</span></div>
+    <div className="wf-summary"><div className="wf-summary-title">Travaux prévus</div><span className="wf-summary-desc">{os.workDescription || "Réfection et remise en état de la zone d'intervention"}</span><div className="wf-metrics"><div className="wf-metric"><small>Surface prévue</small><b>{os.plannedSurface || 0} m²</b></div><div className="wf-metric"><small>Épaisseur</small><b>{os.thickness || 5} cm</b></div><div className="wf-metric"><small>Tonnage estimé</small><b>{fmt(estimated)} t</b></div></div></div>
+    <div className="wf-subsection"><div className="wf-subtitle"><span>Zones d'intervention</span><div className="wf-zone-tabs"><button className="wf-zone-tab active" type="button">Chaussée</button><button className="wf-zone-tab" type="button">Trottoir</button></div></div><div style={{fontSize:12,color:"#718297"}}>Les zones détaillées seront saisies à l'étape suivante.</div></div>
+    <div className="wf-subsection"><div className="wf-subtitle"><span>BPU lié</span><ArrowRight size={16}/></div><div style={{display:"flex",gap:8,alignItems:"center"}}><ClipboardList size={18} color="#1473e5"/><div><b>{os.bpuCode || "BPU lié au marché"}</b><div style={{fontSize:12,color:"#718297"}}>{os.material}</div></div></div></div>
+    <div className="wf-nextbar"><span></span><button className="wf-btn success" onClick={onNext}><Play size={16}/> Démarrer l'intervention</button></div>
+  </section>;
 }
-function SectionHead({number,title,action}) { return <div className="section-head first"><span className="round-number">{number}</span><b>{title}</b><div className="head-control">{action}</div></div>; }
-function StepMaterials({ material, setMaterial, density, estimatedTonnage, tonnage, setTonnage, onBack, onNext }) { return <section className="workflow-step"><section className="material-card"><div className="section-head first"><span className="material-icon"><Truck size={17}/></span><b>Matériau principal</b></div><select className="material-select" value={material} onChange={e=>setMaterial(e.target.value)}><option>Enrobé noir</option><option>Enrobé rouge</option><option>Enrobé autre couleur</option><option>Béton balayé</option><option>Béton normal</option><option>Grave-émulsion</option></select><div className="material-metrics"><span><small>Densité (t/m³)</small><b>{fmt(density,2)}</b></span><span><small>Prix achat (€ / t)</small><b>—</b></span><span><small>Tonnage estimé</small><b>{fmt(estimatedTonnage,2)} t</b></span></div></section><section className="material-card"><div className="section-head first"><span className="material-icon"><ClipboardList size={17}/></span><b>Quantité réellement utilisée</b></div><div className="actual-material-grid"><Field label="Tonnage réel" unit="t" value={tonnage} onChange={setTonnage} step="0.01"/><div className="variance"><small>Écart estimé</small><b>{tonnage ? `${((n(tonnage)/Math.max(estimatedTonnage,.01)-1)*100).toFixed(0)} %` : "—"}</b></div><div className="actual-volume"><small>Volume correspondant</small><b>{fmt(n(tonnage)/Math.max(density,.01),3)} m³</b></div></div></section><section className="material-card"><div className="section-head first"><span className="material-icon"><Plus size={17}/></span><b>Matériaux complémentaires</b><button className="add-zone">+ Ajouter un matériau</button></div><div className="material-line"><b>Grave 0/31,5</b><Field label="Quantité" unit="t" value={""} onChange={()=>{}}/><Field label="Prix achat" unit="€/t" value={""} onChange={()=>{}}/></div></section><section className="material-card"><div className="section-head first"><span className="material-icon"><Truck size={17}/></span><b>Reste camion (estimation)</b></div><div className="truck-balance"><span><small>Capacité totale</small><b>8,00 t</b></span><span><small>Total chargé</small><b>{fmt(n(tonnage)||estimatedTonnage,2)} t</b></span><span><small>Reste estimé</small><b>{fmt(Math.max(8-(n(tonnage)||estimatedTonnage),0),2)} t</b></span></div></section><div className="workflow-actions"><button className="workflow-secondary" onClick={onBack}><ArrowLeft size={16}/> Retour</button><button className="workflow-primary" onClick={onNext}>Enregistrer et continuer <ArrowRight size={16}/></button></div></section>; }
-function StepPhotos({ photos, completePhoto, comments, setComments, onBack, onSubmit }) { const ready = Boolean(photos.Avant && photos.Après); return <section className="workflow-step"><section className="photos-card"><div className="section-head first"><span className="material-icon"><Camera size={17}/></span><b>Photos</b><small>{ready ? "2 / 2 obligatoires" : "À compléter"}</small></div><div className="photo-grid"><PhotoBox title="Avant travaux" required photo={photos.Avant} onAdd={value=>completePhoto("Avant",value)}/><PhotoBox title="Pendant travaux" photo={photos.Pendant} onAdd={value=>completePhoto("Pendant",value)}/><PhotoBox title="Après travaux" required photo={photos.Après} onAdd={value=>completePhoto("Après",value)}/></div></section><section className="comment-card"><div className="section-head first"><b>Commentaires</b></div><textarea value={comments} onChange={e=>setComments(e.target.value)} placeholder="Observations, qualité de compactage, remarques chantier…"/></section><section className="validation-card"><div><CheckCircle2 size={19}/><b>État de l'intervention</b></div><div className="validation-buttons"><button className="done active"><Check size={16}/> Terminée</button><button>En pause</button><button className="problem">Problème</button></div></section><section className="submit-card"><b>Soumettre pour validation</b><p>{ready ? "L'intervention est terminée. Elle sera envoyée au chef de chantier pour validation." : "Ajoutez les photos Avant et Après / Travaux réalisés pour poursuivre."}</p></section><div className="workflow-actions"><button className="workflow-secondary" onClick={onBack}><ArrowLeft size={16}/> Retour</button><button className={`workflow-primary ${!ready?"disabled":""}`} disabled={!ready} onClick={onSubmit}>Soumettre <ArrowRight size={16}/></button></div></section>; }
-function WorkflowStepper({ step }) { return <div className="workflow-stepper">{STEPS.map((s,i)=><React.Fragment key={s}><div className={`step-dot ${i + 1 < step ? "done" : i + 1 === step ? "active" : ""}`}><span>{i+1}</span><b>{s}</b></div>{i<STEPS.length-1&&<div className={`step-line ${i + 1 < step ? "done" : ""}`}/>}</React.Fragment>)}</div>; }
+function InfoTile({ icon, label, value }) { return <div className="wf-tile"><small>{label}</small><b>{value}</b></div>; }
+
+function StepMeasures({ zones, services, selectedBpu, setSelectedBpu, updateZone, addZone, removeZone, addService, updateService, removeService, totals, error, onBack, onNext }) {
+  const selected = BPU.find(item => item.code === selectedBpu) || BPU[0];
+  return <section className="wf-step">
+    <div className="wf-subsection" style={{marginTop:0}}><div className="wf-subtitle"><span><b style={{fontSize:16}}>2 · Zones d'intervention</b></span><div className="wf-zone-tabs"><button type="button" className="wf-zone-tab active" onClick={() => addZone("Chaussée")}><Plus size={13}/> Chaussée</button><button type="button" className="wf-zone-tab" onClick={() => addZone("Trottoir")}><Plus size={13}/> Trottoir</button></div></div></div>
+    <div className="wf-subsection"><div className="wf-subtitle"><span>Dimensions <small style={{display:"block",fontWeight:600,color:"#718297",marginTop:2}}>Longueur × largeur = surface · épaisseur = volume</small></span><button type="button" className="wf-add-zone" onClick={() => addZone("Chaussée")}><Plus size={14}/> Ajouter une zone</button></div>
+      {zones.map((zone, index) => { const surface=n(zone.length)*n(zone.width); const volume=surface*n(zone.thickness)/100; return <div className="wf-zone-card" key={zone.id}><div className="wf-zone-head"><b>Zone {index + 1} — {zone.kind}</b>{zones.length > 1 && <button type="button" onClick={() => removeZone(zone.id)} title="Supprimer"><Trash2 size={15}/></button>}</div><div className="wf-fields"><Field label="Longueur" value={zone.length} onChange={value => updateZone(zone.id,"length",value)} unit="m"/><Field label="Largeur" value={zone.width} onChange={value => updateZone(zone.id,"width",value)} unit="m"/><div className="wf-calculated"><small>Surface calculée</small><b>{fmt(surface)} m²</b></div><Field label="Épaisseur" value={zone.thickness} onChange={value => updateZone(zone.id,"thickness",value)} unit="cm" step="0.1"/><div className="wf-calculated"><small>Volume</small><b>{fmt(volume,3)} m³</b></div></div></div>; })}
+      <div className="wf-total"><div><small>Surface totale</small><b>{fmt(totals.surface)} m²</b></div><div><small>Volume total</small><b>{fmt(totals.volume,3)} m³</b></div><div><small>Tonnage estimé</small><b>{fmt(totals.volume * 2.35)} t</b></div></div>
+    </div>
+    <div className="wf-subsection wf-services"><div className="wf-subtitle"><span>Travaux complémentaires <small style={{display:"block",fontWeight:600,color:"#718297",marginTop:2}}>Prestations BPU réellement exécutées</small></span><span style={{fontSize:11,color:"#718297"}}>{services.length} prestation{services.length > 1 ? "s" : ""}</span></div>
+      <div className="wf-service-picker"><select className="wf-select" value={selectedBpu} onChange={e => setSelectedBpu(e.target.value)}>{BPU.map(item => <option key={item.code} value={item.code}>{item.code} — {item.label} ({item.unit})</option>)}</select><button type="button" className="wf-btn primary" onClick={() => addService(selected)}>+ Ajouter</button><div style={{gridColumn:"1/-1",display:"flex",gap:7,flexWrap:"wrap",paddingTop:2}}>{QUICK.map(code => { const item=BPU.find(x=>x.code===code); return <button type="button" key={code} className="wf-add-zone" onClick={() => addService(item)}>{item.label}</button>; })}</div></div>
+      {services.length === 0 && <div style={{padding:"18px 4px 4px",textAlign:"center",color:"#8492a2",fontSize:12}}>Aucune prestation complémentaire ajoutée. Ajoutez uniquement ce qui a réellement été exécuté.</div>}
+      {services.map(line => <div className="wf-line" key={line.id}><div><span className="wf-line-title">{line.label}</span><span className="wf-line-code">{line.code}</span></div><input className="wf-input" type="number" min="0" step="0.01" value={line.quantity} placeholder="Quantité" onChange={e => updateService(line.id,e.target.value)}/><span className="wf-line-unit">{line.unit}</span><button type="button" className="wf-line-remove" onClick={() => removeService(line.id)} title="Supprimer"><X size={17}/></button></div>)}
+    </div>
+    {error && <div style={{marginTop:12,padding:"10px 12px",borderRadius:8,background:"#fff1f1",border:"1px solid #f1c3c3",color:"#b7353d",fontWeight:800,fontSize:12}}>{error}</div>}
+    <div className="wf-nextbar"><button type="button" className="wf-btn" onClick={onBack}><ArrowLeft size={16}/> Retour</button><button type="button" className="wf-btn primary" onClick={onNext}><Save size={16}/> Enregistrer et continuer <ArrowRight size={16}/></button></div>
+  </section>;
+}
+
+function StepMaterials({ material, setMaterial, density, estimatedTonnage, tonnage, setTonnage, error, onBack, onNext }) {
+  const actual = n(tonnage) || estimatedTonnage;
+  const capacity = 8;
+  const remaining = Math.max(0, capacity - actual);
+  return <section className="wf-step"><div className="wf-subsection" style={{marginTop:0}}><div className="wf-subtitle"><span><b style={{fontSize:16}}>3 · Matériaux utilisés</b><small style={{display:"block",fontWeight:600,color:"#718297",marginTop:2}}>Prévisionnel et consommation réelle</small></span></div></div>
+    <div className="wf-material-grid"><div className="wf-card"><h3>Matériau principal</h3><select className="wf-material-select" value={material} onChange={e=>setMaterial(e.target.value)}><option>Enrobé noir</option><option>Enrobé rouge</option><option>Béton balayé</option><option>Grave-émulsion</option></select><div className="wf-material-kpis"><div className="wf-mini-kpi"><small>Densité</small><b>{fmt(density,2)} t/m³</b></div><div className="wf-mini-kpi"><small>Surface</small><b>{fmt(estimatedTonnage / density)} m²</b></div><div className="wf-mini-kpi"><small>Tonnage estimé</small><b>{fmt(estimatedTonnage)} t</b></div></div></div><div className="wf-card"><h3>Quantité réellement utilisée</h3><Field label="Tonnage réel" value={tonnage} onChange={setTonnage} unit="t"/><div style={{marginTop:10,display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}}><div className="wf-calculated"><small>Volume correspondant</small><b>{fmt(actual / density,3)} m³</b></div><div className="wf-calculated"><small>Reste camion estimé</small><b>{fmt(remaining)} t</b></div></div></div></div>
+    <div className="wf-card" style={{marginTop:14}}><h3>Matériaux complémentaires</h3><button type="button" className="wf-add-zone"><Plus size={14}/> Ajouter un matériau</button><p style={{fontSize:12,color:"#7a899a",marginBottom:0}}>Cette liste sera enrichie avec le catalogue matériaux et les consommations réelles.</p></div>
+    {error && <div style={{marginTop:12,color:"#b7353d",fontWeight:800,fontSize:12}}>{error}</div>}
+    <div className="wf-nextbar"><button type="button" className="wf-btn" onClick={onBack}><ArrowLeft size={16}/> Retour</button><button type="button" className="wf-btn primary" onClick={onNext}>Enregistrer et continuer <ArrowRight size={16}/></button></div>
+  </section>;
+}
+
+function StepPhotos({ photos, setPhoto, comments, setComments, error, onBack, onSubmit }) {
+  const ready = Boolean(photos.Avant && photos.Après);
+  return <section className="wf-step"><div className="wf-subsection" style={{marginTop:0}}><div className="wf-subtitle"><span><b style={{fontSize:16}}>4 · Photos et validation</b><small style={{display:"block",fontWeight:600,color:"#718297",marginTop:2}}>Avant et Après / Travaux réalisés sont obligatoires</small></span><span className={`wf-badge ${ready ? "green" : ""}`}>{ready ? "Dossier complet" : "À compléter"}</span></div></div>
+    <div className="wf-photo-grid"><PhotoBox title="Avant travaux" required photo={photos.Avant} onAdd={value=>setPhoto("Avant",value)}/><PhotoBox title="Pendant travaux" photo={photos.Pendant} onAdd={value=>setPhoto("Pendant",value)}/><PhotoBox title="Après travaux" required photo={photos.Après} onAdd={value=>setPhoto("Après",value)}/></div>
+    <div className="wf-card wf-comments"><h3>Commentaires</h3><textarea className="wf-textarea" value={comments} onChange={e=>setComments(e.target.value)} placeholder="Observations, compactage, conditions particulières…"/></div>
+    <div className={`wf-validation ${ready ? "good" : "warn"}`}><div><b>{ready ? "Intervention prête pour validation" : "Photos obligatoires manquantes"}</b><div style={{fontSize:12,color:"#66788b",marginTop:3}}>{ready ? "Le dossier peut être soumis au chef de chantier." : "Ajoutez les photos Avant et Après / Travaux réalisés pour poursuivre."}</div></div><CheckCircle2 size={26} color={ready ? "#16a34a" : "#c58b20"}/></div>
+    {error && <div style={{marginTop:12,padding:"10px 12px",borderRadius:8,background:"#fff1f1",border:"1px solid #f1c3c3",color:"#b7353d",fontWeight:800,fontSize:12}}>{error}</div>}
+    <div className="wf-nextbar"><button type="button" className="wf-btn" onClick={onBack}><ArrowLeft size={16}/> Retour</button><button type="button" className="wf-btn success" disabled={!ready} onClick={onSubmit}><Check size={16}/> Soumettre pour validation</button></div>
+  </section>;
+}
+
+function WorkflowStepper({ step }) {
+  const labels = ["OS", "Mesures", "Matériaux", "Photos"];
+  return <div className="wf-stepper"><div className="wf-stepper-inner">{labels.map((label,index) => { const number=index+1; const active=step===number; const done=step>number; return <React.Fragment key={label}><div className={`wf-step-item ${active ? "active" : ""} ${done ? "done" : ""}`}><span className="wf-step-dot">{done ? <Check size={13}/> : number}</span><span className="wf-step-label">{label}</span></div>{index<labels.length-1 && <div className={`wf-step-line ${done ? "done" : ""}`}/>}</React.Fragment>; })}</div></div>;
+}
