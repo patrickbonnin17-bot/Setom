@@ -1,4 +1,5 @@
 import React, { useMemo, useState } from "react";
+import { createRoot } from "react-dom/client";
 import { Activity, AlertTriangle, ArrowLeft, ArrowRight, BarChart3, Bell, CalendarDays, Camera, CheckCircle2, ChevronRight, ClipboardList, Clock3, FileText, LayoutDashboard, Map, Menu, MoreHorizontal, Package, Search, Settings, Sparkles, Truck, Users, WalletCards } from "lucide-react";
 import { INITIAL_OS, DOSSIER_TYPES, STATUS, allowedTransitions, canSubmitForChiefValidation, createOs } from "./model";
 import PlanningView from "./PlanningView";
