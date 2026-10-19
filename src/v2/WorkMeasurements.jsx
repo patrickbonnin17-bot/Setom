@@ -33,15 +33,7 @@ function Input({ label, unit, value, onChange, step = "0.01", placeholder = "0" 
     <label style={{ display: "grid", gap: 7 }}>
       <span style={{ fontSize: 10, fontWeight: 800, color: "#657388" }}>{label}</span>
       <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-        <input
-          type="number"
-          min="0"
-          step={step}
-          value={value}
-          placeholder={placeholder}
-          onChange={e => onChange(e.target.value)}
-          style={{ width: "100%", height: 40, border: "1px solid #d9e1ea", borderRadius: 9, padding: "0 11px", fontSize: 12, fontWeight: 700, outline: "none" }}
-        />
+        <input type="number" min="0" step={step} value={value} placeholder={placeholder} onChange={e => onChange(e.target.value)} style={{ width: "100%", height: 40, border: "1px solid #d9e1ea", borderRadius: 9, padding: "0 11px", fontSize: 12, fontWeight: 700, outline: "none" }} />
         <span style={{ minWidth: 35, color: "#7d899b", fontSize: 11 }}>{unit}</span>
       </div>
     </label>
@@ -59,7 +51,7 @@ function ServiceLine({ line, onRemove }) {
   );
 }
 
-export default function WorkMeasurements({ os, updateOs }) {
+export default function WorkMeasurements({ os, updateOs, onSaved }) {
   const saved = os.measurements || {};
   const [m, setM] = useState({ ...blankMeasurements, ...saved });
   const [services, setServices] = useState(os.bpuLines || []);
@@ -107,16 +99,14 @@ export default function WorkMeasurements({ os, updateOs }) {
       bpuLines: services,
     });
     setSavedAt(new Date().toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" }));
+    onSaved?.();
   };
 
   return (
     <div style={{ marginTop: 17, display: "grid", gap: 16 }}>
       <div style={{ display: "grid", gridTemplateColumns: "minmax(0,1.25fr) minmax(330px,.75fr)", gap: 16 }}>
         <section className="card">
-          <div className="section-title">
-            <div style={{ display: "flex", alignItems: "center", gap: 9 }}><Ruler size={17} color="#176fe5"/> Mesures de l'intervention</div>
-            <span>Mesure réelle après intervention</span>
-          </div>
+          <div className="section-title"><div style={{ display: "flex", alignItems: "center", gap: 9 }}><Ruler size={17} color="#176fe5"/> Mesures de l'intervention</div><span>Mesure réelle après intervention</span></div>
           <div style={{ marginTop: 17, display: "grid", gridTemplateColumns: "repeat(3,1fr)", gap: 12 }}>
             <Input label="Longueur" unit="m" value={m.length} onChange={v => set("length", v)} />
             <Input label="Largeur" unit="m" value={m.width} onChange={v => set("width", v)} />
@@ -146,30 +136,17 @@ export default function WorkMeasurements({ os, updateOs }) {
       </div>
 
       <section className="card">
-        <div className="section-title">
-          <div><b>Prestations BPU réalisées</b><span>Les lignes sont rattachées aux quantités réellement constatées.</span></div>
-          <button className="btn small primary" onClick={() => setBpuOpen(v => !v)}><Plus size={14}/> Ajouter une prestation du BPU</button>
-        </div>
-
-        {bpuOpen && (
-          <div style={{ marginTop: 16, padding: 15, borderRadius: 11, background: "#f7faff", border: "1px solid #dce9fb", display: "grid", gridTemplateColumns: "minmax(260px,1fr) 150px auto", gap: 10, alignItems: "end" }}>
-            <label style={{ display: "grid", gap: 7 }}><span style={{ fontSize: 9, fontWeight: 800, color: "#68768a" }}>Prestation du BPU</span><div style={{ position: "relative" }}><select value={selectedBpu} onChange={e => setSelectedBpu(e.target.value)} style={{ width: "100%", height: 40, appearance: "none", border: "1px solid #d7e0ea", borderRadius: 9, padding: "0 35px 0 11px", background: "#fff", fontSize: 11, fontWeight: 700 }}>{BPU_CATALOG.map(item => <option key={item.code} value={item.code}>{item.code} — {item.label} ({item.unit})</option>)}</select><ChevronDown size={15} style={{ position: "absolute", right: 10, top: 12, pointerEvents: "none", color: "#8290a4" }}/></div></label>
-            <Input label={`Quantité (${selectedService.unit})`} unit={selectedService.unit} value={bpuQty} onChange={setBpuQty} step={selectedService.unit === "U" || selectedService.unit === "forfait" ? "1" : "0.01"}/>
-            <button className="btn primary" onClick={addService}>Ajouter</button>
-          </div>
-        )}
-
-        <div style={{ marginTop: 13 }}>
-          {services.length === 0 ? (
-            <div style={{ padding: "24px 10px", textAlign: "center", color: "#8a96a7", fontSize: 11 }}>Aucune prestation BPU ajoutée. Ajoutez uniquement ce qui a réellement été exécuté.</div>
-          ) : services.map(line => <ServiceLine key={line.id} line={line} onRemove={() => setServices(current => current.filter(x => x.id !== line.id))}/>) }
-        </div>
+        <div className="section-title"><div><b>Prestations BPU réalisées</b><span>Les lignes sont rattachées aux quantités réellement constatées.</span></div><button className="btn small primary" onClick={() => setBpuOpen(v => !v)}><Plus size={14}/> Ajouter une prestation du BPU</button></div>
+        {bpuOpen && <div style={{ marginTop: 16, padding: 15, borderRadius: 11, background: "#f7faff", border: "1px solid #dce9fb", display: "grid", gridTemplateColumns: "minmax(260px,1fr) 150px auto", gap: 10, alignItems: "end" }}>
+          <label style={{ display: "grid", gap: 7 }}><span style={{ fontSize: 9, fontWeight: 800, color: "#68768a" }}>Prestation du BPU</span><div style={{ position: "relative" }}><select value={selectedBpu} onChange={e => setSelectedBpu(e.target.value)} style={{ width: "100%", height: 40, appearance: "none", border: "1px solid #d7e0ea", borderRadius: 9, padding: "0 35px 0 11px", background: "#fff", fontSize: 11, fontWeight: 700 }}>{BPU_CATALOG.map(item => <option key={item.code} value={item.code}>{item.code} — {item.label} ({item.unit})</option>)}</select><ChevronDown size={15} style={{ position: "absolute", right: 10, top: 12, pointerEvents: "none", color: "#8290a4" }}/></div></label>
+          <Input label={`Quantité (${selectedService.unit})`} unit={selectedService.unit} value={bpuQty} onChange={setBpuQty} step={selectedService.unit === "U" || selectedService.unit === "forfait" ? "1" : "0.01"}/>
+          <button className="btn primary" onClick={addService}>Ajouter</button>
+        </div>}
+        <div style={{ marginTop: 13 }}>{services.length === 0 ? <div style={{ padding: "24px 10px", textAlign: "center", color: "#8a96a7", fontSize: 11 }}>Aucune prestation BPU ajoutée. Ajoutez uniquement ce qui a réellement été exécuté.</div> : services.map(line => <ServiceLine key={line.id} line={line} onRemove={() => setServices(current => current.filter(x => x.id !== line.id))}/>)}</div>
         {services.length > 0 && <div style={{ marginTop: 14, display: "flex", justifyContent: "flex-end" }}><button className="btn primary" onClick={save}><Save size={14}/> Enregistrer les mesures et le BPU</button></div>}
       </section>
 
-      <section style={{ padding: "12px 15px", border: "1px solid #e1e8f1", borderRadius: 10, background: "#fbfcfe", color: "#78869a", fontSize: 10, lineHeight: 1.55 }}>
-        <b style={{ color: "#445269" }}>Règle SETOM :</b> les dimensions longueur × largeur calculent la surface réelle. L'épaisseur sert au calcul de volume et au futur calcul de tonnage. Les prestations complémentaires et les lignes BPU sont conservées séparément pour permettre ensuite le constat, la valorisation et la facturation.
-      </section>
+      <section style={{ padding: "12px 15px", border: "1px solid #e1e8f1", borderRadius: 10, background: "#fbfcfe", color: "#78869a", fontSize: 10, lineHeight: 1.55 }}><b style={{ color: "#445269" }}>Règle SETOM :</b> les dimensions longueur × largeur calculent la surface réelle. L'épaisseur sert au calcul de volume et au futur calcul de tonnage. Les prestations complémentaires et les lignes BPU sont conservées séparément pour permettre ensuite le constat, la valorisation et la facturation.</section>
     </div>
   );
 }
