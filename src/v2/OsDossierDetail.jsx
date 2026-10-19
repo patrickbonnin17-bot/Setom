@@ -1,130 +1,97 @@
-import React, { useState } from "react";
-import { ArrowLeft, ArrowRight, Camera, CheckCircle2, Copy, FileText, MapPin, MoreHorizontal, Pencil, Play, Save } from "lucide-react";
+import React, { useMemo, useState } from "react";
+import { ArrowLeft, ArrowRight, Camera, Check, CheckCircle2, ChevronDown, Copy, MapPin, MoreHorizontal, Pencil, Play, Plus, Save, Trash2, Truck, Users, Ruler, ClipboardList } from "lucide-react";
 import { DOSSIER_TYPES, STATUS, canSubmitForChiefValidation } from "./model";
-import WorkMeasurements from "./WorkMeasurements";
 import "./os-detail.css";
 
-const tabs = [
-  ["informations", "Informations"],
-  ["travaux", "Travaux"],
-  ["photos", "Photos"],
-  ["documents", "Documents"],
-  ["suivi", "Suivi"],
+const STEPS = ["OS", "Mesures", "Matériaux", "Photos"];
+const BPU = [
+  { code: "ENR-NOIR", label: "Enrobé noir", unit: "m²" },
+  { code: "ENR-COUL", label: "Plus-value enrobé couleur", unit: "m²" },
+  { code: "SCI", label: "Sciage", unit: "ml" },
+  { code: "JNT", label: "Joints", unit: "ml" },
+  { code: "BAC", label: "Bouche à clé", unit: "U" },
+  { code: "DEM", label: "Démolition", unit: "m²" },
+  { code: "CIRC", label: "Circulation / signalisation temporaire", unit: "forfait" },
+  { code: "MARQ", label: "Marquage / peinture", unit: "forfait" },
 ];
+const blankZone = (kind = "Chaussée") => ({ id: `${Date.now()}-${Math.random()}`, kind, length: "", width: "", thickness: "5" });
+const n = v => { const x = Number(String(v ?? "").replace(",", ".")); return Number.isFinite(x) ? x : 0; };
+const densityFor = material => /béton/i.test(material || "") ? 2.4 : /grave/i.test(material || "") ? 2.2 : 2.35;
+const fmt = (v, digits = 2) => Number(v || 0).toFixed(digits).replace(".", ",");
 
-function Badge({ status }) {
+function StatusBadge({ status }) {
   const tone = status === STATUS.PLANNED ? "planned" : status === STATUS.IN_PROGRESS ? "progress" : status === STATUS.CREATED ? "created" : "neutral";
   return <span className={`os-detail-badge ${tone}`}>{status}</span>;
 }
-
-function InfoRow({ label, value }) {
-  return <div className="os-info-row"><span>{label}</span><strong>{value || "—"}</strong></div>;
+function Field({ label, value, onChange, unit, step = "0.01", disabled = false }) {
+  return <label className="field"><span>{label}</span><div className="field-control"><input type="number" min="0" step={step} value={value} onChange={e => onChange?.(e.target.value)} disabled={disabled}/>{unit && <em>{unit}</em>}</div></label>;
 }
-
-function PhotoTile({ label, required, exists, onAdd }) {
-  return (
-    <div className="os-photo-tile">
-      <div className="os-photo-tile-head"><strong>{label}</strong>{required && <small>Obligatoire</small>}</div>
-      {exists ? <div className="os-photo-done"><CheckCircle2 size={18}/><span>Photo enregistrée</span></div> : <button className="os-photo-add" onClick={onAdd}><Camera size={20}/><span>Ajouter une photo</span></button>}
-    </div>
-  );
-}
-
-function MapPreview() {
-  return <div className="os-map-preview"><div className="map-road r1"/><div className="map-road r2"/><div className="map-road r3"/><div className="map-road r4"/><div className="map-pin"><MapPin size={21} fill="currentColor"/></div><span className="map-label">Chantier</span></div>;
-}
+function MapPreview() { return <div className="os-map-preview"><div className="map-road r1"/><div className="map-road r2"/><div className="map-road r3"/><div className="map-road r4"/><div className="map-pin"><MapPin size={22} fill="currentColor"/></div></div>; }
+function PhotoBox({ title, required, exists, onAdd }) { return <article className={`workflow-photo ${exists ? "done" : ""}`}><div className="photo-title"><b>{title}</b>{required && <small>Obligatoire</small>}</div><div className="photo-placeholder"><Camera size={25}/><span>{exists ? "Photo enregistrée" : "Ajouter une photo"}</span>{!exists && <button onClick={onAdd}><Camera size={14}/> Ajouter</button>}{exists && <CheckCircle2 size={18}/>}</div></article>; }
 
 export default function OsDossierDetail({ os, onBack, updateOs }) {
-  const [tab, setTab] = useState("informations");
+  const [step, setStep] = useState(os.status === STATUS.IN_PROGRESS ? 1 : 0);
+  const [zones, setZones] = useState(os.measurements?.zones?.length ? os.measurements.zones : [blankZone("Chaussée")]);
+  const [material, setMaterial] = useState(os.material || "Enrobé noir");
+  const [tonnage, setTonnage] = useState(os.materialData?.tonnage || "");
+  const [comments, setComments] = useState(os.comments || "");
+  const [services, setServices] = useState(os.bpuLines || []);
+  const [selectedBpu, setSelectedBpu] = useState(BPU[0].code);
+  const [bpuQty, setBpuQty] = useState("");
+  const [complementary, setComplementary] = useState(os.measurements?.complementary || { sawingLength: "", jointLength: "", valveCount: "", circulation: "", marking: "" });
+  const [photos, setPhotos] = useState(os.photos || {});
+
+  const totals = useMemo(() => zones.reduce((a, z) => { const surface = n(z.length) * n(z.width); const volume = surface * n(z.thickness) / 100; return { surface: a.surface + surface, volume: a.volume + volume }; }, { surface: 0, volume: 0 }), [zones]);
+  const density = densityFor(material);
+  const estimatedTonnage = totals.volume * density;
+  const selectedService = BPU.find(x => x.code === selectedBpu) || BPU[0];
   const internal = os.type === DOSSIER_TYPES.INTERNAL;
 
-  const startWork = () => {
-    updateOs({ status: STATUS.IN_PROGRESS });
-    setTab("travaux");
-    window.scrollTo({ top: 0, behavior: "smooth" });
+  const patch = data => updateOs(data);
+  const startWork = () => { patch({ status: STATUS.IN_PROGRESS }); setStep(1); window.scrollTo({ top: 0, behavior: "smooth" }); };
+  const updateZone = (id, key, value) => setZones(current => current.map(z => z.id === id ? { ...z, [key]: value } : z));
+  const addZone = kind => setZones(current => [...current, blankZone(kind)]);
+  const removeZone = id => setZones(current => current.length > 1 ? current.filter(z => z.id !== id) : current);
+  const saveMeasures = () => {
+    patch({ actualSurface: Number(totals.surface.toFixed(2)), measurements: { zones, surface: Number(totals.surface.toFixed(2)), volume: Number(totals.volume.toFixed(3)), complementary }, bpuLines: services });
+    setStep(2);
   };
+  const addBpu = () => { const q = n(bpuQty); if (!q) return; setServices(cur => [...cur, { id: `${selectedBpu}-${Date.now()}`, code: selectedService.code, label: selectedService.label, unit: selectedService.unit, quantity: q }]); setBpuQty(""); };
+  const saveMaterials = () => { patch({ material, materialData: { density, tonnage: n(tonnage) || Number(estimatedTonnage.toFixed(2)) }, comments }); setStep(3); };
+  const completePhoto = key => setPhotos(cur => ({ ...cur, [key]: true }));
+  const submit = () => { if (!(photos.Avant && photos.Après)) return; patch({ photos, status: STATUS.WAITING_CHIEF }); };
 
-  const saveMeasurements = () => setTab("photos");
-  const photos = os.photos || {};
-  const canSubmit = canSubmitForChiefValidation(os);
-
-  const submitForValidation = () => {
-    if (!canSubmit) return;
-    updateOs({ status: STATUS.WAITING_CHIEF });
-  };
-
-  return (
-    <div className="os-detail">
-      <div className="os-detail-bluebar">
-        <button className="os-back" onClick={onBack}><ArrowLeft size={16}/> OS</button>
-        <span>Détail d'un OS</span>
-      </div>
-
-      <div className="os-detail-header">
-        <div>
-          <div className="os-detail-number">OS n°{os.number.replace(/^OS-/, "")}</div>
-          <div className="os-detail-address">{os.address}</div>
-        </div>
-        <Badge status={os.status}/>
-      </div>
-
-      <div className="os-detail-tabs">
-        {tabs.map(([id, label]) => <button key={id} className={tab === id ? "active" : ""} onClick={() => setTab(id)}>{label}</button>)}
-      </div>
-
-      {tab === "informations" && (
-        <>
-          <div className="os-detail-info-grid">
-            <section className="os-info-card">
-              <InfoRow label="Adresse" value={os.address}/>
-              <InfoRow label="Type" value={internal ? "Travail interne Eurovia" : "Reprise enrobé"}/>
-              <InfoRow label="Client" value={os.client}/>
-              <InfoRow label="Marché" value={os.market}/>
-              <InfoRow label="Matériau" value={`${os.material}${os.color ? ` · ${os.color}` : ""}`}/>
-              <InfoRow label="Surface estimée" value={`${os.plannedSurface || 0} m²`}/>
-              <InfoRow label="Surface réalisée" value={os.actualSurface ? `${os.actualSurface} m²` : "—"}/>
-              <InfoRow label="Secteur" value={os.sector}/>
-              <InfoRow label="Date prévue" value={os.plannedDay || "À planifier"}/>
-              <InfoRow label="État" value={os.status}/>
-              <InfoRow label="Créé par" value={`${os.creator || "—"} · ${new Date(os.createdAt).toLocaleDateString("fr-FR")}`}/>
-            </section>
-
-            <aside className="os-detail-visuals">
-              <MapPreview/>
-              <button className="os-map-button"><MapPin size={14}/> Voir sur la carte</button>
-              <div className="os-site-photo"><div><Camera size={20}/><span>Photo chantier</span></div></div>
-            </aside>
-          </div>
-
-          <div className="os-detail-actions">
-            <button className="os-action secondary"><Pencil size={14}/> Modifier</button>
-            <button className="os-action secondary"><Copy size={14}/> Dupliquer</button>
-            <button className="os-action secondary icon"><MoreHorizontal size={16}/></button>
-            {os.status === STATUS.PLANNED && <button className="os-action primary" onClick={startWork}><Play size={14}/> Passer en travaux</button>}
-            {os.status === STATUS.CREATED && <button className="os-action primary" onClick={() => updateOs({ status: STATUS.PLANNED })}><Save size={14}/> Planifier</button>}
-            {os.status === STATUS.IN_PROGRESS && <button className={`os-action ${canSubmit ? "primary" : "disabled"}`} disabled={!canSubmit} onClick={submitForValidation}><ArrowRight size={14}/> Soumettre pour validation</button>}
-          </div>
-        </>
-      )}
-
-      {tab === "travaux" && (
-        <div className="os-detail-tab-content">
-          <WorkMeasurements os={os} updateOs={updateOs} onSaved={saveMeasurements}/>
-          <div className="os-work-next"><span>Après l'enregistrement des mesures, SETOM ouvre automatiquement l'étape Photos.</span><button onClick={saveMeasurements}>Continuer vers Photos <ArrowRight size={14}/></button></div>
-        </div>
-      )}
-
-      {tab === "photos" && (
-        <div className="os-detail-tab-content">
-          <div className="os-photos-intro"><div><h3>Photos de l'intervention</h3><p>Avant et Après / Travaux réalisés sont obligatoires pour poursuivre la validation.</p></div><span>{photos.Avant && photos.Après ? "2 / 2 obligatoires" : "À compléter"}</span></div>
-          <div className="os-photo-grid"><PhotoTile label="Avant" required exists={photos.Avant} onAdd={() => updateOs({ photos: { ...photos, Avant: true } })}/><PhotoTile label="Pendant" exists={photos.Pendant} onAdd={() => updateOs({ photos: { ...photos, Pendant: true } })}/><PhotoTile label="Après / Travaux réalisés" required exists={photos.Après} onAdd={() => updateOs({ photos: { ...photos, Après: true } })}/></div>
-          <div className="os-photo-footer"><span>{photos.Avant && photos.Après ? "Dossier photo complet." : "Ajoutez les deux photos obligatoires pour soumettre le dossier."}</span>{os.status === STATUS.IN_PROGRESS && <button className={`os-action ${photos.Avant && photos.Après ? "primary" : "disabled"}`} disabled={!(photos.Avant && photos.Après)} onClick={submitForValidation}>Soumettre pour validation <ArrowRight size={14}/></button>}</div>
-        </div>
-      )}
-
-      {tab === "documents" && <div className="os-detail-tab-content"><section className="os-empty-card"><FileText size={28}/><h3>Documents du dossier</h3><p>Plans, bons de livraison et pièces du marché seront rattachés ici.</p><button className="os-action secondary">Ajouter un document</button></section></div>}
-
-      {tab === "suivi" && <div className="os-detail-tab-content"><section className="os-empty-card"><CheckCircle2 size={28}/><h3>Suivi et traçabilité</h3><p>Créé par {os.creator || "—"} · {new Date(os.createdAt).toLocaleString("fr-FR")}</p><p>Statut actuel : <strong>{os.status}</strong></p></section></div>}
+  if (step === 0) return <div className="os-detail">
+    <div className="os-detail-bluebar"><button className="os-back" onClick={onBack}><ArrowLeft size={17}/> OS</button><span>Détail d'un OS</span></div>
+    <div className="os-detail-header"><div><div className="os-detail-number">OS n°{os.number.replace(/^OS-/, "")}</div><div className="os-detail-address">{os.address}</div></div><StatusBadge status={os.status}/></div>
+    <div className="os-detail-tabs">{[["informations","Informations"],["travaux","Travaux"],["photos","Photos"],["documents","Documents"],["suivi","Suivi"]].map(([id,label]) => <button key={id} className={id === "informations" ? "active" : ""}>{label}</button>)}</div>
+    <div className="os-detail-info-grid">
+      <section className="os-info-card">
+        <InfoRow label="Adresse" value={os.address}/><InfoRow label="Type" value={internal ? "Travail interne Eurovia" : "Reprise enrobé"}/><InfoRow label="Matériau" value={os.material}/><InfoRow label="Surface estimée" value={`${os.plannedSurface || 0} m²`}/><InfoRow label="Surface réelle" value={os.actualSurface ? `${os.actualSurface} m²` : "—"}/><InfoRow label="Secteur" value={os.sector}/><InfoRow label="Date prévue" value={os.plannedDay || "À planifier"}/><InfoRow label="État" value={os.status}/><InfoRow label="Créé par" value={`${os.creator || "—"} · ${new Date(os.createdAt).toLocaleDateString("fr-FR")}`}/>
+      </section>
+      <aside className="os-detail-visuals"><MapPreview/><button className="os-map-button"><MapPin size={14}/> Voir sur la carte</button><div className="os-site-photo"><Camera size={18}/><span>Photo chantier</span></div></aside>
     </div>
-  );
+    <div className="os-detail-actions"><button className="os-action secondary"><Pencil size={14}/> Modifier</button><button className="os-action secondary"><Copy size={14}/> Dupliquer</button><button className="os-action secondary icon"><MoreHorizontal size={16}/></button>{os.status === STATUS.PLANNED && <button className="os-action primary" onClick={startWork}><Play size={14}/> Passer en travaux</button>}{os.status === STATUS.CREATED && <button className="os-action primary" onClick={() => patch({ status: STATUS.PLANNED })}><Save size={14}/> Planifier</button>}</div>
+  </div>;
+
+  return <div className="field-workflow">
+    <header className="workflow-header"><button onClick={() => step === 1 ? setStep(0) : setStep(step - 1)}><ArrowLeft size={20}/></button><div><strong>SETOM</strong><span>{["Intervention terrain","Saisie des mesures","Matériaux utilisés","Photos et validation"][step - 1]}</span></div><button className="workflow-menu"><MoreHorizontal size={20}/></button></header>
+    <div className="workflow-os-strip"><div><b>OS {os.number.replace(/^OS-/, "")}</b><span>{os.address}</span></div><StatusBadge status={os.status}/></div>
+    <main className="workflow-body">
+      {step === 1 && <StepIntervention os={os} onNext={() => setStep(2)} />}
+      {step === 2 && <StepMeasures zones={zones} setZones={setZones} updateZone={updateZone} addZone={addZone} removeZone={removeZone} totals={totals} complementary={complementary} setComplementary={setComplementary} services={services} selectedBpu={selectedBpu} setSelectedBpu={setSelectedBpu} bpuQty={bpuQty} setBpuQty={setBpuQty} selectedService={selectedService} addBpu={addBpu} removeBpu={id => setServices(cur => cur.filter(x => x.id !== id))} onNext={saveMeasures} />}
+      {step === 3 && <StepMaterials material={material} setMaterial={setMaterial} density={density} estimatedTonnage={estimatedTonnage} tonnage={tonnage} setTonnage={setTonnage} onNext={saveMaterials} />}
+      {step === 4 && <StepPhotos photos={photos} completePhoto={completePhoto} comments={comments} setComments={setComments} onSubmit={submit} />}
+    </main>
+    <WorkflowStepper step={step}/>
+  </div>;
 }
+function InfoRow({ label, value }) { return <div className="os-info-row"><span>{label}</span><strong>{value || "—"}</strong></div>; }
+function StepIntervention({ os, onNext }) { return <section className="workflow-step step-intervention"><div className="intervention-main"><div className="step-number">OS</div><div><h2>OS {os.number.replace(/^OS-/, "")}</h2><p><MapPin size={16}/> {os.address}</p></div><StatusBadge status={os.status}/></div><div className="intervention-grid"><InfoTile icon={<CalendarIcon/>} label="Date prévue" value={os.plannedDay || "À définir"}/><InfoTile icon={<Users size={17}/>} label="Équipe" value={os.team ? `Équipe ${os.team}` : "À affecter"}/><InfoTile icon={<Truck size={17}/>} label="Véhicule" value={os.vehicle || "Camion BV01"}/><InfoTile icon={<ClipboardList size={17}/>} label="Matériau principal" value={os.material}/></div><div className="work-photo-hero"><div className="road-art"><span>CHANTIER</span></div></div><div className="work-summary"><div><b>Travaux prévus</b><span>{os.workDescription || "Réfection et remise en état de la zone d'intervention"}</span></div><div className="summary-metrics"><span><b>{os.plannedSurface || 0} m²</b>Surface prévue</span><span><b>{os.thickness || 5} cm</b>Épaisseur</span><span><b>{fmt((n(os.plannedSurface) * n(os.thickness || 5) / 100) * densityFor(os.material),2)} t</b>Tonnage estimé</span></div></div><div className="intervention-zones"><b>Zones d'intervention</b><div><button className="zone-selected">Chaussée</button><button>Trottoir</button></div></div><div className="bpu-linked"><span><ClipboardList size={16}/><b>BPU lié</b><small>{os.bpuCode || "BPU-ENR-01"} · {os.material}</small></span><ArrowRight size={17}/></div><button className="workflow-primary" onClick={onNext}><Play size={17}/> Démarrer la saisie des mesures</button></section>; }
+function CalendarIcon() { return <span className="mini-calendar">19</span>; }
+function InfoTile({ icon, label, value }) { return <div className="info-tile"><span>{icon}</span><small>{label}</small><b>{value}</b></div>; }
+function StepMeasures({ zones, updateZone, addZone, removeZone, totals, complementary, setComplementary, services, selectedBpu, setSelectedBpu, bpuQty, setBpuQty, selectedService, addBpu, removeBpu, onNext }) { const compFields = [["sawingLength","Longueur sciage","ml"],["jointLength","Longueur joints","ml"],["valveCount","Bouche à clé","U"],["circulation","Circulation","forfait"],["marking","Marquage / peinture","forfait"]]; return <section className="workflow-step"><SectionHead number="2" title="Zones d'intervention" action={<><button className="zone-tab active">Chaussée</button><button className="zone-tab" onClick={() => addZone("Trottoir")}>Trottoir</button></>}/><div className="zone-tabs-mobile"><button className="active">Chaussée</button><button>Trottoir</button></div><div className="section-head second"><span><b>Dimensions</b><small>Mesures réelles par zone · surface calculée automatiquement</small></span><button className="add-zone" onClick={() => addZone("Chaussée")}><Plus size={14}/> Ajouter une zone</button></div>{zones.map((z,i) => { const surface=n(z.length)*n(z.width); const volume=surface*n(z.thickness)/100; return <div className="zone-card" key={z.id}><div className="zone-card-title"><b>Zone {i+1} — {z.kind}</b><button onClick={() => removeZone(z.id)}><Trash2 size={15}/></button></div><div className="fields-grid"><Field label="Longueur" unit="m" value={z.length} onChange={v=>updateZone(z.id,"length",v)}/><Field label="Largeur" unit="m" value={z.width} onChange={v=>updateZone(z.id,"width",v)}/><div className="calculated"><small>Surface</small><b>{fmt(surface)} m²</b></div><Field label="Épaisseur" unit="cm" step="0.1" value={z.thickness} onChange={v=>updateZone(z.id,"thickness",v)}/><div className="calculated"><small>Volume</small><b>{fmt(volume,3)} m³</b></div></div></div>})}<div className="total-card"><span><small>Surface totale</small><b>{fmt(totals.surface)} m²</b></span><span><small>Volume total</small><b>{fmt(totals.volume,3)} m³</b></span><span><small>Tonnage estimé</small><b>{fmt(totals.volume * 2.35)} t</b></span></div><section className="complementary-card"><div className="section-head"><span><b>Travaux complémentaires</b><small>Quantités réellement exécutées</small></span></div><div className="complementary-grid">{compFields.map(([key,label,unit])=><Field key={key} label={label} unit={unit} step={unit === "U" || unit === "forfait" ? "1" : "0.01"} value={complementary[key]} onChange={v=>setComplementary(c=>({...c,[key]:v}))}/>)}</div></section><section className="bpu-card"><div className="section-head"><span><b>Prestations BPU réalisées</b><small>Ajouter uniquement les prestations réellement exécutées</small></span><button className="add-zone" onClick={addBpu}><Plus size={14}/> Ajouter</button></div><div className="bpu-add-row"><select value={selectedBpu} onChange={e=>setSelectedBpu(e.target.value)}>{BPU.map(x=><option key={x.code} value={x.code}>{x.code} — {x.label} ({x.unit})</option>)}</select><input type="number" min="0" step="0.01" placeholder="Quantité" value={bpuQty} onChange={e=>setBpuQty(e.target.value)}/><span>{selectedService.unit}</span><button onClick={addBpu}>Ajouter</button></div>{services.length===0?<div className="bpu-empty">Aucune prestation ajoutée.</div>:<div className="bpu-lines">{services.map(line=><div className="bpu-line" key={line.id}><span>{line.code}</span><b>{line.label}</b><strong>{fmt(line.quantity)} {line.unit}</strong><button onClick={()=>removeBpu(line.id)}><Trash2 size={14}/></button></div>)}</div>}</section><div className="workflow-actions"><button className="workflow-secondary" onClick={()=>window.scrollTo({top:0,behavior:"smooth"})}><ArrowLeft size={16}/> Retour</button><button className="workflow-primary" onClick={onNext}><Save size={16}/> Enregistrer et continuer <ArrowRight size={16}/></button></div></section>; }
+function SectionHead({number,title,action}) { return <div className="section-head first"><span className="round-number">{number}</span><b>{title}</b><div className="head-control">{action}</div></div>; }
+function StepMaterials({ material, setMaterial, density, estimatedTonnage, tonnage, setTonnage, onNext }) { return <section className="workflow-step"><section className="material-card"><div className="section-head first"><span className="material-icon"><Truck size={17}/></span><b>Matériau principal</b></div><select className="material-select" value={material} onChange={e=>setMaterial(e.target.value)}><option>Enrobé noir</option><option>Enrobé rouge</option><option>Enrobé autre couleur</option><option>Béton balayé</option><option>Béton normal</option><option>Grave-émulsion</option></select><div className="material-metrics"><span><small>Densité (t/m³)</small><b>{fmt(density,2)}</b></span><span><small>Prix achat (€ / t)</small><b>—</b></span><span><small>Tonnage estimé</small><b>{fmt(estimatedTonnage,2)} t</b></span></div></section><section className="material-card"><div className="section-head first"><span className="material-icon"><ClipboardList size={17}/></span><b>Quantité réellement utilisée</b></div><div className="actual-material-grid"><Field label="Tonnage réel" unit="t" value={tonnage} onChange={setTonnage} step="0.01"/><div className="variance"><small>Écart estimé</small><b>{tonnage ? `${((n(tonnage)/Math.max(estimatedTonnage,.01)-1)*100).toFixed(0)} %` : "—"}</b></div><div className="actual-volume"><small>Volume correspondant</small><b>{fmt(n(tonnage)/Math.max(density,.01),3)} m³</b></div></div></section><section className="material-card"><div className="section-head first"><span className="material-icon"><Plus size={17}/></span><b>Matériaux complémentaires</b><button className="add-zone">+ Ajouter un matériau</button></div><div className="material-line"><b>Grave 0/31,5</b><Field label="Quantité" unit="t" value={""} onChange={()=>{}}/><Field label="Prix achat" unit="€/t" value={""} onChange={()=>{}}/></div></section><section className="material-card"><div className="section-head first"><span className="material-icon"><Truck size={17}/></span><b>Reste camion (estimation)</b></div><div className="truck-balance"><span><small>Capacité totale</small><b>8,00 t</b></span><span><small>Total chargé</small><b>{fmt(n(tonnage)||estimatedTonnage,2)} t</b></span><span><small>Reste estimé</small><b>{fmt(Math.max(8-(n(tonnage)||estimatedTonnage),0),2)} t</b></span></div></section><div className="workflow-actions"><button className="workflow-secondary" onClick={()=>window.scrollTo({top:0,behavior:"smooth"})}><ArrowLeft size={16}/> Retour</button><button className="workflow-primary" onClick={onNext}>Suivant <ArrowRight size={16}/></button></div></section>; }
+function StepPhotos({ photos, completePhoto, comments, setComments, onSubmit }) { return <section className="workflow-step"><section className="photos-card"><div className="section-head first"><span className="material-icon"><Camera size={17}/></span><b>Photos</b><small>{photos.Avant && photos.Après ? "2 / 2 obligatoires" : "À compléter"}</small></div><div className="photo-grid"><PhotoBox title="Avant travaux" required exists={photos.Avant} onAdd={()=>completePhoto("Avant")}/><PhotoBox title="Pendant travaux" exists={photos.Pendant} onAdd={()=>completePhoto("Pendant")}/><PhotoBox title="Après travaux" required exists={photos.Après} onAdd={()=>completePhoto("Après")}/></div></section><section className="comment-card"><div className="section-head first"><b>Commentaires</b></div><textarea value={comments} onChange={e=>setComments(e.target.value)} placeholder="Observations, qualité de compactage, remarques chantier…"/></section><section className="validation-card"><div><CheckCircle2 size={19}/><b>État de l'intervention</b></div><div className="validation-buttons"><button className="done active"><Check size={16}/> Terminée</button><button>En pause</button><button className="problem">Problème</button></div></section><section className="submit-card"><b>Soumettre pour validation</b><p>{photos.Avant && photos.Après ? "L'intervention est terminée. Elle sera envoyée au chef de chantier pour validation." : "Ajoutez les photos Avant et Après / Travaux réalisés pour poursuivre."}</p><button className={`workflow-primary ${!(photos.Avant&&photos.Après)?"disabled":""}`} disabled={!(photos.Avant&&photos.Après)} onClick={onSubmit}>Soumettre <ArrowRight size={16}/></button></section><div className="workflow-actions"><button className="workflow-secondary"><ArrowLeft size={16}/> Retour</button><button className={`workflow-primary ${!(photos.Avant&&photos.Après)?"disabled":""}`} disabled={!(photos.Avant&&photos.Après)} onClick={onSubmit}>Soumettre <ArrowRight size={16}/></button></div></section>; }
+function WorkflowStepper({ step }) { return <div className="workflow-stepper">{STEPS.map((s,i)=><React.Fragment key={s}><div className={`step-dot ${i < step ? "done" : i === step ? "active" : ""}`}><span>{i+1}</span><b>{s}</b></div>{i<STEPS.length-1&&<div className={`step-line ${i<step?"done":""}`}/>}</React.Fragment>)}</div>; }
