@@ -28,10 +28,10 @@ function actualOf(row) {
   return { surfaceM2: actualSurfaceOf(row), thicknessCm: actualThicknessOf(row) };
 }
 '''
-if anchor not in s:
-    raise SystemExit("SETOM: Chargement/Travaux bridge anchor missing")
-if "function actualReferenceFor(row)" not in s:
+if anchor in s and "function actualReferenceFor(row)" not in s:
     s = s.replace(anchor, anchor + insert, 1)
+elif "function actualReferenceFor(row)" not in s:
+    raise SystemExit("SETOM: Chargement/Travaux bridge anchor missing")
 
 s = s.replace(
     '<div class="rtn-row head"><span>OS</span><span>MATÉRIAU</span><span>PRÉVU</span><span>CHARGÉ</span><span>RESTE</span><span>ROTATION</span></div>',
