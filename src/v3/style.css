@@ -97,3 +97,8 @@
 .route-order-actions button:disabled{opacity:.35}
 .route-order-card .section-title{margin-bottom:10px}
 @media(max-width:520px){.route-order-row{align-items:flex-start}.route-order-actions{flex-direction:column}.route-order-actions button{width:27px;height:27px}}
+
+.map-container{position:relative;min-height:420px}
+.map-container .leaflet-map{position:relative;z-index:1}
+.map-no-points.overlay{position:absolute;z-index:5;inset:0;height:auto;min-height:0;background:rgba(248,251,253,.91);backdrop-filter:blur(2px);pointer-events:none}
+.calendar-card{overflow-x:auto}
