@@ -1,0 +1,120 @@
+/* SETOM — visual reference layer
+   Direction adopted from the validated SETOM field-operations mockup:
+   navy shell, yellow active navigation, clean white workspaces,
+   strong hierarchy and compact construction-site data cards.
+*/
+:root{
+  --setom-navy:#092a4a;
+  --setom-navy-2:#0d3d68;
+  --setom-blue:#086fba;
+  --setom-blue-2:#0a5d9d;
+  --setom-yellow:#f5c400;
+  --setom-yellow-2:#ffcf18;
+  --setom-ink:#18304a;
+  --setom-bg:#f4f7fb;
+  --setom-border:#dce5ef;
+}
+
+body{background:var(--setom-bg)}
+
+.sidebar{
+  background:linear-gradient(180deg,var(--setom-navy) 0%,#0b3155 72%,#092a4a 100%);
+  box-shadow:6px 0 28px rgba(4,30,55,.14);
+}
+
+.brand{
+  height:88px;
+  padding:0 18px;
+  border-bottom:1px solid rgba(255,255,255,.1);
+}
+
+.brand b{
+  letter-spacing:.055em;
+  font-size:27px;
+}
+
+.brand-version{
+  background:rgba(255,255,255,.09);
+  color:#b9cbe0;
+}
+
+.nav-item{
+  min-height:48px;
+  border-radius:8px;
+  padding:8px 10px;
+  gap:10px;
+}
+
+.nav-item.active{
+  background:linear-gradient(90deg,var(--setom-yellow) 0%,#ffd52b 100%);
+  border-color:#e8b900;
+  color:#102a45;
+  box-shadow:0 4px 12px rgba(0,0,0,.12);
+}
+
+.nav-item.active:before{display:none}
+.nav-item.active .nav-icon{
+  background:rgba(255,255,255,.55);
+  color:#0c4775;
+  box-shadow:none;
+}
+.nav-item.active .nav-text small{color:#31526e}
+.nav-item.active .nav-arrow{color:#0d4d7e}
+
+.nav-item:hover:not(.active){
+  background:rgba(255,255,255,.075);
+}
+
+.topbar{
+  height:74px;
+  padding:0 28px;
+  border-bottom:1px solid #dfe7f0;
+}
+
+.global-search{
+  width:min(420px,34vw);
+  border-radius:8px;
+  background:#f5f8fb;
+}
+
+.page-content{padding:25px 30px 58px}
+
+.page-heading h1{
+  color:var(--setom-ink);
+  font-size:34px;
+}
+
+.card{
+  border-color:var(--setom-border);
+  border-radius:12px;
+  box-shadow:0 3px 14px rgba(21,52,83,.045);
+}
+
+.btn.primary{
+  background:linear-gradient(135deg,var(--setom-blue),var(--setom-blue-2));
+  border-color:var(--setom-blue-2);
+}
+
+.badge{font-weight:800}
+
+/* Creation/detail forms: stronger section hierarchy without changing business logic. */
+.form-section,.modal-section,.os-form-section,.create-section{
+  border-color:var(--setom-border);
+  border-radius:12px;
+}
+
+/* Data emphasis used by the SETOM reference mockup. */
+.tonnage-card,.load-summary,.material-summary,.planning-summary{
+  border:1px solid #d8e6f2;
+  background:linear-gradient(180deg,#f7fbfe,#edf6fc);
+}
+
+/* Yellow is reserved for actions / active operational state, not decoration everywhere. */
+.section-accent,.step.active,.wizard-step.active{
+  border-color:var(--setom-yellow);
+}
+
+@media (max-width:900px){
+  .global-search{width:min(330px,45vw)}
+  .page-content{padding:20px 18px 48px}
+}
