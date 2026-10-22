@@ -1,0 +1,50 @@
+/* SETOM — Toulouse / Eurovia field identity
+   Official Eurovia Toulouse chantier image used as a visual identity accent.
+   Source: Eurovia France — A680 / Verfeil chantier, agence Eurovia de Toulouse.
+*/
+
+.sidebar{
+  position:fixed;
+  overflow:hidden;
+  background-image:
+    linear-gradient(180deg,
+      rgba(9,42,74,.98) 0%,
+      rgba(9,42,74,.97) 57%,
+      rgba(9,42,74,.78) 72%,
+      rgba(9,42,74,.34) 84%,
+      rgba(9,42,74,.18) 100%),
+    url("https://eurovia.fr/wp-content/upload/www.eurovia.fr/2026/09/002-2026-03-10-dji-0097.jpg");
+  background-position:center, center bottom;
+  background-repeat:no-repeat;
+  background-size:100% 100%, 100% 245px;
+}
+
+.sidebar::after{
+  content:"CHANTIERS • TOULOUSE";
+  position:absolute;
+  left:18px;
+  right:18px;
+  bottom:13px;
+  z-index:1;
+  padding-top:9px;
+  border-top:1px solid rgba(255,255,255,.28);
+  color:rgba(255,255,255,.82);
+  font-size:8px;
+  font-weight:800;
+  letter-spacing:.16em;
+  text-shadow:0 1px 4px rgba(0,0,0,.35);
+}
+
+.sidebar > *{position:relative;z-index:2}
+
+.side-footer{
+  background:linear-gradient(180deg,rgba(9,42,74,0),rgba(9,42,74,.92) 42%);
+  border-top-color:rgba(255,255,255,.12);
+  padding-bottom:48px;
+}
+
+@media(max-width:900px){
+  .sidebar{
+    background-size:100% 100%, 100% 210px;
+  }
+}
