@@ -102,7 +102,6 @@ const buildLoadPlan = (items, capacity) => {
     if (!byMaterial.has(key)) byMaterial.set(key, []);
     byMaterial.get(key).push(item);
   }
-
   const rotations = [];
   for (const [materialId, materialItems] of byMaterial.entries()) {
     let rotation = null;
@@ -121,11 +120,7 @@ const buildLoadPlan = (items, capacity) => {
       }
     }
   }
-  return rotations.map((row, index) => ({
-    ...row,
-    number: index + 1,
-    fillRate: row.loadTonnage / capacity,
-  }));
+  return rotations.map((row, index) => ({ ...row, number: index + 1, fillRate: row.loadTonnage / capacity }));
 };
 
 /**
@@ -151,17 +146,9 @@ export function buildRouteProposal({
 
   const allCandidates = workOrders.filter(eligible).filter((order) => !plannedToday.has(order.id)).map((workOrder) => {
     const material = materialById.get(workOrder.material_id);
-    const tonnage = estimateTonnage(workOrder, null, null);
+    const tonnage = estimateTonnage(workOrder, material, null);
     const signage = signageStatus(workOrder, targetDate);
-    return {
-      workOrder,
-      intervention: null,
-      material,
-      tonnage,
-      urgency: urgencyScore(workOrder, targetDate),
-      daysLeft: daysUntil(workOrder.deadline_date, targetDate),
-      signage,
-    };
+    return { workOrder, intervention: null, material, tonnage, urgency: urgencyScore(workOrder, targetDate), daysLeft: daysUntil(workOrder.deadline_date, targetDate), signage };
   });
 
   const blocked = allCandidates.filter((item) => item.signage.blocked);
@@ -177,7 +164,6 @@ export function buildRouteProposal({
   });
 
   const buckets = activeTeams.map((team) => ({ team, truck: truckByTeam.get(team.id) || null, items: [], tonnage: 0 }));
-
   for (const item of sorted) {
     const usable = buckets.filter((bucket) => bucket.truck);
     if (!usable.length) break;
@@ -224,7 +210,6 @@ export function buildRouteProposal({
       ...missingData.map((item) => `${item.workOrder.os_number || item.workOrder.id}: tonnage impossible à calculer (matériau, épaisseur ou densité manquante).`),
       ...blocked.map((item) => `${item.workOrder.os_number || item.workOrder.id}: ${item.signage.reason}`),
       ...routes.filter((route) => route.urgent > 0).map((route) => `${route.team.name}: ${route.urgent} OS urgent(s) dans les 3 jours.`),
-      ...routes.filter((route) => route.tonnage > 0 && !route.truck).map((route) => `${route.team.name}: aucun camion, tournée non affectée.`),
     ],
   };
 }
