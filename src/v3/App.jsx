@@ -443,7 +443,7 @@ function TruckIllustration({tons,material,view}) {
 
 function FinancePage({data,numberOf,openOS,notify,refresh,newExpense}) {
   const [period,setPeriod]=useState("year");const [filter,setFilter]=useState("Tous");
-  const currentYear=todayISO().slice(0,4);const currentMonth=todayISO().slice(0,7);const quarterStart=Number(currentMonth.slice(5,7))<=3?currentYear+"-01":Number(currentMonth.slice(5,7))<=6?currentYear+"-04":Number(currentMonth.slice(5,7))<=9?currentYear+"-07":currentYear+"-10";const quarterEnd=addDays(quarterStart+"-01",90).slice(0,7);
+  const currentYear=todayISO().slice(0,4);const currentMonth=todayISO().slice(0,7);const monthNumber=Number(currentMonth.slice(5,7));const quarterStartMonth=Math.floor((monthNumber-1)/3)*3+1;const quarterEndMonth=quarterStartMonth+2;const quarterStart=currentYear+"-"+String(quarterStartMonth).padStart(2,"0");const quarterEnd=currentYear+"-"+String(quarterEndMonth).padStart(2,"0");
   const periodMatches=value=>{const month=String(value||"").slice(0,7);if(period==="all")return true;if(period==="month")return month===currentMonth;if(period==="quarter")return month>=quarterStart&&month<=quarterEnd;return month.startsWith(currentYear);};
   const periodConstats=data.constats.filter(c=>periodMatches(c.constat_date||c.created_at));
   const constats=periodConstats.filter(c=>filter==="Tous"||c.status===filter);
@@ -454,8 +454,9 @@ function FinancePage({data,numberOf,openOS,notify,refresh,newExpense}) {
   const paid=constats.filter(c=>["Payé","Archivé"].includes(c.status)).reduce((s,c)=>s+Number(c.total_amount||0),0);
   const costsInPeriod=data.costs.filter(c=>periodMatches(c.cost_date));
   const expenses=costsInPeriod.reduce((s,c)=>s+Number(c.amount_ht??c.amount??0),0);
-  const unpaidExpenses=costsInPeriod.filter(c=>c.payment_status!=="Payée").reduce((s,c)=>s+Number(c.amount_ht??c.amount??0),0);
-  const paidExpenses=costsInPeriod.filter(c=>c.payment_status==="Payée").reduce((s,c)=>s+Number(c.amount_ht??c.amount??0),0);
+  const paidAmountHT=c=>{const total=Number(c.amount_ht??c.amount??0);return c.payment_status==="Payée"?total:Math.min(total,Math.max(0,Number(c.amount_paid_ht||0)));};
+  const unpaidExpenses=costsInPeriod.reduce((s,c)=>s+Math.max(0,Number(c.amount_ht??c.amount??0)-paidAmountHT(c)),0);
+  const paidExpenses=costsInPeriod.reduce((s,c)=>s+paidAmountHT(c),0);
   const outstandingReceipts=periodConstats.filter(c=>!["Payé","Archivé"].includes(c.status)).reduce((s,c)=>s+Number(c.total_amount||0),0);
   const allReceipts=periodConstats.reduce((s,c)=>s+Number(c.total_amount||0),0);
   const monthly=Array.from({length:12},(_,i)=>{const month=String(i+1).padStart(2,"0");const rows=data.constats.filter(c=>String(c.constat_date||c.created_at||"").slice(0,7)===todayISO().slice(0,4)+"-"+month);return {m:new Date(Number(todayISO().slice(0,4)),i,1).toLocaleDateString("fr-FR",{month:"short"}),revenue:rows.filter(c=>["Validé","Payé","Archivé"].includes(c.status)).reduce((s,c)=>s+Number(c.total_amount||0),0),reserved:rows.filter(c=>c.status==="Validé avec réserve"&&!c.reserve_resolved_at).reduce((s,c)=>s+Number(c.total_amount||0),0)};});
@@ -470,12 +471,13 @@ function FinancePage({data,numberOf,openOS,notify,refresh,newExpense}) {
 }
 
 function ExpenseModal({data,close,notify,refresh,session}) {
-  const [form,setForm]=useState({cost_date:todayISO(),category:"materiaux",description:"",supplier:"",reference:"",amount:"",vat_rate:"20",payment_status:"À payer",paid_at:"",work_order_id:"",quantity:"",unit:"",notes:""});
+  const [form,setForm]=useState({cost_date:todayISO(),category:"materiaux",description:"",supplier:"",reference:"",amount:"",vat_rate:"20",payment_status:"À payer",amount_paid_ht:"",paid_at:"",work_order_id:"",quantity:"",unit:"",notes:""});
   const [file,setFile]=useState(null);const [saving,setSaving]=useState(false);const [error,setError]=useState("");const set=(k,v)=>setForm(f=>({...f,[k]:v}));
   const ht=Number(form.amount)||0;const vat=Number(form.vat_rate)||0;const ttc=ht*(1+vat/100);
-  async function submit(e){e.preventDefault();if(saving)return;if(!(ht>0)){setError("Le montant HT doit être supérieur à zéro.");return;}if(vat<0||vat>100){setError("Le taux de TVA doit être compris entre 0 et 100 %.");return;}if(form.payment_status==="Payée"&&!(form.paid_at||form.cost_date)){setError("Renseignez la date de paiement.");return;}setSaving(true);setError("");let createdId=null;let documentPath=null;
+  async function submit(e){e.preventDefault();if(saving)return;if(!(ht>0)){setError("Le montant HT doit être supérieur à zéro.");return;}if(vat<0||vat>100){setError("Le taux de TVA doit être compris entre 0 et 100 %.");return;}const partial=Number(form.amount_paid_ht)||0;if(form.payment_status==="Partiellement payée"&&!(partial>0&&partial<ht)){setError("Pour un règlement partiel, saisissez un montant payé strictement inférieur au montant HT et supérieur à zéro.");return;}if(form.payment_status==="Payée"&&!(form.paid_at||form.cost_date)){setError("Renseignez la date de paiement.");return;}if(form.payment_status==="Partiellement payée"&&!(form.paid_at||form.cost_date)){setError("Renseignez la date du dernier règlement.");return;}setSaving(true);setError("");let createdId=null;let documentPath=null;
     try{
-      const payload={cost_date:form.cost_date,category:form.category,description:form.description.trim(),amount:Number(ht.toFixed(2)),amount_ht:Number(ht.toFixed(2)),vat_rate:Number(vat.toFixed(2)),amount_ttc:Number(ttc.toFixed(2)),payment_status:form.payment_status,paid_at:form.payment_status==="Payée"?(form.paid_at||form.cost_date):null,supplier:form.supplier.trim()||null,reference:form.reference.trim()||null,work_order_id:form.work_order_id||null,quantity:form.quantity?Number(form.quantity):null,unit:form.unit||null,notes:form.notes||null,created_by:session?.user?.id||null,updated_at:new Date().toISOString()};
+      const amountPaidHT= form.payment_status==="Payée"?ht:form.payment_status==="Partiellement payée"?partial:0;
+      const payload={cost_date:form.cost_date,category:form.category,description:form.description.trim(),amount:Number(ht.toFixed(2)),amount_ht:Number(ht.toFixed(2)),vat_rate:Number(vat.toFixed(2)),amount_ttc:Number(ttc.toFixed(2)),payment_status:form.payment_status,amount_paid_ht:Number(amountPaidHT.toFixed(2)),paid_at:form.payment_status!=="À payer"?(form.paid_at||form.cost_date):null,supplier:form.supplier.trim()||null,reference:form.reference.trim()||null,work_order_id:form.work_order_id||null,quantity:form.quantity?Number(form.quantity):null,unit:form.unit||null,notes:form.notes||null,created_by:session?.user?.id||null,updated_at:new Date().toISOString()};
       const {data:created,error:insertError}=await supabase.from("work_order_costs").insert(payload).select("id").single();if(insertError)throw insertError;createdId=created.id;
       let documentWarning="";
       if(file){
@@ -504,7 +506,8 @@ function ExpenseModal({data,close,notify,refresh,session}) {
     <label>Taux de TVA (%)<input type="number" min="0" max="100" step=".1" value={form.vat_rate} onChange={e=>set("vat_rate",e.target.value)}/></label>
     <div className="span-two vat-summary"><div><span>Montant HT</span><b>{euro(ht)}</b></div><div><span>TVA calculée</span><b>{euro(ht*vat/100)}</b></div><div><span>Total TTC</span><b>{euro(ttc)}</b></div></div>
     <label>Statut de règlement<select value={form.payment_status} onChange={e=>set("payment_status",e.target.value)}><option>À payer</option><option>Partiellement payée</option><option>Payée</option></select></label>
-    <label>Date de paiement<input type="date" value={form.paid_at} onChange={e=>set("paid_at",e.target.value)} disabled={form.payment_status!=="Payée"}/></label>
+    {form.payment_status==="Partiellement payée"&&<label>Montant déjà réglé HT (€)<input type="number" min="0.01" max={Math.max(0,ht-.01)} step=".01" required value={form.amount_paid_ht} onChange={e=>set("amount_paid_ht",e.target.value)}/></label>}
+    <label>{form.payment_status==="Partiellement payée"?"Date du dernier règlement":"Date de paiement"}<input type="date" value={form.paid_at} onChange={e=>set("paid_at",e.target.value)} disabled={form.payment_status==="À payer"}/></label>
     <label>OS lié (facultatif)<select value={form.work_order_id} onChange={e=>set("work_order_id",e.target.value)}><option value="">Dépense générale</option>{data.os.map(o=><option key={o.id} value={o.id}>{String(data.settings?.os_label||"OS")+"-"+new Date(o.creation_date||todayISO()).getFullYear()+"-"+String(o.os_number).padStart(5,"0")} · {shortAddress(o)}</option>)}</select></label>
     <label>Quantité<input type="number" min="0" step=".01" value={form.quantity} onChange={e=>set("quantity",e.target.value)}/></label>
     <label>Unité<input value={form.unit} onChange={e=>set("unit",e.target.value)} placeholder="t, h, km…"/></label>
