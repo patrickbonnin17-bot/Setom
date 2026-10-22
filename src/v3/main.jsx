@@ -4,7 +4,6 @@ import App from "./App";
 import FleetOperationsOverlay from "./FleetOperationsOverlay";
 import SetomIntelligenceOverlay from "./SetomIntelligenceOverlay";
 import SetomRouteOptimizerOverlay from "./SetomRouteOptimizerOverlay";
-import SetomPerformanceOverlay from "./SetomPerformanceOverlay";
 import "./setom-reference.css";
 
-createRoot(document.getElementById("root")).render(<><App /><FleetOperationsOverlay /><SetomIntelligenceOverlay /><SetomRouteOptimizerOverlay /><SetomPerformanceOverlay /></>);
+createRoot(document.getElementById("root")).render(<><App /><FleetOperationsOverlay /><SetomIntelligenceOverlay /><SetomRouteOptimizerOverlay /></>);
