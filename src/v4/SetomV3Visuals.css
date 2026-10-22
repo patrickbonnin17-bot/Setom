@@ -1,0 +1,112 @@
+/* SETOM V4 — V3 validated visual system
+   This layer deliberately sits above the functional V4 styles.
+   It changes presentation only: hierarchy, density, spacing, cards and navigation.
+*/
+:root{
+  --sv3-navy:#06285b;
+  --sv3-navy-2:#073b78;
+  --sv3-blue:#1769c2;
+  --sv3-yellow:#ffc400;
+  --sv3-bg:#edf3f8;
+  --sv3-line:#d9e3ef;
+  --sv3-text:#08285a;
+  --sv3-muted:#687991;
+  --sv3-green:#159b68;
+  --sv3-orange:#f3a51b;
+  --sv3-red:#e53935;
+  --sv3-purple:#7b43d1;
+}
+body{background:var(--sv3-bg);color:var(--sv3-text)}
+.sv4-shell{background:linear-gradient(180deg,#f7faff 0,#edf3f8 100%)}
+.sv4-sidebar{width:250px;background:linear-gradient(180deg,#03285c 0%,#063a75 67%,#052d62 100%);box-shadow:5px 0 22px rgba(4,39,87,.12)}
+.sv4-main{margin-left:250px}
+.sv4-brand{height:126px;padding:15px 18px 12px;gap:13px}
+.sv4-brand>b{font-size:47px;letter-spacing:-4px}
+.sv4-brand small{font-size:10px;line-height:1.35;max-width:145px}
+.sv4-sidebar nav{padding:14px 10px;gap:3px}
+.sv4-sidebar nav button{min-height:44px;border-radius:7px;padding:10px 13px;font-size:14px}
+.sv4-sidebar nav button.active{background:var(--sv3-yellow);color:#06285b;box-shadow:0 5px 12px rgba(0,0,0,.13)}
+.sv4-sidebar nav button.active svg{stroke-width:2.5}
+.sv4-side-photo{height:205px;padding:157px 16px 13px;background:linear-gradient(transparent 18%,rgba(0,19,45,.9)),url('/eurovia-toulouse.jpg') center/cover}
+.sv4-top{height:70px;padding:0 30px;gap:28px;box-shadow:0 1px 0 rgba(8,40,90,.04)}
+.sv4-search{height:42px;max-width:610px;border-radius:8px;background:#f3f7fc;border-color:#dce6f1}
+.sv4-search input{font-size:13px}
+.sv4-user{min-width:190px}
+.sv4-content{padding:20px 24px 40px;max-width:1700px}
+.sv4-heading{margin-bottom:17px;align-items:center}
+.sv4-heading small{color:var(--sv3-blue);font-size:10px}
+.sv4-heading h1{font-size:29px;letter-spacing:-.5px;margin:3px 0 4px}
+.sv4-heading p{font-size:13px}
+.sv4-actions{gap:8px}
+.sv4-btn{min-height:40px;border-radius:7px;padding:9px 15px;border-color:#cbd9e8;background:#fff;box-shadow:0 1px 2px rgba(8,40,90,.04)}
+.sv4-btn.primary{background:var(--sv3-blue);border-color:var(--sv3-blue);box-shadow:0 4px 10px rgba(23,105,194,.18)}
+.sv4-kpis{grid-template-columns:repeat(6,1fr);gap:10px;margin-bottom:16px}
+.sv4-kpi{min-height:101px;border-radius:8px;padding:14px 15px;border-color:#dce5ef;box-shadow:0 2px 9px rgba(8,40,90,.045);position:relative;overflow:hidden}
+.sv4-kpi:before{content:"";position:absolute;left:0;top:0;bottom:0;width:4px;background:#b9cce3}
+.sv4-kpi:nth-child(1):before{background:var(--sv3-blue)}
+.sv4-kpi:nth-child(2):before{background:var(--sv3-green)}
+.sv4-kpi:nth-child(3):before{background:var(--sv3-orange)}
+.sv4-kpi:nth-child(4):before{background:var(--sv3-red)}
+.sv4-kpi:nth-child(5):before{background:var(--sv3-purple)}
+.sv4-kpi:nth-child(6):before{background:#0d8c88}
+.sv4-kpi small{font-size:11px}.sv4-kpi strong{font-size:28px}.sv4-kpi span{font-size:10px}
+.sv4-card{border-radius:9px;border-color:#d9e3ef;box-shadow:0 3px 14px rgba(8,40,90,.055);padding:16px}
+.sv4-card-head{margin-bottom:12px}.sv4-card-head b{font-size:16px}.sv4-card-head small{font-size:10px}
+.sv4-dashboard-grid{grid-template-columns:minmax(0,1.7fr) minmax(360px,.85fr);gap:14px}
+.sv4-map-card{padding:12px}.sv4-map-card .sv4-card-head{padding:3px 4px 7px}
+.sv4-list button{padding:12px 7px;min-height:62px;grid-template-columns:100px minmax(0,1fr) 70px auto;border-bottom:1px solid #e6edf4}
+.sv4-list button>b{color:#0c3672}.sv4-list span{font-size:12px}.sv4-list em{font-size:10px}
+.sv4-badge{border-radius:5px;padding:5px 9px;font-size:10px}
+.sv4-tabs{gap:6px;margin-bottom:10px}
+.sv4-tabs button{min-height:42px;padding:10px 18px;border-radius:7px}
+.sv4-tabs button.active{background:var(--sv3-yellow);border-color:var(--sv3-yellow);box-shadow:0 2px 6px rgba(255,196,0,.22)}
+.sv4-filters{gap:8px;margin-bottom:12px}
+.sv4-filters>div{min-width:360px;height:42px}
+.sv4-filters select{height:42px;border:1px solid var(--sv3-line);border-radius:7px;background:#fff}
+.sv4-os-layout{grid-template-columns:minmax(0,1fr) 390px;gap:13px}
+.sv4-table-card{border-radius:9px;background:#fff;box-shadow:0 3px 14px rgba(8,40,90,.055)}
+.sv4-table-card table{font-size:11px}
+.sv4-table-card thead{background:#f5f8fc}
+.sv4-table-card th{height:44px;color:#526681;font-size:10px;text-transform:none;border-bottom:1px solid #d8e2ed}
+.sv4-table-card td{height:53px;padding:8px 9px}
+.sv4-table-card tbody tr.selected{box-shadow:inset 4px 0 var(--sv3-blue);background:#f4f9ff}
+.sv4-detail{border-radius:9px;overflow:hidden}
+.sv4-detail:has(img){padding-top:0}
+.sv4-detail-head h2{font-size:21px}
+.sv4-detail-grid span,.sv4-info-strip span{background:#f5f8fc;border:1px solid #e6edf4}
+.sv4-detail-actions .sv4-btn{flex:1}
+.sv4-planning-toolbar{background:#fff;border:1px solid #dbe5ef;border-radius:9px;padding:10px;box-shadow:0 2px 9px rgba(8,40,90,.035);margin-bottom:12px}
+.sv4-planning-grid{grid-template-columns:285px minmax(0,1fr) 350px;gap:12px}
+.sv4-unplanned{background:#fff;border:1px solid #d9e3ef;border-radius:9px;padding:9px;box-shadow:0 3px 14px rgba(8,40,90,.045)}
+.sv4-unplanned button{padding:11px 5px;min-height:76px}
+.sv4-big-map{background:#fff;border:1px solid #d9e3ef;border-radius:9px;padding:8px;box-shadow:0 3px 14px rgba(8,40,90,.045)}
+.sv4-big-map .sv4-card{box-shadow:none;border:0;padding:0}
+.sv4-team-stack{gap:9px}
+.sv4-team{background:#fff;border:1px solid #d9e3ef;border-left-width:5px;border-radius:8px;padding:12px;box-shadow:0 2px 9px rgba(8,40,90,.045)}
+.sv4-team-head{font-size:12px}.sv4-team-stats{margin-top:9px}
+.sv4-week-table{background:#fff;border:1px solid #d9e3ef;border-radius:9px;padding:8px;box-shadow:0 3px 14px rgba(8,40,90,.045)}
+.sv4-week-grid{background:#d9e3ef}
+.sv4-day-cell{min-height:78px;background:#fff!important}
+.sv4-intervention-grid{grid-template-columns:370px minmax(0,1fr);gap:14px}
+.sv4-tour{background:#fff;border:1px solid #d9e3ef;border-radius:9px;padding:12px;box-shadow:0 3px 14px rgba(8,40,90,.045)}
+.sv4-tour>button{min-height:72px;border-radius:6px;margin-bottom:2px}
+.sv4-tour>button.selected{background:#eef6ff;border-left-color:var(--sv3-blue)}
+.sv4-photo-strip img{height:145px;border-radius:7px}
+.sv4-load-cards{grid-template-columns:repeat(3,minmax(0,1fr));gap:14px}
+.sv4-load-cards>.sv4-card{overflow:hidden}
+.sv4-truck-art{height:220px;border:1px solid #dbe5ef;border-radius:8px;background:linear-gradient(180deg,#eef5fb,#fff);font-size:0}
+.sv4-truck-art:before{content:"4×2  ·  POLYBENNE";position:absolute;left:14px;top:12px;font-size:10px;font-weight:900;color:#49617f;letter-spacing:.05em}
+.sv4-pile{left:36%;width:39%;bottom:25px;border-radius:50% 45% 15% 15%;background:#596777}
+.sv4-big-number{font-size:24px}
+.sv4-binder{gap:14px}.sv4-sheet{border-radius:8px;border-color:#d5e0ec;box-shadow:0 3px 14px rgba(8,40,90,.045)}
+.sv4-settings-tabs button.active{background:var(--sv3-yellow)}
+.sv4-toast{border-radius:8px}
+.sv4-alert{border-radius:8px}
+.sv4-login{background:linear-gradient(135deg,#03285c,#0a478b)}
+
+/* Visual rhythm for dense operational screens */
+.sv4-os-layout>.sv4-table-card,.sv4-os-layout>.sv4-detail,.sv4-planning-grid>.sv4-unplanned,.sv4-planning-grid>.sv4-big-map,.sv4-planning-grid>.sv4-team-stack{min-height:0}
+.sv4-card img{display:block}
+@media(max-width:1400px){.sv4-sidebar{width:230px}.sv4-main{margin-left:230px}.sv4-planning-grid{grid-template-columns:260px minmax(0,1fr) 320px}.sv4-content{padding-left:18px;padding-right:18px}}
+@media(max-width:1100px){.sv4-kpis{grid-template-columns:repeat(3,1fr)}.sv4-planning-grid{grid-template-columns:250px 1fr}.sv4-team-stack{grid-column:1/-1;display:grid;grid-template-columns:repeat(3,1fr)}.sv4-sidebar{width:220px}.sv4-main{margin-left:220px}}
+@media(max-width:800px){.sv4-sidebar{width:250px}.sv4-main{margin-left:0}.sv4-content{padding:12px}.sv4-kpis{grid-template-columns:repeat(2,1fr)}.sv4-list button{grid-template-columns:88px 1fr auto}.sv4-list button .sv4-badge{grid-column:3}.sv4-load-cards{grid-template-columns:1fr}}
