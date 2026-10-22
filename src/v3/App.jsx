@@ -67,7 +67,7 @@ function App() {
   const [showCreate,setShowCreate]=useState(false);
   const [showExpense,setShowExpense]=useState(false);
   const [showTeam,setShowTeam]=useState(false);
-  const [data,setData]=useState({os:[],sectors:[],materials:[],teams:[],interventions:[],constats:[],attachments:[],costs:[],loads:[],consumptions:[],bpuVersions:[],bpuLines:[],settings:null,realizations:[],reserves:[]});
+  const [data,setData]=useState({os:[],sectors:[],materials:[],teams:[],interventions:[],constats:[],attachments:[],costs:[],loads:[],consumptions:[],bpuVersions:[],bpuLines:[],settings:null,realizations:[],reserves:[],history:[]});
   const notify=useCallback((message,tone="success")=>{setToast({message,tone});window.setTimeout(()=>setToast(null),4500);},[]);
   const refresh=useCallback(async(initial=false)=>{
     if(!session)return;
@@ -89,7 +89,8 @@ function App() {
         fetchRows("bpu_versions",supabase.from("bpu_versions").select("*").order("valid_from",{ascending:false})),
         fetchRows("work_realizations",supabase.from("work_realizations").select("*").order("created_at",{ascending:false})),
         fetchRows("reserves",supabase.from("reserves").select("*").order("created_at",{ascending:false})),
-        fetchRows("app_settings",supabase.from("app_settings").select("*").order("created_at",{ascending:true}).limit(1))
+        fetchRows("app_settings",supabase.from("app_settings").select("*").order("created_at",{ascending:true}).limit(1)),
+        fetchRows("status_history",supabase.from("status_history").select("*").order("created_at",{ascending:false}).limit(500))
       ]);
       const versions=results[10]||[];
       const current=versions.find(v=>v.is_current)||versions[0]||null;
@@ -100,7 +101,7 @@ function App() {
         try { const {data:s,error}=await supabase.storage.from("setom-files").createSignedUrl(f.storage_path,3600); return {...f,url:error?null:s?.signedUrl||null}; }
         catch{return {...f,url:null};}
       }));
-      setData({os:results[0]||[],sectors:results[1]||[],materials:results[2]||[],teams:results[3]||[],interventions:results[4]||[],constats:results[5]||[],attachments:files,costs:results[7]||[],loads:results[8]||[],consumptions:results[9]||[],bpuVersions:versions,bpuLines:lines,settings,realizations:results[11]||[],reserves:results[12]||[]});
+      setData({os:results[0]||[],sectors:results[1]||[],materials:results[2]||[],teams:results[3]||[],interventions:results[4]||[],constats:results[5]||[],attachments:files,costs:results[7]||[],loads:results[8]||[],consumptions:results[9]||[],bpuVersions:versions,bpuLines:lines,settings,realizations:results[11]||[],reserves:results[12]||[],history:results[14]||[]});
     } catch(e) {
       setLoadError(e?.message||"Impossible de charger les données SETOM.");
     } finally {setLoading(false);setRefreshing(false);}
@@ -136,7 +137,7 @@ function App() {
   const osNumber=o=>String(data.settings?.os_label||"OS")+"-"+new Date(o.creation_date||todayISO()).getFullYear()+"-"+String(o.os_number).padStart(5,"0");
   const openOS=id=>{setSelectedId(id);setPage("os");setMobileOpen(false);};
   const updateOS=useCallback((id,patch)=>setData(d=>({...d,os:d.os.map(o=>o.id===id?{...o,...patch}:o)})),[]);
-  async function signOut(){await supabase.auth.signOut();setSession(null);setProfile(null);setData({os:[],sectors:[],materials:[],teams:[],interventions:[],constats:[],attachments:[],costs:[],loads:[],consumptions:[],bpuVersions:[],bpuLines:[],settings:null,realizations:[],reserves:[]});}
+  async function signOut(){await supabase.auth.signOut();setSession(null);setProfile(null);setData({os:[],sectors:[],materials:[],teams:[],interventions:[],constats:[],attachments:[],costs:[],loads:[],consumptions:[],bpuVersions:[],bpuLines:[],settings:null,realizations:[],reserves:[],history:[]});}
   if(authLoading)return <div className="boot"><div className="boot-mark">S</div><h1>SETOM</h1><span>Chargement de votre espace opérationnel…</span></div>;
   if(!session)return <LoginPage onLogin={s=>{setSession(s);setLoadError("");}} error={loadError}/>;
   if(!profile)return <div className="boot"><div className="boot-mark">S</div><h1>Accès SETOM</h1><span>{loadError||"Vérification de votre profil…"}</span><Button onClick={signOut}><LogOut size={16}/> Se déconnecter</Button></div>;
@@ -277,7 +278,7 @@ function OSDetailModal({os,data,numberOf,close,setPage,notify,refresh,updateOS,p
 }
 function InfoGrid({items}) { return <div className="info-grid">{items.map(([label,value])=><div className="info-item" key={label}><span>{label}</span><b>{value||"—"}</b></div>)}</div>; }
 function PhotoGallery({attachments}) { const files=attachments.filter(a=>a.url);return <div className="photo-gallery">{files.length?files.map(f=><a key={f.id} href={f.url} target="_blank" rel="noreferrer" className="photo-item"><img src={f.url} alt={f.file_name}/><span>{f.category==="travaux_realises"?"Travaux réalisés":f.category==="photo"?"Photo OS":f.category||"Document"} · {f.file_name}</span></a>):<Empty title="Aucune photo enregistrée" children="Les photos ajoutées au dossier seront visibles ici."/ >}</div>; }
-function HistoryPanel({os,data}) { const entries=data.interventions.filter(i=>i.work_order_id===os.id).map(i=>({date:i.updated_at||i.created_at,title:"Intervention",detail:(i.status||"")+ (i.planned_date?" · prévue le "+dateLabel(i.planned_date):"")})).concat(data.constats.filter(c=>c.work_order_id===os.id).map(c=>({date:c.updated_at||c.created_at,title:"Constat de facturation",detail:c.status+" · "+euro(c.total_amount)}))).concat(data.attachments.filter(a=>a.work_order_id===os.id).map(a=>({date:a.created_at,title:"Document ajouté",detail:a.file_name}))).sort((a,b)=>String(b.date).localeCompare(String(a.date)));return entries.length?<div className="timeline">{entries.map((e,i)=><div className="timeline-row" key={i}><i/><div><b>{e.title}</b><span>{e.detail}</span><small>{dateLabel(e.date)}</small></div></div>)}</div>:<Empty title="Historique disponible progressivement" children="Les pièces et opérations connues sont listées ici."/ >; }
+function HistoryPanel({os,data}) { const entries=data.history.filter(h=>h.work_order_id===os.id).map(h=>({date:h.created_at,title:"Changement de statut",detail:(h.old_status?h.old_status+" → ":"")+h.new_status+(h.reason?" · "+h.reason:"")})).concat(data.interventions.filter(i=>i.work_order_id===os.id).map(i=>({date:i.updated_at||i.created_at,title:"Intervention",detail:(i.status||"")+ (i.planned_date?" · prévue le "+dateLabel(i.planned_date):"")}))).concat(data.constats.filter(c=>c.work_order_id===os.id).map(c=>({date:c.updated_at||c.created_at,title:"Constat de facturation",detail:c.status+" · "+euro(c.total_amount)}))).concat(data.attachments.filter(a=>a.work_order_id===os.id).map(a=>({date:a.created_at,title:"Document ajouté",detail:a.file_name}))).sort((a,b)=>String(b.date).localeCompare(String(a.date)));return entries.length?<div className="timeline">{entries.map((e,i)=><div className="timeline-row" key={i}><i/><div><b>{e.title}</b><span>{e.detail}</span><small>{dateLabel(e.date)}</small></div></div>)}</div>:<Empty title="Aucun événement d’historique" children="Les changements de statut, interventions, constats et pièces apparaîtront ici."/ >; }
 
 function PlanEditor({os,data,notify,refresh,close}) {
   const old=data.interventions.filter(i=>i.work_order_id===os.id).sort((a,b)=>String(b.created_at).localeCompare(String(a.created_at)))[0];
