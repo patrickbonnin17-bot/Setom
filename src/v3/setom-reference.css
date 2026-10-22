@@ -1,85 +1,201 @@
-/* SETOM — visual reference layer
-   Base visual language adopted from the validated SETOM field-operations mockup:
-   navy shell, yellow active navigation, clean white workspaces,
-   strong hierarchy and compact construction-site data cards.
-
-   IMPORTANT: this layer defines the global SETOM identity only.
-   It must not redesign or alter the workflow of individual modules.
+/* SETOM — validated visual identity layer
+   Reference direction: supplied SETOM sidebar + top header mockups.
+   This layer strengthens the global shell only; individual modules keep
+   their own information architecture and functional layouts.
 */
 :root{
-  --setom-navy:#092a4a;
-  --setom-navy-2:#0d3d68;
+  --setom-navy:#073968;
+  --setom-navy-deep:#052d55;
+  --setom-navy-2:#0b4b7e;
   --setom-blue:#086fba;
-  --setom-blue-2:#0a5d9d;
-  --setom-yellow:#f5c400;
-  --setom-yellow-2:#ffcf18;
-  --setom-ink:#18304a;
+  --setom-blue-2:#075e9f;
+  --setom-yellow:#ffc400;
+  --setom-yellow-2:#ffd21f;
+  --setom-ink:#17324d;
   --setom-bg:#f4f7fb;
   --setom-border:#dce5ef;
 }
 
 body{background:var(--setom-bg)}
 
+/* ───────────────────────── SIDEBAR ───────────────────────── */
 .sidebar{
-  background:linear-gradient(180deg,var(--setom-navy) 0%,#0b3155 72%,#092a4a 100%);
-  box-shadow:6px 0 28px rgba(4,30,55,.14);
+  width:250px;
+  background:
+    linear-gradient(180deg,rgba(4,49,91,.98) 0%,rgba(5,57,104,.98) 62%,rgba(3,43,80,.99) 100%);
+  box-shadow:7px 0 28px rgba(4,30,55,.16);
+  overflow:hidden;
 }
 
+.sidebar::before{
+  content:"";
+  position:absolute;
+  left:0;
+  right:0;
+  bottom:0;
+  height:190px;
+  pointer-events:none;
+  background:
+    linear-gradient(151deg,transparent 0 37%,rgba(255,196,0,.96) 37.3% 48%,transparent 48.3%),
+    linear-gradient(166deg,transparent 0 51%,rgba(255,255,255,.16) 51.2% 54%,transparent 54.2%);
+  opacity:.95;
+  z-index:0;
+}
+
+.sidebar>*{position:relative;z-index:1}
+
 .brand{
-  height:88px;
+  height:91px;
   padding:0 18px;
-  border-bottom:1px solid rgba(255,255,255,.1);
+  border-bottom:1px solid rgba(255,255,255,.10);
+}
+
+.brand-mark{
+  width:0;
+  min-width:0;
+  opacity:0;
+  margin:0 -5px 0 0;
 }
 
 .brand b{
-  letter-spacing:.055em;
-  font-size:27px;
+  letter-spacing:.025em;
+  font-size:32px;
+  font-weight:800;
+  color:#fff;
+  text-shadow:0 1px 0 rgba(0,0,0,.08);
+}
+
+.brand small{
+  color:#d2e0ee;
+  font-size:9px;
+  letter-spacing:.035em;
+  text-transform:uppercase;
 }
 
 .brand-version{
-  background:rgba(255,255,255,.09);
-  color:#b9cbe0;
+  background:rgba(255,255,255,.10);
+  color:#c7d9ea;
+  border:1px solid rgba(255,255,255,.08);
 }
+
+.market-label{
+  margin:19px 18px 9px;
+  color:#9eb8d0;
+}
+
+.side-nav{padding:0 10px;gap:3px}
 
 .nav-item{
-  min-height:48px;
+  min-height:49px;
   border-radius:8px;
-  padding:8px 10px;
+  padding:7px 9px;
   gap:10px;
+  color:#d3e0ed;
 }
 
+.nav-icon{
+  width:34px;
+  height:34px;
+  background:rgba(255,255,255,.025);
+  color:#f0f5fa;
+  border-radius:7px;
+}
+
+.nav-text b{font-size:12px;font-weight:600}
+.nav-text small{display:none}
+
 .nav-item.active{
-  background:linear-gradient(90deg,var(--setom-yellow) 0%,#ffd52b 100%);
-  border-color:#e8b900;
+  background:linear-gradient(90deg,var(--setom-yellow) 0%,var(--setom-yellow-2) 100%);
+  border-color:#e9b500;
   color:#102a45;
-  box-shadow:0 4px 12px rgba(0,0,0,.12);
+  box-shadow:0 5px 14px rgba(0,0,0,.16);
 }
 
 .nav-item.active:before{display:none}
+
 .nav-item.active .nav-icon{
-  background:rgba(255,255,255,.55);
-  color:#0c4775;
+  background:rgba(255,255,255,.44);
+  color:#0a4777;
   box-shadow:none;
 }
+
 .nav-item.active .nav-text small{color:#31526e}
 .nav-item.active .nav-arrow{color:#0d4d7e}
+.nav-item:hover:not(.active){background:rgba(255,255,255,.08);color:#fff}
 
-.nav-item:hover:not(.active){
-  background:rgba(255,255,255,.075);
+.side-footer{
+  border-top:0;
+  padding:13px 16px 12px;
+  background:linear-gradient(180deg,transparent,rgba(3,36,68,.58));
 }
 
+/* Keep the lower sidebar visually close to the supplied construction-site
+   reference without coupling the app to an external photo host. */
+.side-footer::before{
+  content:"CHANTIERS · RÉSEAUX · ENROBÉS";
+  display:block;
+  margin:-2px 0 10px;
+  color:rgba(255,255,255,.76);
+  font-size:8px;
+  font-weight:800;
+  letter-spacing:.14em;
+}
+
+/* ───────────────────────── TOP HEADER ───────────────────────── */
 .topbar{
-  height:74px;
-  padding:0 28px;
+  height:64px;
+  padding:0 24px;
+  gap:18px;
+  background:#fff;
   border-bottom:1px solid #dfe7f0;
+  box-shadow:0 2px 12px rgba(16,48,80,.035);
 }
+
+/* Branded left block: same visual principle as the supplied header. */
+.topbar::before{
+  content:"SETOM";
+  flex:0 0 250px;
+  height:64px;
+  display:flex;
+  align-items:center;
+  padding-left:0;
+  color:#fff;
+  font-family:"Barlow Condensed",Inter,sans-serif;
+  font-size:29px;
+  font-style:italic;
+  font-weight:800;
+  letter-spacing:.02em;
+  background:
+    linear-gradient(142deg,transparent 0 78%,var(--setom-yellow) 78.2% 88%,transparent 88.2%),
+    linear-gradient(104deg,var(--setom-navy) 0%,#0a4d82 78%,#0a4d82 100%);
+  margin-left:-24px;
+  padding-left:24px;
+  clip-path:polygon(0 0,88% 0,100% 50%,88% 100%,0 100%);
+}
+
+.crumb{display:none}
 
 .global-search{
-  width:min(420px,34vw);
+  width:min(420px,42vw);
+  min-width:240px;
+  height:38px;
   border-radius:8px;
-  background:#f5f8fb;
+  background:#f1f5fa;
+  border:1px solid #e0e8f1;
 }
 
+.global-search input{font-size:11px}
+
+.top-right{gap:11px}
+
+.top-date{display:none}
+
+.icon-button{border-radius:50%;min-width:36px;min-height:36px;border:0;background:#f5f8fb}
+
+.top-avatar{width:36px;height:36px}
+
+/* ───────────────────────── WORKSPACE ───────────────────────── */
+.main-shell{margin-left:250px}
 .page-content{padding:25px 30px 58px}
 
 .page-heading h1{
@@ -87,9 +203,11 @@ body{background:var(--setom-bg)}
   font-size:34px;
 }
 
+.page-heading p{color:#7c8da0}
+
 .card{
   border-color:var(--setom-border);
-  border-radius:12px;
+  border-radius:11px;
   box-shadow:0 3px 14px rgba(21,52,83,.045);
 }
 
@@ -100,7 +218,26 @@ body{background:var(--setom-bg)}
 
 .badge{font-weight:800}
 
+/* Make the map shell visually belong to the same SETOM product rather than
+   looking like an isolated Leaflet widget. */
+.setom-operational-map-shell{
+  border:1px solid #dbe5ef;
+  border-radius:12px;
+  overflow:hidden;
+  background:#fff;
+  box-shadow:0 4px 18px rgba(20,55,90,.06);
+}
+
 @media (max-width:900px){
-  .global-search{width:min(330px,45vw)}
+  .sidebar{width:236px}
+  .main-shell{margin-left:236px}
+  .topbar::before{flex-basis:150px;font-size:25px}
+  .global-search{width:min(330px,42vw);min-width:180px}
   .page-content{padding:20px 18px 48px}
+}
+
+@media (max-width:720px){
+  .topbar::before{display:none}
+  .topbar{padding:0 14px}
+  .global-search{width:auto;flex:1;min-width:0}
 }
