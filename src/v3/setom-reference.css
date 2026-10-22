@@ -1,7 +1,10 @@
 /* SETOM — visual reference layer
-   Direction adopted from the validated SETOM field-operations mockup:
+   Base visual language adopted from the validated SETOM field-operations mockup:
    navy shell, yellow active navigation, clean white workspaces,
    strong hierarchy and compact construction-site data cards.
+
+   IMPORTANT: this layer defines the global SETOM identity only.
+   It must not redesign or alter the workflow of individual modules.
 */
 :root{
   --setom-navy:#092a4a;
@@ -96,23 +99,6 @@ body{background:var(--setom-bg)}
 }
 
 .badge{font-weight:800}
-
-/* Creation/detail forms: stronger section hierarchy without changing business logic. */
-.form-section,.modal-section,.os-form-section,.create-section{
-  border-color:var(--setom-border);
-  border-radius:12px;
-}
-
-/* Data emphasis used by the SETOM reference mockup. */
-.tonnage-card,.load-summary,.material-summary,.planning-summary{
-  border:1px solid #d8e6f2;
-  background:linear-gradient(180deg,#f7fbfe,#edf6fc);
-}
-
-/* Yellow is reserved for actions / active operational state, not decoration everywhere. */
-.section-accent,.step.active,.wizard-step.active{
-  border-color:var(--setom-yellow);
-}
 
 @media (max-width:900px){
   .global-search{width:min(330px,45vw)}
