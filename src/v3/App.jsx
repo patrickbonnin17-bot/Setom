@@ -101,7 +101,12 @@ function App() {
         try { const {data:s,error}=await supabase.storage.from("setom-files").createSignedUrl(f.storage_path,3600); return {...f,url:error?null:s?.signedUrl||null}; }
         catch{return {...f,url:null};}
       }));
-      setData({os:results[0]||[],sectors:results[1]||[],materials:results[2]||[],teams:results[3]||[],interventions:results[4]||[],constats:results[5]||[],attachments:files,costs:results[7]||[],loads:results[8]||[],consumptions:results[9]||[],bpuVersions:versions,bpuLines:lines,settings,realizations:results[11]||[],reserves:results[12]||[],history:results[14]||[]});
+      const costRows=await Promise.all((results[7]||[]).map(async cost=>{
+        if(!cost.document_storage_path)return cost;
+        try{const {data:s,error}=await supabase.storage.from("setom-expenses").createSignedUrl(cost.document_storage_path,3600);return {...cost,document_url:error?null:s?.signedUrl||null};}
+        catch{return {...cost,document_url:null};}
+      }));
+      setData({os:results[0]||[],sectors:results[1]||[],materials:results[2]||[],teams:results[3]||[],interventions:results[4]||[],constats:results[5]||[],attachments:files,costs:costRows,loads:results[8]||[],consumptions:results[9]||[],bpuVersions:versions,bpuLines:lines,settings,realizations:results[11]||[],reserves:results[12]||[],history:results[14]||[]});
     } catch(e) {
       setLoadError(e?.message||"Impossible de charger les données SETOM.");
     } finally {setLoading(false);setRefreshing(false);}
@@ -457,11 +462,50 @@ function FinancePage({data,numberOf,openOS,notify,refresh,newExpense}) {
 }
 
 function ExpenseModal({data,close,notify,refresh,session}) {
-  const [form,setForm]=useState({cost_date:todayISO(),category:"materiaux",description:"",amount:"",work_order_id:"",quantity:"",unit:"",notes:""});const [saving,setSaving]=useState(false);const [error,setError]=useState("");const set=(k,v)=>setForm(f=>({...f,[k]:v}));
-  async function submit(e){e.preventDefault();if(!(Number(form.amount)>0)){setError("Le montant doit être supérieur à zéro.");return;}setSaving(true);setError("");try{const {error}=await supabase.from("work_order_costs").insert({cost_date:form.cost_date,category:form.category,description:form.description.trim(),amount:Number(form.amount),work_order_id:form.work_order_id||null,quantity:form.quantity?Number(form.quantity):null,unit:form.unit||null,notes:form.notes||null,created_by:session?.user?.id||null});if(error)throw error;await refresh();close();notify("Dépense enregistrée.");}catch(e){setError("Enregistrement impossible : "+e.message);}finally{setSaving(false);}}
-  return <div className="modal-backdrop" onClick={close}><div className="form-modal small-modal" onClick={e=>e.stopPropagation()}><div className="form-modal-head"><div><div className="eyebrow">CHARGE RÉELLE</div><h2>Ajouter une dépense</h2><p>La dépense est enregistrée séparément de la facturation client.</p></div><button className="icon-button" onClick={close}><X size={18}/></button></div><form className="edit-grid" onSubmit={submit}><label>Date<input type="date" required value={form.cost_date} onChange={e=>set("cost_date",e.target.value)}/></label><label>Catégorie<select value={form.category} onChange={e=>set("category",e.target.value)}>{["personnel","vehicules","materiaux","materiel","carburant","fournisseur","autres"].map(v=><option key={v} value={v}>{v.charAt(0).toUpperCase()+v.slice(1)}</option>)}</select></label><label className="span-two">Description<input required value={form.description} onChange={e=>set("description",e.target.value)} placeholder="Ex. Enrobé livré / location matériel"/></label><label>Montant HT (€)<input type="number" min="0.01" step=".01" required value={form.amount} onChange={e=>set("amount",e.target.value)}/></label><label>OS lié (facultatif)<select value={form.work_order_id} onChange={e=>set("work_order_id",e.target.value)}><option value="">Dépense générale</option>{data.os.map(o=><option key={o.id} value={o.id}>{String(data.settings?.os_label||"OS")+"-"+new Date(o.creation_date||todayISO()).getFullYear()+"-"+String(o.os_number).padStart(5,"0")} · {shortAddress(o)}</option>)}</select></label><label>Quantité<input type="number" min="0" step=".01" value={form.quantity} onChange={e=>set("quantity",e.target.value)}/></label><label>Unité<input value={form.unit} onChange={e=>set("unit",e.target.value)} placeholder="t, h, km…"/></label><label className="span-two">Notes<textarea rows="2" value={form.notes} onChange={e=>set("notes",e.target.value)}/></label>{error&&<div className="span-two"><Notice tone="warning">{error}</Notice></div>}<div className="form-actions span-two"><Button type="button" onClick={close}>Annuler</Button><Button kind="primary" type="submit" disabled={saving}>{saving?"Enregistrement…":"Enregistrer la dépense"} <Save size={15}/></Button></div></form></div></div>;
+  const [form,setForm]=useState({cost_date:todayISO(),category:"materiaux",description:"",supplier:"",reference:"",amount:"",vat_rate:"20",payment_status:"À payer",paid_at:"",work_order_id:"",quantity:"",unit:"",notes:""});
+  const [file,setFile]=useState(null);const [saving,setSaving]=useState(false);const [error,setError]=useState("");const set=(k,v)=>setForm(f=>({...f,[k]:v}));
+  const ht=Number(form.amount)||0;const vat=Number(form.vat_rate)||0;const ttc=ht*(1+vat/100);
+  async function submit(e){e.preventDefault();if(saving)return;if(!(ht>0)){setError("Le montant HT doit être supérieur à zéro.");return;}if(vat<0||vat>100){setError("Le taux de TVA doit être compris entre 0 et 100 %.");return;}if(form.payment_status==="Payée"&&!(form.paid_at||form.cost_date)){setError("Renseignez la date de paiement.");return;}setSaving(true);setError("");let createdId=null;let documentPath=null;
+    try{
+      const payload={cost_date:form.cost_date,category:form.category,description:form.description.trim(),amount:Number(ht.toFixed(2)),amount_ht:Number(ht.toFixed(2)),vat_rate:Number(vat.toFixed(2)),amount_ttc:Number(ttc.toFixed(2)),payment_status:form.payment_status,paid_at:form.payment_status==="Payée"?(form.paid_at||form.cost_date):null,supplier:form.supplier.trim()||null,reference:form.reference.trim()||null,work_order_id:form.work_order_id||null,quantity:form.quantity?Number(form.quantity):null,unit:form.unit||null,notes:form.notes||null,created_by:session?.user?.id||null,updated_at:new Date().toISOString()};
+      const {data:created,error:insertError}=await supabase.from("work_order_costs").insert(payload).select("id").single();if(insertError)throw insertError;createdId=created.id;
+      let documentWarning="";
+      if(file){
+        try{
+          const safeName=file.name.normalize("NFD").replace(/[\u0300-\u036f]/g,"").replace(/[^a-zA-Z0-9._-]/g,"_");
+          documentPath="expenses/"+createdId+"/"+Date.now()+"-"+safeName;
+          const {error:uploadError}=await supabase.storage.from("setom-expenses").upload(documentPath,file,{cacheControl:"3600",upsert:false,contentType:file.type||"application/octet-stream"});
+          if(uploadError)throw uploadError;
+          const {error:updateError}=await supabase.from("work_order_costs").update({document_storage_path:documentPath,document_file_name:file.name,document_mime_type:file.type||null,updated_at:new Date().toISOString()}).eq("id",createdId);
+          if(updateError)throw updateError;
+        }catch(documentError){
+          if(documentPath)await supabase.storage.from("setom-expenses").remove([documentPath]);
+          documentWarning=" La dépense est enregistrée, mais le justificatif n’a pas pu être conservé : "+(documentError?.message||"erreur de stockage")+".";
+        }
+      }
+      await refresh();close();notify("Dépense enregistrée en HT avec TVA et TTC calculés."+documentWarning,documentWarning?"warning":"success");
+    }catch(e){setError("Enregistrement impossible : "+e.message);}finally{setSaving(false);}
+  }
+  return <div className="modal-backdrop" onClick={close}><div className="form-modal small-modal" onClick={e=>e.stopPropagation()}><div className="form-modal-head"><div><div className="eyebrow">CHARGE RÉELLE</div><h2>Ajouter une dépense</h2><p>Renseignez le coût HT, la TVA, le TTC et l’état du règlement. Le rattachement à un OS est facultatif.</p></div><button className="icon-button" onClick={close}><X size={18}/></button></div><form className="edit-grid" onSubmit={submit}>
+    <label>Date de la dépense<input type="date" required value={form.cost_date} onChange={e=>set("cost_date",e.target.value)}/></label>
+    <label>Catégorie<select value={form.category} onChange={e=>set("category",e.target.value)}>{[["camion","Camion"],["carburant","Carburant"],["materiel","Matériel"],["personnel","Personnel"],["vehicules","Véhicules"],["materiaux","Matériaux"],["fournisseur","Fournisseur"],["autre","Autre"]].map(([v,l])=><option key={v} value={v}>{l}</option>)}</select></label>
+    <label className="span-two">Description<input required value={form.description} onChange={e=>set("description",e.target.value)} placeholder="Ex. Enrobé livré, location de matériel…"/></label>
+    <label>Fournisseur<input value={form.supplier} onChange={e=>set("supplier",e.target.value)} placeholder="Entreprise / négoce"/></label>
+    <label>Référence facture / ticket<input value={form.reference} onChange={e=>set("reference",e.target.value)} placeholder="N° facture, BL, ticket…"/></label>
+    <label>Montant HT (€)<input type="number" min="0.01" step=".01" required value={form.amount} onChange={e=>set("amount",e.target.value)}/></label>
+    <label>Taux de TVA (%)<input type="number" min="0" max="100" step=".1" value={form.vat_rate} onChange={e=>set("vat_rate",e.target.value)}/></label>
+    <div className="span-two vat-summary"><div><span>Montant HT</span><b>{euro(ht)}</b></div><div><span>TVA calculée</span><b>{euro(ht*vat/100)}</b></div><div><span>Total TTC</span><b>{euro(ttc)}</b></div></div>
+    <label>Statut de règlement<select value={form.payment_status} onChange={e=>set("payment_status",e.target.value)}><option>À payer</option><option>Partiellement payée</option><option>Payée</option></select></label>
+    <label>Date de paiement<input type="date" value={form.paid_at} onChange={e=>set("paid_at",e.target.value)} disabled={form.payment_status!=="Payée"}/></label>
+    <label>OS lié (facultatif)<select value={form.work_order_id} onChange={e=>set("work_order_id",e.target.value)}><option value="">Dépense générale</option>{data.os.map(o=><option key={o.id} value={o.id}>{String(data.settings?.os_label||"OS")+"-"+new Date(o.creation_date||todayISO()).getFullYear()+"-"+String(o.os_number).padStart(5,"0")} · {shortAddress(o)}</option>)}</select></label>
+    <label>Quantité<input type="number" min="0" step=".01" value={form.quantity} onChange={e=>set("quantity",e.target.value)}/></label>
+    <label>Unité<input value={form.unit} onChange={e=>set("unit",e.target.value)} placeholder="t, h, km…"/></label>
+    <label className="span-two file-drop"><CloudUpload size={19}/><b>Justificatif (facultatif)</b><span>Photo, PDF ou fichier de facture ; stockage privé réservé au bureau.</span><input type="file" accept="image/*,.pdf,.doc,.docx,.xls,.xlsx" onChange={e=>setFile(e.target.files?.[0]||null)}/>{file&&<small>{file.name}</small>}</label>
+    <label className="span-two">Notes<textarea rows="2" value={form.notes} onChange={e=>set("notes",e.target.value)}/></label>
+    {error&&<div className="span-two"><Notice tone="warning">{error}</Notice></div>}
+    <div className="form-actions span-two"><Button type="button" onClick={close}>Annuler</Button><Button kind="primary" type="submit" disabled={saving}>{saving?"Enregistrement…":"Enregistrer la dépense"} <Save size={15}/></Button></div>
+  </form></div></div>;
 }
-
 function BpuPage({data,notify,refresh,profile}) {
   const [lines,setLines]=useState(data.bpuLines);const [versionName,setVersionName]=useState("Révision "+new Date().getFullYear());const [validFrom,setValidFrom]=useState(addDays(todayISO(),1));const [notes,setNotes]=useState("");const [saving,setSaving]=useState(false);const [search,setSearch]=useState("");
   useEffect(()=>setLines(data.bpuLines),[data.bpuLines]);
