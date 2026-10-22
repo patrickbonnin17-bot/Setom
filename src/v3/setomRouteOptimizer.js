@@ -12,8 +12,7 @@ export const getAreaM2 = (workOrder, intervention = null) =>
 
 export const getDensity = (material) => {
   const configured = toNumber(material?.density_t_m3);
-  if (configured > 0) return configured;
-  return 0;
+  return configured > 0 ? configured : 0;
 };
 
 export const getThicknessCm = (material) => {
@@ -65,16 +64,14 @@ const urgencyScore = (workOrder, today) => {
 
 const routeDistance = (items) => {
   let km = 0;
-  for (let i = 1; i < items.length; i += 1) {
-    km += haversineKm(items[i - 1].workOrder, items[i].workOrder) || 0;
-  }
+  for (let i = 1; i < items.length; i += 1) km += haversineKm(items[i - 1].workOrder, items[i].workOrder) || 0;
   return km;
 };
 
-const nearestNeighbour = (items) => {
+const nearestNeighbour = (items, today) => {
   if (items.length < 2) return [...items];
   const remaining = [...items];
-  remaining.sort((a, b) => urgencyScore(b.workOrder) - urgencyScore(a.workOrder));
+  remaining.sort((a, b) => urgencyScore(b.workOrder, today) - urgencyScore(a.workOrder, today));
   const ordered = [remaining.shift()];
   while (remaining.length) {
     const current = ordered[ordered.length - 1];
@@ -88,24 +85,52 @@ const nearestNeighbour = (items) => {
   return ordered;
 };
 
-const materialRotations = (items, capacity) => {
-  const groups = new Map();
+const signageStatus = (workOrder, targetDate) => {
+  if (!workOrder?.parking_signage_required) return { blocked: false, reason: null };
+  if (!workOrder.parking_signage_placed_at) return { blocked: true, reason: "Signalisation de stationnement 48h non confirmée." };
+  const placed = new Date(workOrder.parking_signage_placed_at);
+  const target = new Date(`${targetDate.toISOString().slice(0, 10)}T08:00:00`);
+  const hours = (target - placed) / 3600000;
+  if (hours < 48) return { blocked: true, reason: `Signalisation posée trop tard (${Math.max(0, Math.round(hours))} h avant l'intervention).` };
+  return { blocked: false, reason: null };
+};
+
+const buildLoadPlan = (items, capacity) => {
+  const byMaterial = new Map();
   for (const item of items) {
     const key = item.workOrder.material_id || "unknown";
-    groups.set(key, (groups.get(key) || 0) + (item.tonnage || 0));
+    if (!byMaterial.has(key)) byMaterial.set(key, []);
+    byMaterial.get(key).push(item);
   }
-  return [...groups.entries()].map(([materialId, tonnes]) => ({
-    materialId,
-    tonnes,
-    rotations: tonnes > 0 ? Math.ceil(tonnes / capacity) : 0,
-    fillRate: tonnes > 0 ? Math.min(1, tonnes / (Math.ceil(tonnes / capacity) * capacity)) : 0,
+
+  const rotations = [];
+  for (const [materialId, materialItems] of byMaterial.entries()) {
+    let rotation = null;
+    for (const item of materialItems) {
+      let remaining = Math.max(0, item.tonnage || 0);
+      while (remaining > 0) {
+        if (!rotation || rotation.loadTonnage >= capacity - 0.0001) {
+          rotation = { materialId, loadTonnage: 0, stops: [] };
+          rotations.push(rotation);
+        }
+        const available = capacity - rotation.loadTonnage;
+        const loaded = Math.min(remaining, available);
+        rotation.stops.push({ workOrderId: item.workOrder.id, tonnage: loaded });
+        rotation.loadTonnage += loaded;
+        remaining -= loaded;
+      }
+    }
+  }
+  return rotations.map((row, index) => ({
+    ...row,
+    number: index + 1,
+    fillRate: row.loadTonnage / capacity,
   }));
 };
 
 /**
  * Deterministic SETOM planning engine.
- * It never writes to Supabase. It only proposes a plan that the UI can show
- * and that the user can validate before any persistence is attempted.
+ * It never writes to Supabase. It proposes a human-validatable plan.
  */
 export function buildRouteProposal({
   workOrders = [],
@@ -117,29 +142,32 @@ export function buildRouteProposal({
   capacityT = DEFAULT_CAPACITY_T,
   today = new Date(),
 } = {}) {
+  const targetDate = today;
+  const targetDateKey = targetDate.toISOString().slice(0, 10);
   const activeTeams = teams.filter((team) => team?.active !== false).slice(0, Math.max(1, teamCount));
   const truckByTeam = new Map(trucks.filter((truck) => truck?.active !== false).map((truck) => [truck.team_id, truck]));
   const materialById = new Map(materials.map((material) => [material.id, material]));
-  const interventionByOrder = new Map(interventions.map((intervention) => [intervention.work_order_id, intervention]));
+  const plannedToday = new Map(interventions.filter((i) => String(i.planned_date || "").slice(0, 10) === targetDateKey).map((i) => [i.work_order_id, i]));
 
-  const candidates = workOrders
-    .filter(eligible)
-    .filter((order) => !interventionByOrder.has(order.id))
-    .map((workOrder) => {
-      const intervention = interventionByOrder.get(workOrder.id);
-      const material = materialById.get(workOrder.material_id);
-      const tonnage = estimateTonnage(workOrder, material, intervention);
-      return {
-        workOrder,
-        intervention,
-        material,
-        tonnage,
-        urgency: urgencyScore(workOrder, today),
-        daysLeft: daysUntil(workOrder.deadline_date, today),
-      };
-    });
+  const allCandidates = workOrders.filter(eligible).filter((order) => !plannedToday.has(order.id)).map((workOrder) => {
+    const material = materialById.get(workOrder.material_id);
+    const tonnage = estimateTonnage(workOrder, null, null);
+    const signage = signageStatus(workOrder, targetDate);
+    return {
+      workOrder,
+      intervention: null,
+      material,
+      tonnage,
+      urgency: urgencyScore(workOrder, targetDate),
+      daysLeft: daysUntil(workOrder.deadline_date, targetDate),
+      signage,
+    };
+  });
 
-  const missingData = candidates.filter((item) => item.tonnage === null || !item.material);
+  const blocked = allCandidates.filter((item) => item.signage.blocked);
+  const missingData = allCandidates.filter((item) => item.tonnage === null || !item.material);
+  const candidates = allCandidates.filter((item) => !item.signage.blocked && item.tonnage !== null && item.material);
+
   const sorted = [...candidates].sort((a, b) => {
     if (b.urgency !== a.urgency) return b.urgency - a.urgency;
     const materialA = a.workOrder.material_id || "";
@@ -148,12 +176,7 @@ export function buildRouteProposal({
     return (a.workOrder.sector_id || "").localeCompare(b.workOrder.sector_id || "");
   });
 
-  const buckets = activeTeams.map((team) => ({
-    team,
-    truck: truckByTeam.get(team.id) || null,
-    items: [],
-    tonnage: 0,
-  }));
+  const buckets = activeTeams.map((team) => ({ team, truck: truckByTeam.get(team.id) || null, items: [], tonnage: 0 }));
 
   for (const item of sorted) {
     const usable = buckets.filter((bucket) => bucket.truck);
@@ -171,49 +194,37 @@ export function buildRouteProposal({
   }
 
   const routes = buckets.map((bucket) => {
-    const ordered = nearestNeighbour(bucket.items);
+    const ordered = nearestNeighbour(bucket.items, targetDate);
     const capacity = Math.max(0.1, toNumber(bucket.truck?.capacity_t, capacityT));
-    const rotations = materialRotations(ordered, capacity);
-    const totalRotations = rotations.reduce((sum, row) => sum + row.rotations, 0);
+    const loadPlan = buildLoadPlan(ordered, capacity);
+    const totalRotations = loadPlan.length;
     const km = routeDistance(ordered);
-    const averageFill = totalRotations ? ordered.reduce((sum, item) => sum + (item.tonnage || 0), 0) / (totalRotations * capacity) : 0;
+    const averageFill = totalRotations ? loadPlan.reduce((sum, row) => sum + row.loadTonnage, 0) / (totalRotations * capacity) : 0;
     const urgent = ordered.filter((item) => item.daysLeft !== null && item.daysLeft <= 3).length;
-    return {
-      team: bucket.team,
-      truck: bucket.truck,
-      stops: ordered,
-      tonnage: bucket.tonnage,
-      rotations,
-      totalRotations,
-      km,
-      averageFill,
-      urgent,
-    };
+    return { team: bucket.team, truck: bucket.truck, stops: ordered, tonnage: bucket.tonnage, loadPlan, totalRotations, km, averageFill, urgent };
   });
 
-  const unassigned = candidates.filter((candidate) => !routes.some((route) => route.stops.some((stop) => stop.workOrder.id === candidate.workOrder.id)));
+  const assignedIds = new Set(routes.flatMap((route) => route.stops.map((stop) => stop.workOrder.id)));
+  const unassigned = candidates.filter((candidate) => !assignedIds.has(candidate.workOrder.id));
   const totalTonnage = routes.reduce((sum, route) => sum + route.tonnage, 0);
   const totalRotations = routes.reduce((sum, route) => sum + route.totalRotations, 0);
   const totalKm = routes.reduce((sum, route) => sum + route.km, 0);
   const capacity = Math.max(0.1, capacityT);
 
   return {
-    date: today.toISOString().slice(0, 10),
+    date: targetDateKey,
     routes,
+    blocked,
     unassigned,
     missingData,
-    totals: {
-      os: candidates.length,
-      assigned: candidates.length - unassigned.length,
-      tonnage: totalTonnage,
-      rotations: totalRotations,
-      km: totalKm,
-      averageFill: totalRotations ? totalTonnage / (totalRotations * capacity) : 0,
-    },
+    alreadyPlanned: [...plannedToday.values()],
+    totals: { os: allCandidates.length, assigned: assignedIds.size, tonnage: totalTonnage, rotations: totalRotations, km: totalKm, averageFill: totalRotations ? totalTonnage / (totalRotations * capacity) : 0 },
     warnings: [
       ...activeTeams.filter((team) => !truckByTeam.has(team.id)).map((team) => `${team.name} n'a pas de camion actif affecté.`),
       ...missingData.map((item) => `${item.workOrder.os_number || item.workOrder.id}: tonnage impossible à calculer (matériau, épaisseur ou densité manquante).`),
+      ...blocked.map((item) => `${item.workOrder.os_number || item.workOrder.id}: ${item.signage.reason}`),
       ...routes.filter((route) => route.urgent > 0).map((route) => `${route.team.name}: ${route.urgent} OS urgent(s) dans les 3 jours.`),
+      ...routes.filter((route) => route.tonnage > 0 && !route.truck).map((route) => `${route.team.name}: aucun camion, tournée non affectée.`),
     ],
   };
 }
