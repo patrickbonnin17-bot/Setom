@@ -28,7 +28,7 @@ export default function SetomRouteOptimizerOverlay(){
     setLoading(true); setError(""); setMessage("");
     const [o,i,t,tr,m]=await Promise.all([
       supabase.from("work_orders").select("id,os_number,address,postal_code,city,latitude,longitude,deadline_date,status,material_id,planned_surface_m2,planned_road_surface_m2,problem_suspended,sector_id,parking_signage_required,parking_signage_placed_at"),
-      supabase.from("interventions").select("id,work_order_id,team_id,planned_date,planned_order,planned_surface_m2").eq("planned_date",day),
+      supabase.from("interventions").select("id,work_order_id,team_id,planned_date,planned_order,planned_surface_m2"),
       supabase.from("teams").select("id,name,active").eq("active",true).order("name"),
       supabase.from("setom_trucks").select("id,name,team_id,capacity_t,active").eq("active",true).order("name"),
       supabase.from("materials").select("id,name,density_t_m3,default_thickness_cm,category").order("name")
@@ -41,8 +41,9 @@ export default function SetomRouteOptimizerOverlay(){
 
   useEffect(()=>{if(open)load();},[open,day]);
 
+  const protectedIds=useMemo(()=>new Set((data.interventions||[]).filter(i=>i.planned_date&&String(i.planned_date).slice(0,10)!==day).map(i=>i.work_order_id)),[data.interventions,day]);
   const proposal=useMemo(()=>buildRouteProposal({
-    workOrders:data.workOrders,
+    workOrders:data.workOrders.filter(o=>!protectedIds.has(o.id)),
     interventions:data.interventions,
     teams:data.teams,
     trucks:data.trucks,
@@ -50,13 +51,13 @@ export default function SetomRouteOptimizerOverlay(){
     teamCount,
     capacityT:8,
     today:new Date(`${day}T12:00:00`),
-  }),[data,teamCount,day]);
+  }),[data,teamCount,day,protectedIds]);
 
-  const canValidate = !loading && !applying && !error && proposal.routes.some(route=>route.stops.length) && !proposal.routes.some(route=>route.stops.length && !route.truck) && proposal.blocked.length === 0 && proposal.missingData.length === 0;
+  const canValidate = !loading && !applying && !error && proposal.routes.some(route=>route.stops.length) && !proposal.routes.some(route=>route.stops.length && !route.truck) && proposal.unassigned.length === 0;
 
   const validatePlan = async()=>{
     if(!canValidate) return;
-    const confirmed=window.confirm(`Valider la tournée du ${day} pour ${proposal.totals.assigned} OS, ${proposal.totals.tonnage.toFixed(1)} t et ${proposal.totals.rotations} rotation(s) ?`);
+    const confirmed=window.confirm(`Valider la tournée du ${day} pour ${proposal.totals.assigned} OS, ${proposal.totals.tonnage.toFixed(1)} t et ${proposal.totals.rotations} rotation(s) ?\n\nChaque équipe conserve son propre camion, tonnage et matériau. Les OS déjà planifiés restent inchangés.`);
     if(!confirmed) return;
     setApplying(true); setError(""); setMessage("");
     try {
@@ -94,9 +95,10 @@ export default function SetomRouteOptimizerOverlay(){
         {proposal.unassigned.length>0&&<div className="setom-route-alert"><AlertTriangle size={15}/><span><b>{proposal.unassigned.length} OS non affecté(s).</b> Ils restent hors proposition plutôt que d'être placés sur un camion sans capacité ou sans donnée fiable.</span></div>}
         {proposal.warnings.length>0&&<div className="setom-route-alert"><AlertTriangle size={15}/><span>{proposal.warnings.map((w,i)=><React.Fragment key={i}>{i>0&&" • "}{w}</React.Fragment>)}</span></div>}
         {proposal.alreadyPlanned.length>0&&<div className="setom-route-good"><CheckCircle2 size={14}/><span>{proposal.alreadyPlanned.length} OS déjà planifié(s) ce jour : ils ne sont pas déplacés par cette proposition.</span></div>}
+        {protectedIds.size>0&&<div className="setom-route-good"><CheckCircle2 size={14}/><span>{protectedIds.size} OS déjà planifié(s) à une autre date : ils sont protégés et ne seront pas écrasés par cette validation.</span></div>}
         <button className="setom-route-validate" onClick={validatePlan} disabled={!canValidate}>{applying?"Enregistrement…":"Valider la tournée et l'envoyer au planning"}</button>
-        {!canValidate&&!applying&&<div className="setom-route-alert"><AlertTriangle size={15}/><span>Validation désactivée tant qu'une donnée critique manque, qu'une signalisation 48h bloque un OS, qu'un camion manque ou qu'aucune tournée valide n'est proposée.</span></div>}
+        {!canValidate&&!applying&&<div className="setom-route-alert"><AlertTriangle size={15}/><span>Validation désactivée tant qu'un camion manque pour une équipe proposée ou qu'un OS reste non affecté. Les OS bloqués, incomplets ou déjà planifiés restent hors de la tournée.</span></div>}
       </>}
-    </div><div className="setom-route-foot">Moteur déterministe : délais, regroupement matériau, équilibre des équipes, capacité réelle du camion, signalisation 48h et rotations plafonnées à 8 t. La validation est volontaire et n'écrase pas les OS déjà planifiés le jour choisi.</div>
+    </div><div className="setom-route-foot">Moteur déterministe : délais, regroupement matériau, équilibre des équipes, capacité propre à chaque camion, signalisation 48h et rotations plafonnées à 8 t. Les équipes sont indépendantes : aucun tonnage, matériau ou capacité n'est transféré automatiquement d'une équipe à l'autre.</div>
   </aside></>;
 }
