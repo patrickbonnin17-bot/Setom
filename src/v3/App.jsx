@@ -198,7 +198,7 @@ function Dashboard({data,numberOf,openOS,go}) {
   const todayPlans=data.interventions.filter(i=>i.planned_date===today);
   const todayOs=todayPlans.map(i=>data.os.find(o=>o.id===i.work_order_id)).filter(Boolean);
   const estimatedTons=todayOs.reduce((sum,o)=>{const m=data.materials.find(x=>x.id===o.material_id);const i=todayPlans.find(x=>x.work_order_id===o.id);return sum+tonnesFor(i?.planned_surface_m2??o.planned_surface_m2,thicknessFor(m),densityFor(m));},0);
-  return <><PageHeading eyebrow="VUE D’ENSEMBLE" title={"Bonjour, "+(new Date().getHours()<12?"bonne journée.":"point sur l’activité.")}} desc="Les chiffres sont calculés à partir des dossiers présents dans votre base SETOM." actions={<Button kind="primary" onClick={()=>go("os")}><Plus size={16}/> Créer un OS</Button>}/>
+  return <><PageHeading eyebrow="VUE D’ENSEMBLE" title={"Bonjour, "+(new Date().getHours()<12?"bonne journée.":"point sur l’activité.")} desc="Les chiffres sont calculés à partir des dossiers présents dans votre base SETOM." actions={<Button kind="primary" onClick={()=>go("os")}><Plus size={16}/> Créer un OS</Button>}/>
     <div className="kpi-grid">
       <Kpi label="OS actifs" value={active.length} sub={pending.length+" à organiser"} icon={ClipboardList}/>
       <Kpi label="Planifiés / en cours" value={planned.length} sub={todayPlans.length+" prévu(s) aujourd’hui"} icon={CalendarDays} tone="purple"/>
