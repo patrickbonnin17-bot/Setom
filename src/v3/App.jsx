@@ -176,6 +176,8 @@ function App() {
   </div>;
 }
 
+export default App;
+
 function LoginPage({onLogin,error}) {
   const [email,setEmail]=useState(""); const [password,setPassword]=useState(""); const [busy,setBusy]=useState(false); const [message,setMessage]=useState(error||"");
   async function submit(e){e.preventDefault();setBusy(true);setMessage("");try{const {data,error}=await supabase.auth.signInWithPassword({email:email.trim(),password});if(error)throw error;onLogin(data.session);}catch(e){setMessage("Connexion impossible. Vérifiez l’e-mail, le mot de passe et l’accès au compte.");}finally{setBusy(false);}}
