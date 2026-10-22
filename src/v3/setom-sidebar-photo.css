@@ -1,6 +1,6 @@
 /* SETOM — Toulouse / Eurovia field identity
-   Official Eurovia Toulouse chantier image used as a visual identity accent.
-   Source: Eurovia France — A680 / Verfeil chantier, agence Eurovia de Toulouse.
+   Toulouse roadworks photo featuring a white Eurovia asphalt paver.
+   Source: InfoChantier — Reynerie, Toulouse / réalisation des enrobés.
 */
 
 .sidebar{
@@ -13,7 +13,7 @@
       rgba(9,42,74,.78) 72%,
       rgba(9,42,74,.34) 84%,
       rgba(9,42,74,.18) 100%),
-    url("https://eurovia.fr/wp-content/upload/www.eurovia.fr/2026/09/002-2026-03-10-dji-0097.jpg");
+    url("https://infochantier.s3.amazonaws.com/CACHE/images/actualites/20210802_121120/c5b1fd1f30bff863050281aee2218c30.jpg");
   background-position:center, center bottom;
   background-repeat:no-repeat;
   background-size:100% 100%, 100% 245px;
