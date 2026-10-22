@@ -7,6 +7,7 @@ import SetomRouteOptimizerOverlay from "./SetomRouteOptimizerOverlay";
 import SetomOperationalMapOverlay from "./SetomOperationalMapOverlay";
 import "./setom-reference.css";
 import "./setom-operational-map.css";
+import "./setom-sidebar-photo.css";
 import "./SetomPerformanceOverlay";
 
 createRoot(document.getElementById("root")).render(
