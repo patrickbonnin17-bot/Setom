@@ -1,3 +1,4 @@
+import "./planningTasksEnhancement";
 import { supabase } from "./supabase";
 
 const PANEL_ID = "setom-profitability-overlay";
@@ -60,10 +61,7 @@ async function loadProfitability() {
     const i = interventionByOS.get(o.id);
     const c = latestConstatByOS.get(o.id);
     const osConsumptions = consumptions.filter((x) => x.work_order_id === o.id);
-    const materialCost = osConsumptions.reduce((sum, x) => {
-      const material = materialById.get(x.material_id);
-      return sum + (num(x.quantity) * num(material?.purchase_price_per_t));
-    }, 0);
+    const materialCost = osConsumptions.reduce((sum, x) => { const material = materialById.get(x.material_id); return sum + (num(x.quantity) * num(material?.purchase_price_per_t)); }, 0);
     const consumedTonnes = osConsumptions.reduce((sum, x) => sum + (String(x.unit || "").toLowerCase() === "t" ? num(x.quantity) : 0), 0);
     const osCosts = costs.filter((x) => x.work_order_id === o.id);
     const directOtherCost = osCosts.reduce((sum, x) => sum + num(x.amount), 0);
@@ -77,9 +75,7 @@ async function loadProfitability() {
     return { id: o.id, osNumber: o.os_number, status: o.status, date, plannedSurface: num(i?.planned_surface_m2 || o.planned_surface_m2), actualSurface: actualSurface || num(i?.actual_surface_m2), ca, materialCost, laborCost, directOtherCost, directCost, margin, marginPct, consumedTonnes, constatStatus: c?.status || "—" };
   });
 
-  const totals = rows.reduce((a, r) => {
-    a.ca += r.ca; a.materialCost += r.materialCost; a.laborCost += r.laborCost; a.directOtherCost += r.directOtherCost; a.directCost += r.directCost; a.margin += r.margin; a.tonnes += r.consumedTonnes; a.surface += r.actualSurface; return a;
-  }, { ca: 0, materialCost: 0, laborCost: 0, directOtherCost: 0, directCost: 0, margin: 0, tonnes: 0, surface: 0 });
+  const totals = rows.reduce((a, r) => { a.ca += r.ca; a.materialCost += r.materialCost; a.laborCost += r.laborCost; a.directOtherCost += r.directOtherCost; a.directCost += r.directCost; a.margin += r.margin; a.tonnes += r.consumedTonnes; a.surface += r.actualSurface; return a; }, { ca: 0, materialCost: 0, laborCost: 0, directOtherCost: 0, directCost: 0, margin: 0, tonnes: 0, surface: 0 });
   totals.marginPct = totals.ca > 0 ? totals.margin / totals.ca * 100 : null;
   return { rows, totals };
 }
@@ -96,55 +92,14 @@ function render(data, month) {
   filtered.forEach((r) => { const key = r.date || "Sans date"; const d = days.get(key) || { date: key, ca: 0, cost: 0, margin: 0, surface: 0, tonnes: 0, os: 0 }; d.ca += r.ca; d.cost += r.directCost; d.margin += r.margin; d.surface += r.actualSurface; d.tonnes += r.consumedTonnes; d.os++; days.set(key, d); });
   const dayRows = [...days.values()].sort((a, b) => String(b.date).localeCompare(String(a.date)));
   const moneyClass = (v) => v >= 0 ? "pr-positive" : "pr-negative";
-  overlay.innerHTML = `
-    <div class="pr-box">
-      <div class="pr-head"><div><div class="pr-title">Pilotage · Rentabilité</div><div class="pr-sub">CA, coûts directs, tonnage et marge par OS et par journée</div></div><button class="pr-close" id="pr-close">Fermer</button></div>
-      <div class="pr-body">
-        <div class="pr-toolbar"><select id="pr-month"><option value="all">Toutes les périodes</option>${months.map((m) => `<option value="${m}">${new Date(`${m}-01T12:00:00`).toLocaleDateString("fr-FR", { month: "long", year: "numeric" })}</option>`).join("")}</select><button class="pr-close" style="background:#edf3fb;color:#173a6b" id="pr-refresh">Actualiser</button></div>
-        <div class="pr-grid">
-          <div class="pr-card"><div class="pr-label">Chiffre d'affaires</div><div class="pr-value">${euro(totals.ca)}</div></div>
-          <div class="pr-card"><div class="pr-label">Coût matériaux</div><div class="pr-value">${euro(totals.material)}</div></div>
-          <div class="pr-card"><div class="pr-label">Autres coûts directs</div><div class="pr-value">${euro(totals.other)}</div></div>
-          <div class="pr-card"><div class="pr-label">Coût direct total</div><div class="pr-value">${euro(totals.cost)}</div></div>
-          <div class="pr-card"><div class="pr-label">Marge brute</div><div class="pr-value ${moneyClass(totals.margin)}">${euro(totals.margin)}${totals.marginPct == null ? "" : ` · ${totals.marginPct.toFixed(1)} %`}</div></div>
-        </div>
-        <div class="pr-grid">
-          <div class="pr-card"><div class="pr-label">Surface réalisée</div><div class="pr-value">${num(totals.surface).toFixed(1)} m²</div></div>
-          <div class="pr-card"><div class="pr-label">Tonnage consommé</div><div class="pr-value">${tonnes(totals.tonnes)}</div></div>
-          <div class="pr-card"><div class="pr-label">OS analysés</div><div class="pr-value">${filtered.length}</div></div>
-          <div class="pr-card"><div class="pr-label">CA moyen / OS</div><div class="pr-value">${euro(filtered.length ? totals.ca / filtered.length : 0)}</div></div>
-          <div class="pr-card"><div class="pr-label">Marge moyenne / OS</div><div class="pr-value ${moneyClass(totals.margin)}">${euro(filtered.length ? totals.margin / filtered.length : 0)}</div></div>
-        </div>
-        <div class="pr-section"><h3>Rentabilité par OS</h3>${filtered.length ? `<div style="overflow:auto"><table><thead><tr><th>OS</th><th>Date</th><th>Statut</th><th>Surface</th><th>Tonnage</th><th>CA</th><th>Matériaux</th><th>Coûts directs</th><th>Marge</th><th>%</th></tr></thead><tbody>${filtered.map((r) => `<tr><td><strong>OS-${String(r.osNumber).padStart(5, "0")}</strong></td><td>${r.date || "—"}</td><td>${r.status || "—"}</td><td class="num">${r.actualSurface.toFixed(1)} m²</td><td class="num">${r.consumedTonnes.toFixed(2)} t</td><td class="num">${euro(r.ca)}</td><td class="num">${euro(r.materialCost)}</td><td class="num">${euro(r.directCost)}</td><td class="num ${moneyClass(r.margin)}">${euro(r.margin)}</td><td class="num">${r.marginPct == null ? "—" : `${r.marginPct.toFixed(1)} %`}</td></tr>`).join("")}</tbody></table></div>` : `<div class="pr-empty">Aucune donnée de rentabilité sur cette période.</div>`}</div>
-        <div class="pr-section"><h3>Rentabilité par journée</h3>${dayRows.length ? `<div style="overflow:auto"><table><thead><tr><th>Journée</th><th>OS</th><th>Surface</th><th>Tonnage</th><th>CA</th><th>Coûts directs</th><th>Marge</th></tr></thead><tbody>${dayRows.map((d) => `<tr><td><strong>${d.date}</strong></td><td>${d.os}</td><td class="num">${d.surface.toFixed(1)} m²</td><td class="num">${d.tonnes.toFixed(2)} t</td><td class="num">${euro(d.ca)}</td><td class="num">${euro(d.cost)}</td><td class="num ${moneyClass(d.margin)}">${euro(d.margin)}</td></tr>`).join("")}</tbody></table></div>` : `<div class="pr-empty">Aucune journée à afficher.</div>`}</div>
-        <div class="pr-note">Pour l'instant, la marge utilise uniquement les coûts directs enregistrés et le coût d'achat des matériaux consommés. Le coefficient de dépenses générales sera ajouté ultérieurement dans les paramètres, sans modifier ces données.</div>
-      </div>
-    </div>`;
+  overlay.innerHTML = `<div class="pr-box"><div class="pr-head"><div><div class="pr-title">Pilotage · Rentabilité</div><div class="pr-sub">CA, coûts directs, tonnage et marge par OS et par journée</div></div><button class="pr-close" id="pr-close">Fermer</button></div><div class="pr-body"><div class="pr-toolbar"><select id="pr-month"><option value="all">Toutes les périodes</option>${months.map((m) => `<option value="${m}">${new Date(`${m}-01T12:00:00`).toLocaleDateString("fr-FR", { month: "long", year: "numeric" })}</option>`).join("")}</select><button class="pr-close" style="background:#edf3fb;color:#173a6b" id="pr-refresh">Actualiser</button></div><div class="pr-grid"><div class="pr-card"><div class="pr-label">Chiffre d'affaires</div><div class="pr-value">${euro(totals.ca)}</div></div><div class="pr-card"><div class="pr-label">Coût matériaux</div><div class="pr-value">${euro(totals.material)}</div></div><div class="pr-card"><div class="pr-label">Autres coûts directs</div><div class="pr-value">${euro(totals.other)}</div></div><div class="pr-card"><div class="pr-label">Coût direct total</div><div class="pr-value">${euro(totals.cost)}</div></div><div class="pr-card"><div class="pr-label">Marge brute</div><div class="pr-value ${moneyClass(totals.margin)}">${euro(totals.margin)}${totals.marginPct == null ? "" : ` · ${totals.marginPct.toFixed(1)} %`}</div></div></div><div class="pr-grid"><div class="pr-card"><div class="pr-label">Surface réalisée</div><div class="pr-value">${num(totals.surface).toFixed(1)} m²</div></div><div class="pr-card"><div class="pr-label">Tonnage consommé</div><div class="pr-value">${tonnes(totals.tonnes)}</div></div><div class="pr-card"><div class="pr-label">OS analysés</div><div class="pr-value">${filtered.length}</div></div><div class="pr-card"><div class="pr-label">CA moyen / OS</div><div class="pr-value">${euro(filtered.length ? totals.ca / filtered.length : 0)}</div></div><div class="pr-card"><div class="pr-label">Marge moyenne / OS</div><div class="pr-value ${moneyClass(totals.margin)}">${euro(filtered.length ? totals.margin / filtered.length : 0)}</div></div></div><div class="pr-section"><h3>Rentabilité par OS</h3>${filtered.length ? `<div style="overflow:auto"><table><thead><tr><th>OS</th><th>Date</th><th>Statut</th><th>Surface</th><th>Tonnage</th><th>CA</th><th>Matériaux</th><th>Coûts directs</th><th>Marge</th><th>%</th></tr></thead><tbody>${filtered.map((r) => `<tr><td><strong>OS-${String(r.osNumber).padStart(5, "0")}</strong></td><td>${r.date || "—"}</td><td>${r.status || "—"}</td><td class="num">${r.actualSurface.toFixed(1)} m²</td><td class="num">${r.consumedTonnes.toFixed(2)} t</td><td class="num">${euro(r.ca)}</td><td class="num">${euro(r.materialCost)}</td><td class="num">${euro(r.directCost)}</td><td class="num ${moneyClass(r.margin)}">${euro(r.margin)}</td><td class="num">${r.marginPct == null ? "—" : `${r.marginPct.toFixed(1)} %`}</td></tr>`).join("")}</tbody></table></div>` : `<div class="pr-empty">Aucune donnée de rentabilité sur cette période.</div>`}</div><div class="pr-section"><h3>Rentabilité par journée</h3>${dayRows.length ? `<div style="overflow:auto"><table><thead><tr><th>Journée</th><th>OS</th><th>Surface</th><th>Tonnage</th><th>CA</th><th>Coûts directs</th><th>Marge</th></tr></thead><tbody>${dayRows.map((d) => `<tr><td><strong>${d.date}</strong></td><td>${d.os}</td><td class="num">${d.surface.toFixed(1)} m²</td><td class="num">${d.tonnes.toFixed(2)} t</td><td class="num">${euro(d.ca)}</td><td class="num">${euro(d.cost)}</td><td class="num ${moneyClass(d.margin)}">${euro(d.margin)}</td></tr>`).join("")}</tbody></table></div>` : `<div class="pr-empty">Aucune journée à afficher.</div>`}</div><div class="pr-note">Pour l'instant, la marge utilise uniquement les coûts directs enregistrés et le coût d'achat des matériaux consommés. Le coefficient de dépenses générales sera ajouté ultérieurement dans les paramètres, sans modifier ces données.</div></div></div>`;
   document.body.appendChild(overlay);
   overlay.querySelector("#pr-close")?.addEventListener("click", () => overlay.remove());
   overlay.addEventListener("click", (e) => { if (e.target === overlay) overlay.remove(); });
   overlay.querySelector("#pr-refresh")?.addEventListener("click", async () => { const btn = overlay.querySelector("#pr-refresh"); btn.disabled = true; try { const fresh = await loadProfitability(); render(fresh, overlay.querySelector("#pr-month")?.value || "all"); } finally { btn.disabled = false; } });
   overlay.querySelector("#pr-month")?.addEventListener("change", (e) => render(data, e.target.value));
 }
-
-async function openPilotage() {
-  const old = document.getElementById(PANEL_ID); if (old) { old.remove(); return; }
-  addStyle();
-  const launcher = document.getElementById(`${PANEL_ID}-launcher`); if (launcher) launcher.disabled = true;
-  try { render(await loadProfitability(), "all"); } catch (error) { console.error("SETOM rentabilité :", error); alert(`Impossible de charger le pilotage rentabilité : ${error?.message || "erreur inconnue"}`); } finally { if (launcher) launcher.disabled = false; }
-}
-
-function mountLauncher() {
-  if (document.getElementById(`${PANEL_ID}-launcher`)) return;
-  addStyle();
-  const button = document.createElement("button");
-  button.id = `${PANEL_ID}-launcher`;
-  button.type = "button";
-  button.textContent = "📊 Rentabilité";
-  button.title = "Ouvrir le pilotage rentabilité";
-  button.addEventListener("click", openPilotage);
-  document.body.appendChild(button);
-}
-
+async function openPilotage() { const old = document.getElementById(PANEL_ID); if (old) { old.remove(); return; } addStyle(); const launcher = document.getElementById(`${PANEL_ID}-launcher`); if (launcher) launcher.disabled = true; try { render(await loadProfitability(), "all"); } catch (error) { console.error("SETOM rentabilité :", error); alert(`Impossible de charger le pilotage rentabilité : ${error?.message || "erreur inconnue"}`); } finally { if (launcher) launcher.disabled = false; } }
+function mountLauncher() { if (document.getElementById(`${PANEL_ID}-launcher`)) return; addStyle(); const button = document.createElement("button"); button.id = `${PANEL_ID}-launcher`; button.type = "button"; button.textContent = "📊 Rentabilité"; button.title = "Ouvrir le pilotage rentabilité"; button.addEventListener("click", openPilotage); document.body.appendChild(button); }
 mountLauncher();
 window.addEventListener("setom:planning-updated", mountLauncher);
