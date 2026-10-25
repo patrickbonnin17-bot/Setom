@@ -32,7 +32,7 @@ export function teamCapacityM2(team, fallback = DEFAULT_BASELINE_M2) {
   const size = Number(team?.team_size ?? team?.headcount ?? team?.members_count);
   if (Number.isFinite(size) && size > 0) return fallback * (size / REFERENCE_TEAM_SIZE);
 
-  return DEFAULT_BASELINE_M2;
+  return fallback;
 }
 
 export function effectiveCapacityM2(order, team, material, options = {}) {
@@ -116,6 +116,10 @@ function cityMorningConflict(order) {
   return isCityOrder(order) || isHighTraffic(order);
 }
 
+function isTeamBlocked(blockedTeamDates, date, teamId) {
+  return Boolean(blockedTeamDates?.has?.(dayLoadKey(date, teamId)));
+}
+
 export function buildPlanningAssignments({
   orders = [],
   teams = [],
@@ -124,6 +128,7 @@ export function buildPlanningAssignments({
   horizonDays = 120,
   baselineDailyCapacityM2 = DEFAULT_BASELINE_M2,
   marginPercent = 0,
+  blockedTeamDates = new Set(),
 }) {
   const queue = sortQueue(orders);
   const activeTeams = teams.filter((team) => team?.active !== false);
@@ -169,8 +174,9 @@ export function buildPlanningAssignments({
         const effort = capacity > 0 ? required / capacity : 1;
         const key = dayLoadKey(date, team.id);
         const used = Number(loads.get(key) || 0);
-        const fits = effort <= 1 && used + effort <= 1;
-        return { team, key, capacity, effort, used, fits };
+        const blocked = isTeamBlocked(blockedTeamDates, date, team.id);
+        const fits = !blocked && effort <= 1 && used + effort <= 1;
+        return { team, key, capacity, effort, used, fits, blocked };
       }).filter((choice) => choice.fits);
 
       if (!choices.length) continue;
@@ -199,7 +205,7 @@ export function buildPlanningAssignments({
     }
 
     if (!selected) {
-      throw new Error(`Impossible de trouver une place pour ${order.os_number ?? order.id}. Vérifiez les capacités, les matériaux ou les règles de planification.`);
+      throw new Error(`Impossible de trouver une place pour ${order.os_number ?? order.id}. Vérifiez les capacités, les tâches libres, les matériaux ou les règles de planification.`);
     }
   }
 
@@ -216,6 +222,9 @@ export function buildPlanningAssignments({
       const morningA = Number(isLargePiece(oa) && !cityMorningConflict(oa));
       const morningB = Number(isLargePiece(ob) && !cityMorningConflict(ob));
       if (morningA !== morningB) return morningB - morningA;
+      const lateTrafficA = Number(isHighTraffic(oa));
+      const lateTrafficB = Number(isHighTraffic(ob));
+      if (lateTrafficA !== lateTrafficB) return lateTrafficA - lateTrafficB;
       return Number(a.planned_order || 0) - Number(b.planned_order || 0);
     });
     list.forEach((assignment, index) => { assignment.planned_order = index + 1; });
@@ -232,5 +241,7 @@ export function explainPlanningRules() {
     workStartHour: DEFAULT_WORK_START_HOUR,
     materialMixing: "one_material_per_day",
     deadlinePriority: "deadline_then_operational_constraints",
+    blockedTeamDates: true,
+    trafficPriority: "after_morning_rush",
   };
 }
