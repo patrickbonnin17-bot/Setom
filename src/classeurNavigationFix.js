@@ -1,3 +1,5 @@
+import "./planningTasksEnhancement";
+
 // Classeur: clicking the OS label opens the existing OS detail modal.
 // The binder stays open underneath the modal so the team can return to it
 // without losing the current day/week context.
@@ -18,8 +20,6 @@
     if (!plannerHost) return;
 
     plannerOriginalZIndex = plannerHost.style.zIndex || "";
-    // The planner is normally above the whole application. Lower it temporarily
-    // so the existing OS detail modal can appear above it without closing the binder.
     plannerHost.style.zIndex = "900";
 
     if (observer) observer.disconnect();
@@ -37,7 +37,6 @@
 
     observer.observe(document.body, { childList: true, subtree: true });
 
-    // Handle the case where the modal already exists when the event arrives.
     const existingModal = document.querySelector(".os-detail-modal");
     if (existingModal) {
       modalWasOpened = true;
@@ -64,11 +63,7 @@
 
   function openOsFromBinder(osNumber) {
     if (!osNumber) return;
-
-    // Do NOT close the binder. Lower only its stacking layer while the normal
-    // application opens the OS detail modal above it.
     prepareBinderBehindModal();
-
     window.setTimeout(() => {
       window.dispatchEvent(new CustomEvent("setom:open-os-from-classeur", {
         detail: { osNumber }
@@ -81,8 +76,6 @@
     const row = target?.closest?.(".setom-binder-card, .setom-week-binder-row");
     if (!row) return;
 
-    // Only the OS label is an opening target. Other binder controls keep
-    // their normal behavior.
     const label = target.closest?.("strong");
     if (!label || !row.contains(label)) return;
 
