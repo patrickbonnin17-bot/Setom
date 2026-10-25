@@ -1,3 +1,5 @@
+import "./planningV5Bridge";
+
 export const OS_STATUS_LEGEND = [
   { label: "Nouvel OS", statuses: ["Nouveau"], accent: "#EAB308", background: "#FEF9C3", text: "#854D0E", border: "#FDE047" },
   { label: "À planifier / planifié", statuses: ["À planifier", "Planifié"], accent: "#F97316", background: "#FFEDD5", text: "#9A3412", border: "#FDBA74" },
