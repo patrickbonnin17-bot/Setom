@@ -1,4 +1,5 @@
 import "./planningV5Bridge";
+import "./planningDayPreparationEnhancement";
 
 export const OS_STATUS_LEGEND = [
   { label: "Nouvel OS", statuses: ["Nouveau"], accent: "#EAB308", background: "#FEF9C3", text: "#854D0E", border: "#FDE047" },
