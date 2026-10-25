@@ -1,3 +1,4 @@
+import "./planningTasksEnhancement";
 import { supabase } from "./supabase";
 import { buildPlanningAssignments } from "./planningEngine";
 
