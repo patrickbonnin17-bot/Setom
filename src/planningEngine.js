@@ -32,7 +32,7 @@ export function teamCapacityM2(team, fallback = DEFAULT_BASELINE_M2) {
   const size = Number(team?.team_size ?? team?.headcount ?? team?.members_count);
   if (Number.isFinite(size) && size > 0) return fallback * (size / REFERENCE_TEAM_SIZE);
 
-  return fallback;
+  return DEFAULT_BASELINE_M2;
 }
 
 export function effectiveCapacityM2(order, team, material, options = {}) {
@@ -99,16 +99,20 @@ function dayLoadKey(date, teamId) {
   return `${date}|${teamId}`;
 }
 
+function addMaterialForDay(materialByDay, date, material) {
+  if (!material) return;
+  if (!materialByDay.has(date)) materialByDay.set(date, new Set());
+  materialByDay.get(date).add(material);
+}
+
 function hasMaterialConflict(materialByDay, date, material) {
   if (!material) return false;
   const existing = materialByDay.get(date);
-  return Boolean(existing && existing !== material);
+  if (!existing || existing.size === 0) return false;
+  return existing.size !== 1 || !existing.has(material);
 }
 
 function cityMorningConflict(order) {
-  // The planner has no time-slot field yet. We therefore express the rule as
-  // a preference: city/high-traffic work must not be promoted ahead of the
-  // normal morning jobs. Actual 09:00 time slots belong to the day-preparation UI.
   return isCityOrder(order) || isHighTraffic(order);
 }
 
@@ -140,7 +144,7 @@ export function buildPlanningAssignments({
     const withMargin = planned * (1 + Math.max(0, Number(marginPercent || 0)) / 100);
     loads.set(key, Number(loads.get(key) || 0) + (capacity > 0 ? withMargin / capacity : 1));
     dayOrders.set(order.planned_date, Math.max(Number(dayOrders.get(order.planned_date) || 0), Number(order.planned_order || 0)));
-    if (material) materialByDay.set(order.planned_date, materialKey(order));
+    addMaterialForDay(materialByDay, order.planned_date, materialKey(order));
   }
 
   for (const order of queue) {
@@ -160,7 +164,6 @@ export function buildPlanningAssignments({
 
       const surface = Math.max(0, Number(order.planned_surface_m2 || 0));
       const required = surface * (1 + Math.max(0, Number(marginPercent || 0)) / 100);
-
       const choices = teamPool.map((team) => {
         const capacity = effectiveCapacityM2(order, team, material, { baselineDailyCapacityM2 });
         const effort = capacity > 0 ? required / capacity : 1;
@@ -191,7 +194,7 @@ export function buildPlanningAssignments({
       assignments.push(selected);
       loads.set(choice.key, choice.used + choice.effort);
       dayOrders.set(date, position);
-      if (materialName) materialByDay.set(date, materialName);
+      addMaterialForDay(materialByDay, date, materialName);
       break;
     }
 
@@ -200,8 +203,6 @@ export function buildPlanningAssignments({
     }
   }
 
-  // Reorder each day so the morning starts with large pieces, while city and
-  // high-traffic work are deliberately kept after the preferred morning jobs.
   const byDay = new Map();
   for (const assignment of assignments) {
     if (!byDay.has(assignment.planned_date)) byDay.set(assignment.planned_date, []);
